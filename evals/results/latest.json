@@ -1,0 +1,489 @@
+{
+  "timestamp": "2026-07-01T18:36:40.668Z",
+  "model": "qwen/qwen3.7-max",
+  "total": 19,
+  "passed": 19,
+  "failed": 0,
+  "duration": 55082,
+  "cases": [
+    {
+      "id": "simple-math",
+      "description": "Agent answers a simple math question without tools",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 2262,
+      "turns": 1,
+      "toolsCalled": [],
+      "expected": {
+        "containsAny": [
+          "4",
+          "four"
+        ],
+        "toolsNotCalled": [
+          "bash",
+          "read",
+          "write",
+          "edit",
+          "find",
+          "grep",
+          "ls"
+        ],
+        "noErrors": true,
+        "hasGroundedVerify": false
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "2 + 2 = **4**."
+    },
+    {
+      "id": "read-file",
+      "description": "Agent reads a file and reports its content",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 5307,
+      "turns": 2,
+      "toolsCalled": [
+        "read"
+      ],
+      "expected": {
+        "containsAny": [
+          "micro-pi"
+        ],
+        "toolsCalled": [
+          "read"
+        ],
+        "noErrors": true,
+        "hasGroundedVerify": true
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "The project name is **micro-pi**."
+    },
+    {
+      "id": "read-with-offset",
+      "description": "Agent uses offset/limit for large files",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 7929,
+      "turns": 2,
+      "toolsCalled": [
+        "read"
+      ],
+      "expected": {
+        "toolsCalled": [
+          "read"
+        ],
+        "noErrors": true,
+        "hasGroundedVerify": true
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "Here are lines 1-10 of `src/loop.ts`:\n\n```typescript\nimport type { AppConfig } from \"./config.ts\";\nimport type { Message, Usage } from \"./llm.ts\";\nimport { createClient, streamAndCollect } from \"./llm.ts\";\nimport { compactMessages, pruneToFit, shouldCompact } from \"./session.ts\";\nimport { type ConfirmBash, createToolExecutor, getToolDefinitions, type ToolResult } from \"./tools.ts\";\n\n// ============================================================================\n// Message queue — from pi's Pendi"
+    },
+    {
+      "id": "read-nonexistent",
+      "description": "Agent handles missing file gracefully",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 7218,
+      "turns": 2,
+      "toolsCalled": [
+        "read"
+      ],
+      "expected": {
+        "containsAny": [
+          "not found",
+          "ENOENT",
+          "does not exist",
+          "error"
+        ],
+        "toolsCalled": [
+          "read"
+        ],
+        "noErrors": true,
+        "hasGroundedVerify": false
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "The file `/nonexistent/file.txt` does not exist. The read operation returned an **ENOENT** error, meaning the system could not find the specified file or directory path."
+    },
+    {
+      "id": "write-file",
+      "description": "Agent creates a new file",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 6942,
+      "turns": 2,
+      "toolsCalled": [
+        "write"
+      ],
+      "expected": {
+        "toolsCalled": [
+          "write"
+        ],
+        "noErrors": true,
+        "hasGroundedVerify": true
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "The file has been created at `/tmp/micro-pi-eval/5badfc71-ce46-4f21-9701-1d66c3a7e85d/write-file/out.txt` with the content `hello from eval`."
+    },
+    {
+      "id": "edit-file",
+      "description": "Agent edits an existing file",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 12726,
+      "turns": 3,
+      "toolsCalled": [
+        "write",
+        "edit"
+      ],
+      "expected": {
+        "toolsCalled": [
+          "write",
+          "edit"
+        ],
+        "noErrors": true,
+        "hasGroundedVerify": true
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "Done! The file now contains `aaa xxx ccc` after replacing `bbb` with `xxx`."
+    },
+    {
+      "id": "bash-simple",
+      "description": "Agent runs a simple bash command",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 5099,
+      "turns": 2,
+      "toolsCalled": [
+        "bash"
+      ],
+      "expected": {
+        "containsAny": [
+          "hello-world"
+        ],
+        "toolsCalled": [
+          "bash"
+        ],
+        "noErrors": true,
+        "hasGroundedVerify": false
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "The command ran successfully and output `hello-world`."
+    },
+    {
+      "id": "bash-multi",
+      "description": "Agent runs multiple bash commands",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 5958,
+      "turns": 2,
+      "toolsCalled": [
+        "bash",
+        "bash"
+      ],
+      "expected": {
+        "containsAll": [
+          "aaa",
+          "bbb"
+        ],
+        "toolCallCounts": {
+          "bash": 2
+        },
+        "noErrors": true,
+        "hasGroundedVerify": false
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "Both commands executed successfully:\n- `echo aaa` output: `aaa`\n- `echo bbb` output: `bbb`"
+    },
+    {
+      "id": "bash-error-handling",
+      "description": "Agent handles bash command failure",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 5340,
+      "turns": 2,
+      "toolsCalled": [
+        "bash"
+      ],
+      "expected": {
+        "containsAny": [
+          "error",
+          "No such file",
+          "not found"
+        ],
+        "toolsCalled": [
+          "bash"
+        ],
+        "noErrors": true,
+        "hasGroundedVerify": false
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "The command failed with the following error:\n\n**Error:** `ls: /nonexistent_directory_xyz: No such file or directory`\n\n**Exit code:** 1\n\nThe directory `/nonexistent_directory_xyz` does not exist on the system."
+    },
+    {
+      "id": "grep-search",
+      "description": "Agent searches file contents with grep",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 10663,
+      "turns": 2,
+      "toolsCalled": [
+        "grep"
+      ],
+      "expected": {
+        "containsAny": [
+          "export"
+        ],
+        "toolsCalled": [
+          "grep"
+        ],
+        "noErrors": true,
+        "hasGroundedVerify": true
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "Found 11 occurrences of 'export' in src/config.ts:\n\n- Line 9: `export interface AppConfig {`\n- Line 29: `export function loadConfig(connection?: { baseURL: string; apiKey: string }): AppConfig {`\n- Line 36: `console.error(\"  Example: export PROVIDER_BASE_URL=https://openrouter.ai/api/v1\");`\n- Line 42: `console.error(\"  Example: export PROVIDER_API_KEY=sk-...\");`\n- Line 64: `export interface ModelInfo {`\n- Line 72: `export interface FetchModelsResult {`\n- Line 82: `export async function fetchMode"
+    },
+    {
+      "id": "find-files",
+      "description": "Agent finds files by pattern",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 10136,
+      "turns": 3,
+      "toolsCalled": [
+        "find",
+        "ls"
+      ],
+      "expected": {
+        "containsAny": [
+          "config.test.ts",
+          "session.test.ts",
+          "loop.test.ts",
+          "tools.test.ts"
+        ],
+        "toolsCalled": [
+          "find"
+        ],
+        "noErrors": true,
+        "hasGroundedVerify": true
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "Here are all `.test.ts` files in the `test/` directory:\n\n| File | Size |\n|------|------|\n| `config.test.ts` | 1.8KB |\n| `loop.test.ts` | 1.5KB |\n| `permissions.test.ts` | 2.4KB |\n| `session.test.ts` | 4.6KB |\n| `tools.test.ts` | 9.3KB |\n\nFound **5 test files** in total."
+    },
+    {
+      "id": "ls-directory",
+      "description": "Agent lists directory contents",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 7375,
+      "turns": 2,
+      "toolsCalled": [
+        "ls"
+      ],
+      "expected": {
+        "containsAny": [
+          "config.ts",
+          "loop.ts",
+          "tools.ts"
+        ],
+        "toolsCalled": [
+          "ls"
+        ],
+        "noErrors": true,
+        "hasGroundedVerify": true
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "Here are the contents of the `src/` directory:\n\n| File | Size |\n|------|------|\n| config.ts | 8.2KB |\n| index.ts | 29.1KB |\n| llm.ts | 8.6KB |\n| loop.ts | 11.0KB |\n| permissions.ts | 2.5KB |\n| session.ts | 6.4KB |\n| settings.ts | 2.2KB |\n| tools.ts | 23.8KB |\n| vendors.ts | 4.2KB |\n\nTotal: 9 TypeScript files"
+    },
+    {
+      "id": "read-then-analyze",
+      "description": "Agent reads a file and reports an exact count, checked against real ground truth",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 7526,
+      "turns": 2,
+      "toolsCalled": [
+        "read"
+      ],
+      "expected": {
+        "toolsCalled": [
+          "read"
+        ],
+        "maxTurns": 3,
+        "noErrors": true,
+        "hasGroundedVerify": true
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "2"
+    },
+    {
+      "id": "find-then-grep",
+      "description": "Agent combines find and grep to locate real matches",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 9311,
+      "turns": 2,
+      "toolsCalled": [
+        "find",
+        "grep"
+      ],
+      "expected": {
+        "toolsCalled": [
+          "find",
+          "grep"
+        ],
+        "maxTurns": 4,
+        "noErrors": true,
+        "hasGroundedVerify": true
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "**Files matching `export function`:**\n\n| File | Matches |\n|------|---------|\n| `src/vendors.ts` | 3 |\n| `src/config.ts` | 1 |\n| `src/tools.ts` | 2 |\n| `src/session.ts` | 11 |\n| `src/llm.ts` | 2 |\n| `src/settings.ts` | 3 |\n| `src/permissions.ts` | 1 |\n\n**Total: 7 files matched with 23 export functions found.**"
+    },
+    {
+      "id": "write-then-read-back",
+      "description": "Agent writes a file and reads it back to verify",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 11831,
+      "turns": 3,
+      "toolsCalled": [
+        "write",
+        "read"
+      ],
+      "expected": {
+        "containsAny": [
+          "eval-test-content-12345"
+        ],
+        "toolsCalled": [
+          "write",
+          "read"
+        ],
+        "noErrors": true,
+        "hasGroundedVerify": true
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "Content confirmed. The file was successfully written and contains: `eval-test-content-12345`"
+    },
+    {
+      "id": "error-recovery",
+      "description": "Agent recovers from a tool error and tries an alternative",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 11652,
+      "turns": 3,
+      "toolsCalled": [
+        "read",
+        "read"
+      ],
+      "expected": {
+        "containsAny": [
+          "micro-pi",
+          "package"
+        ],
+        "toolsCalled": [
+          "read"
+        ],
+        "maxTurns": 4,
+        "noErrors": true,
+        "hasGroundedVerify": true
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "Successfully read `package.json`. This is a **micro-pi** project (v0.1.0) — a minimal coding agent with OpenAI-compatible routing written in TypeScript/Node.js.\n\nKey details:\n- **Runtime**: Node.js with ESM modules (`\"type\": \"module\"`)\n- **Main entry**: `./src/index.ts` (run via `tsx`)\n- **Key dependencies**: `openai` (^4.73.0) and `tsx` (^4.19.0)\n- **Dev tools**: TypeScript, Biome (linter/formatter), and Vitest (testing)\n- **Binary**: Installs as `micro-pi` command via `./micro-pi.sh`"
+    },
+    {
+      "id": "rename-function-multi-file",
+      "description": "Agent renames a function across two files without breaking the code",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 23515,
+      "turns": 4,
+      "toolsCalled": [
+        "read",
+        "read",
+        "edit",
+        "edit",
+        "read",
+        "read"
+      ],
+      "expected": {
+        "toolsCalled": [
+          "read",
+          "edit"
+        ],
+        "maxTurns": 8,
+        "noErrors": true,
+        "hasGroundedVerify": true
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "Done. Renamed `calculateTotal` to `computeSum` in both files:\n\n- **mathUtils.js**: Function definition and export updated\n- **report.js**: Import and function call updated\n\nAll instances have been renamed while preserving the original logic."
+    },
+    {
+      "id": "fix-bug-execution-grounded",
+      "description": "Agent finds and fixes a real bug, verified by actually re-running the test",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 17828,
+      "turns": 4,
+      "toolsCalled": [
+        "bash",
+        "read",
+        "edit",
+        "bash"
+      ],
+      "expected": {
+        "toolCallCounts": {
+          "bash": 2,
+          "edit": 1
+        },
+        "maxTurns": 8,
+        "noErrors": true,
+        "hasGroundedVerify": true
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "Fixed! The bug was in the `average` function — it was dividing the sum by `nums.length - 1` instead of `nums.length`, which gave an incorrect average. The test now passes."
+    },
+    {
+      "id": "find-fix-typo-across-files",
+      "description": "Agent locates a misspelled constant across files and fixes every occurrence",
+      "model": "qwen/qwen3.7-max",
+      "passed": true,
+      "duration": 36219,
+      "turns": 6,
+      "toolsCalled": [
+        "grep",
+        "read",
+        "read",
+        "edit",
+        "edit",
+        "edit",
+        "edit",
+        "grep",
+        "grep"
+      ],
+      "expected": {
+        "maxTurns": 8,
+        "noErrors": true,
+        "hasGroundedVerify": true
+      },
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "Done! I fixed the misspelled constant `MAX_RETIRES` → `MAX_RETRIES` across both files:\n\n- **constants.js**: Fixed the definition (line 1) and export (line 3)\n- **client.js**: Fixed both usages (lines 1 and 3)\n\nAll 4 occurrences have been corrected and verified."
+    }
+  ]
+}

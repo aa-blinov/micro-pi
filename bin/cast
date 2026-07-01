@@ -1,0 +1,28 @@
+#!/bin/bash
+# Release launcher (macOS/Linux) — runs the pre-built dist/index.js bundle.
+# Unlike cast.sh (repo root, dev mode), this needs nothing from
+# node_modules — openai and every other dependency are bundled into
+# dist/index.js at release-build time (see scripts/build.mjs). Only Node.js
+# itself is required.
+ORIGINAL_CWD="$(pwd)"
+
+# Resolve the real script location through any number of symlinks —
+# install.sh symlinks this into a directory on PATH (e.g. ~/.local/bin),
+# and `dirname "$0"` alone would resolve to the symlink's directory instead
+# of where dist/ actually lives relative to this file.
+SOURCE="${BASH_SOURCE[0]:-$0}"
+while [ -h "$SOURCE" ]; do
+	DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+	SOURCE="$(readlink "$SOURCE")"
+	[[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+# --no-deprecation: openai's bundled node-fetch fallback pulls in
+# whatwg-url@5, which calls Node's built-in (deprecated) punycode module at
+# import time. We always pass our own `fetch` to the OpenAI client (see
+# llm.ts/config.ts) so that fallback path never actually runs — but esbuild
+# bundles it eagerly regardless, so it still logs the warning. Harmless,
+# but there's no reason an end user should see noise from a dependency's
+# unused fallback path on every single run.
+exec env CAST_CWD="$ORIGINAL_CWD" node --no-deprecation "$SCRIPT_DIR/../dist/index.js" "$@"

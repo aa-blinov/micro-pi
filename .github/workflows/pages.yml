@@ -1,0 +1,53 @@
+name: Deploy install script to Pages
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - install.sh
+      - install.ps1
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deployment at a time — a second push while one's still
+# running should wait, not race it (cancel-in-progress: false), since a
+# half-replaced install script mid-deploy is worse than a queued deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # install.sh/install.ps1 stay at the repo root as the single source of
+      # truth (also what `npm run build`/local testing and the README's
+      # "view source" link point at) — this just republishes them under
+      # pretty, opencode-style paths instead of duplicating the scripts.
+      - name: Prepare site
+        run: |
+          mkdir -p _site
+          cp install.sh _site/install
+          cp install.ps1 _site/install.ps1
+          # Not using Jekyll — this avoids GitHub Pages running the build
+          # through it anyway (which ignores/mangles extensionless files
+          # like `install` in ways that don't matter for us, but there's no
+          # reason to pay for a processing step we don't need).
+          touch _site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
