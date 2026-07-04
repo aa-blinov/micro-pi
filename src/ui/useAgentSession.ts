@@ -21,6 +21,13 @@ export interface ChatMessage {
 	role: "user" | "assistant" | "system" | "tool" | "warning";
 	content: string;
 	toolCalls?: ToolCallEntry[];
+	/**
+	 * Assistant reasoning captured while the turn streamed. Kept on the message
+	 * so it stays visible in history instead of vanishing when the turn ends —
+	 * it's only in the live streaming state otherwise. Not persisted to
+	 * session.messages, so a rebuild/resume won't restore it.
+	 */
+	thinking?: string;
 }
 
 export interface PendingImage {
@@ -93,6 +100,38 @@ interface UseAgentSessionParams {
 }
 
 /**
+ * Flatten a raw message's content down to display text.
+ *
+ * Content starts as a plain string, but applyCacheControl (core/llm.ts)
+ * rewrites it *in place* to a structured `[{ type: "text", text }, ...]` array
+ * to attach cache markers — and those mutations land on the very objects held
+ * in session.messages (and get persisted). Image attachments are structured
+ * from the start too. Pull the text parts back out instead of collapsing the
+ * whole thing to a "[structured content]" placeholder: otherwise a resumed
+ * session — or a <Static> repaint after a terminal resize — renders the user's
+ * own prompt (and the assistant's replies) as that placeholder.
+ */
+function messageContentToText(content: unknown): string {
+	if (typeof content === "string") return content;
+	if (Array.isArray(content)) {
+		const parts: string[] = [];
+		let images = 0;
+		for (const part of content) {
+			if (!part || typeof part !== "object" || !("type" in part)) continue;
+			const type = (part as { type: unknown }).type;
+			if (type === "text" && typeof (part as { text?: unknown }).text === "string") {
+				parts.push((part as { text: string }).text);
+			} else if (type === "image_url") {
+				images++;
+			}
+		}
+		if (images > 0) parts.push(images === 1 ? "[image]" : `[${images} images]`);
+		if (parts.length > 0) return parts.join("\n");
+	}
+	return "[structured content]";
+}
+
+/**
  * Rebuilds a flat display list from the raw OpenAI-shaped messages array.
  * An assistant turn with tool_calls plus the following role:tool results
  * collapses into one ChatMessage with a `toolCalls` array — the raw shape
@@ -107,13 +146,14 @@ function buildDisplayMessages(sessionMessages: SessionState["messages"]): ChatMe
 		if (m.role === "tool") continue;
 
 		if (m.role === "user") {
-			const text = typeof m.content === "string" ? m.content : "[structured content]";
-			out.push({ role: "user", content: text });
+			out.push({ role: "user", content: messageContentToText(m.content) });
 			continue;
 		}
 
 		if (m.role === "assistant") {
-			const content = typeof m.content === "string" ? m.content : "";
+			// Assistant turns are often tool-calls-only with null content — keep
+			// those blank; only structured arrays carry extractable text.
+			const content = Array.isArray(m.content) ? messageContentToText(m.content) : (m.content ?? "");
 			const toolCalls: ToolCallEntry[] = [];
 			if ("tool_calls" in m && m.tool_calls) {
 				for (const tc of m.tool_calls) {
@@ -217,10 +257,15 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 	 */
 	const promoteStreamingToHistory = useCallback(() => {
 		const s = streamingRef.current;
-		if (s && (s.content || s.toolCalls.length > 0)) {
+		if (s && (s.content || s.thinking || s.toolCalls.length > 0)) {
 			setMessages((msgs) => [
 				...msgs,
-				{ role: "assistant", content: s.content, toolCalls: s.toolCalls.length > 0 ? s.toolCalls : undefined },
+				{
+					role: "assistant",
+					content: s.content,
+					toolCalls: s.toolCalls.length > 0 ? s.toolCalls : undefined,
+					thinking: s.thinking || undefined,
+				},
 			]);
 		}
 		updateStreaming(() => ({ content: "", thinking: "", toolCalls: [] }), true);
@@ -279,10 +324,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 			// after it (the new turn's response) would still show up, landing at a
 			// higher index, which is exactly the "my message vanished but the
 			// reply appeared" bug this fixes.
-			setMessages((msgs) => [
-				...msgs,
-				{ role: "user", content: typeof userContent === "string" ? userContent : "[structured content]" },
-			]);
+			setMessages((msgs) => [...msgs, { role: "user", content: messageContentToText(userContent) }]);
 
 			const ac = new AbortController();
 			acRef.current = ac;
@@ -371,7 +413,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 								promoteStreamingToHistory();
 								const injected: ChatMessage[] = event.messages.map((m) => ({
 									role: "user",
-									content: typeof m.content === "string" ? m.content : "[structured content]",
+									content: messageContentToText(m.content),
 								}));
 								setMessages((msgs) => [...msgs, ...injected]);
 								setError(null);

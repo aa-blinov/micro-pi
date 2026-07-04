@@ -36,14 +36,22 @@ import {
 import type { Pickers } from "../pickers/types.ts";
 import type { PendingImage, UseAgentSession } from "./useAgentSession.ts";
 
-/** Slash commands shown in the Composer's autocomplete palette. */
-export const SLASH_COMMANDS: Array<{ name: string; description: string }> = [
+/**
+ * Slash commands shown in the Composer's autocomplete palette.
+ *
+ * `takesArgs` marks the commands that need an argument *typed inline* after the
+ * name — picking those from the palette fills the name and waits for input.
+ * Every other command runs standalone or opens its own picker, so the palette
+ * runs it immediately on Enter instead of making the user confirm with a second
+ * keystroke (see Composer's selectCommand).
+ */
+export const SLASH_COMMANDS: Array<{ name: string; description: string; takesArgs?: boolean }> = [
 	{ name: "/clear", description: "Clear context (and save)" },
 	{ name: "/compact", description: "Compact context now" },
 	{ name: "/new", description: "Start a new session" },
 	{ name: "/abort", description: "Abort the current run" },
-	{ name: "/steer", description: "Inject a message while running" },
-	{ name: "/queue", description: "Queue a message for after the run" },
+	{ name: "/steer", description: "Inject a message while running", takesArgs: true },
+	{ name: "/queue", description: "Queue a message for after the run", takesArgs: true },
 	{ name: "/queue-reset", description: "Clear the message queue" },
 	{ name: "/model", description: "Show or change model" },
 	{ name: "/reasoning", description: "Change reasoning level" },
@@ -58,7 +66,7 @@ export const SLASH_COMMANDS: Array<{ name: string; description: string }> = [
 	{ name: "/usage", description: "Show cumulative token usage" },
 	{ name: "/context", description: "Show current context size" },
 	{ name: "/rules", description: "List rules (local + global)" },
-	{ name: "/rules add", description: "Add a rule (local or global)" },
+	{ name: "/rules add", description: "Add a rule (local or global)", takesArgs: true },
 	{ name: "/rules delete", description: "Delete a rule (local or global)" },
 	{ name: "/quit", description: "Save and exit" },
 	{ name: "/help", description: "Show this command list" },
@@ -182,16 +190,38 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 		return;
 	}
 	if (input === "/steer" || input.startsWith("/steer ")) {
-		// No transient showNotice here — agent.pendingSteers now renders above
-		// the composer for as long as the message is actually queued (see
+		const msg = input.slice("/steer".length).trim();
+		if (!msg) {
+			showNotice("[Usage: /steer <message> — injects it into the running turn]");
+			return;
+		}
+		// Steering only means something mid-run: it splices a message into the
+		// live turn. With nothing running there's no turn to steer, so don't
+		// silently park it in the queue — tell the user to just send it normally.
+		if (!running) {
+			showNotice("[Nothing running to steer — press Enter to send the message normally]");
+			return;
+		}
+		// No transient showNotice on success — agent.pendingSteers now renders
+		// above the composer for as long as the message is actually queued (see
 		// App.tsx), not on a fixed timer that could clear it long before a
 		// tool-heavy turn gets around to draining the queue.
-		agent.steer(input.slice(7).trim());
+		agent.steer(msg);
 		return;
 	}
-	if (input.startsWith("/queue ")) {
-		const t = input.slice(7).trim();
-		agent.followUp(t);
+	if (input === "/queue" || input.startsWith("/queue ")) {
+		const msg = input.slice("/queue".length).trim();
+		if (!msg) {
+			showNotice("[Usage: /queue <message> — runs after the current turn]");
+			return;
+		}
+		// Nothing to queue behind when idle — just run it now as a normal turn,
+		// which is what the user means by "do this next".
+		if (!running) {
+			await agent.submit(msg, images);
+			return;
+		}
+		agent.followUp(msg);
 		return;
 	}
 
@@ -293,7 +323,9 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 		const meta = deps.reasoningMeta ?? getModelsCache().find((m) => m.id === session.model)?.reasoning;
 		const options = getReasoningOptions(meta ?? null);
 		if (options.length === 0) {
-			showNotice(`[This model doesn't report reasoning support — staying "${config.reasoningLevel}"]`);
+			showNotice(
+				"[This provider exposes no reasoning controls — the model uses its own default; any reasoning shows as it streams]",
+			);
 			return;
 		}
 		showNotice(`[Current reasoning: ${config.reasoningLevel}]`);

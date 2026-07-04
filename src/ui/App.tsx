@@ -30,6 +30,38 @@ export function App(props: AppProps): JSX.Element {
 	const [notice, setNotice] = useState<string | null>(null);
 	const showNotice = useCallback((text: string) => setNotice(text), []);
 
+	// Terminal resize + reflow (VS Code, iTerm) re-wraps the on-screen lines,
+	// which desyncs Ink's relative cursor-erase math: it keeps erasing the live
+	// region (composer/status) by a stale line count and leaves stale copies
+	// stacked on screen. Ink only self-corrects on width *decrease*; width
+	// increases and height changes ghost. Once a resize burst settles, do what
+	// Ink itself does when it needs a clean slate — clear the whole terminal and
+	// replay every <Static> item — by bumping repaintKey (see the ChatLog key
+	// below). The clear write itself lives in the same effect so it's ordered
+	// right before the forced repaint.
+	const [repaintKey, setRepaintKey] = useState(0);
+	useEffect(() => {
+		const out = process.stdout;
+		if (!out.isTTY) return;
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		const onResize = () => {
+			if (timer) clearTimeout(timer);
+			timer = setTimeout(() => {
+				// clearTerminal (\x1b[2J\x1b[3J\x1b[H): erase screen + scrollback +
+				// home. Scrollback too, so the full Static replay below can't leave a
+				// duplicate copy of the history behind — matches ansiEscapes.clearTerminal,
+				// the same sequence Ink writes on its own full-clear path.
+				out.write("\x1b[2J\x1b[3J\x1b[H");
+				setRepaintKey((k) => k + 1);
+			}, 80);
+		};
+		out.on("resize", onResize);
+		return () => {
+			out.off("resize", onResize);
+			if (timer) clearTimeout(timer);
+		};
+	}, []);
+
 	// Pickers used after mount (slash commands, confirmBash) render their
 	// modal inline in this same Ink tree instead of spinning up a second
 	// `render()` — see pickerBridge.ts for why that matters. projectDeps.pickers
@@ -176,7 +208,13 @@ export function App(props: AppProps): JSX.Element {
 
 	return (
 		<Box flexDirection="column">
-			<ChatLog messages={agent.messages} streaming={agent.streaming} error={agent.error} retry={agent.retry} />
+			<ChatLog
+				messages={agent.messages}
+				streaming={agent.streaming}
+				error={agent.error}
+				retry={agent.retry}
+				repaintKey={repaintKey}
+			/>
 			{notice && <Text color="yellow">{notice}</Text>}
 			{modalRequest?.kind === "option" && (
 				<ModalPicker
@@ -237,8 +275,6 @@ export function App(props: AppProps): JSX.Element {
 					<Text color="gray"> · </Text>
 					<Text>{session.model}</Text>
 					<Text color="gray"> · </Text>
-					<Text>reasoning: {config.reasoningLevel}</Text>
-					<Text color="gray"> · </Text>
 					<Text>session: {session.id.slice(0, 8)}</Text>
 					{permissionMode === "bypass" ? (
 						<>
@@ -246,6 +282,12 @@ export function App(props: AppProps): JSX.Element {
 							<Text color="red">bypass</Text>
 						</>
 					) : null}
+					{/* Zero-width marker toggled by the resize effect. After that effect
+					    clears the screen, Ink's log-update would otherwise skip redrawing
+					    an *unchanged* frame — leaving a blank screen on an empty session
+					    (no <Static> reprint to force a write). Flipping this width-0 char
+					    changes the frame string so the redraw always happens. */}
+					{repaintKey % 2 === 1 ? "\u200b" : null}
 				</Text>
 				{agent.usage && agent.usage.totalTokens > 0 && (
 					<Text color="gray" dimColor>
@@ -258,9 +300,13 @@ export function App(props: AppProps): JSX.Element {
 }
 
 function formatUsageTotals(usage: SessionUsage, lastTurnUsage: UseAgentSession["lastTurnUsage"]): string {
+	// Cache hit rate rather than raw uncached + cached: promptTokens already is
+	// the two summed, and cost is shown separately below, so the parenthetical's
+	// only job is "how much of the input came from cache". A percentage says
+	// that at a glance without making the reader subtract two five-digit numbers.
 	const cacheStr =
-		usage.cacheReadTokens || usage.cacheWriteTokens
-			? ` (${usage.uncachedTokens.toLocaleString()} uncached + ${usage.cacheReadTokens.toLocaleString()} cached)`
+		(usage.cacheReadTokens || usage.cacheWriteTokens) && usage.promptTokens > 0
+			? ` (${Math.round((usage.cacheReadTokens / usage.promptTokens) * 100)}% cached)`
 			: "";
 	const costStr = usage.cost ? ` · $${usage.cost.toFixed(4)}` : "";
 	// Last request's throughput, not a cumulative/session average — a session

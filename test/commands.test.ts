@@ -453,10 +453,34 @@ describe("handleInput", () => {
 		expect(calls["agent.submit"]).toEqual([["/notreal"]]);
 	});
 
-	it("/steer without message while running enqueues empty string", async () => {
+	it("/steer without a message shows usage and does not enqueue", async () => {
 		const { deps, calls } = createFakeDeps({ running: true });
 		await handleInput("/steer", undefined, deps);
-		expect(calls["agent.steer"]).toEqual([[""]]);
+		expect(calls["agent.steer"]).toBeUndefined();
+		expect(noticeText(calls)).toContain("Usage");
+	});
+
+	it("/steer while idle is rejected (nothing to steer), not sent as a prompt", async () => {
+		const { deps, calls } = createFakeDeps({ running: false });
+		await handleInput("/steer do the thing", undefined, deps);
+		expect(calls["agent.steer"]).toBeUndefined();
+		expect(calls["agent.submit"]).toBeUndefined();
+		expect(noticeText(calls)).toContain("Nothing running");
+	});
+
+	it("/queue without a message shows usage and does not enqueue or submit", async () => {
+		const { deps, calls } = createFakeDeps({ running: true });
+		await handleInput("/queue", undefined, deps);
+		expect(calls["agent.followUp"]).toBeUndefined();
+		expect(calls["agent.submit"]).toBeUndefined();
+		expect(noticeText(calls)).toContain("Usage");
+	});
+
+	it("/queue while idle runs the message immediately instead of queueing", async () => {
+		const { deps, calls } = createFakeDeps({ running: false });
+		await handleInput("/queue next step", undefined, deps);
+		expect(calls["agent.followUp"]).toBeUndefined();
+		expect(calls["agent.submit"]).toEqual([["next step", undefined]]);
 	});
 
 	it("empty input does nothing (no submit)", async () => {

@@ -201,12 +201,20 @@ export function Composer({
 		});
 	};
 
-	const selectCommand = () => {
+	const selectCommand = (run: boolean) => {
 		const cmd = filteredCmds[safeIdx];
 		if (!cmd) return;
 		bufRef.current.clear();
-		bufRef.current.insert(`${cmd.name} `);
 		setPaletteIdx(0);
+		// Enter runs a no-arg command straight away — no second keystroke to
+		// confirm something like /new. Tab (run=false) or a command that needs an
+		// inline argument just completes the name and waits for the user.
+		if (run && !cmd.takesArgs) {
+			bufRef.current.insert(cmd.name);
+			doSubmit();
+			return;
+		}
+		bufRef.current.insert(`${cmd.name} `);
 	};
 
 	const handleEventRef = useRef<(event: InputEvent) => void>(() => {});
@@ -223,8 +231,12 @@ export function Composer({
 					setPaletteIdx((i) => (i + 1) % Math.max(1, filteredCmds.length));
 					return;
 				}
-				if (event.binding === "input.submit" || event.binding === "input.tab") {
-					selectCommand();
+				if (event.binding === "input.submit") {
+					selectCommand(true);
+					return;
+				}
+				if (event.binding === "input.tab") {
+					selectCommand(false);
 					return;
 				}
 				if (event.binding === "input.escape") {

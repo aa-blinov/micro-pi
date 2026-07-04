@@ -9,6 +9,13 @@ interface ChatLogProps {
 	streaming: StreamingState | null;
 	error: string | null;
 	retry: RetryInfo | null;
+	/**
+	 * Bumped by App after a terminal resize settles. Used as the <Static> key so
+	 * the whole history is replayed from a clean top — Ink otherwise only prints
+	 * newly-added static items, so a resize-time screen clear would wipe the
+	 * on-screen history with no way to redraw it. See App.tsx's resize effect.
+	 */
+	repaintKey?: number;
 }
 
 const TOOL_COLOR = gradientHex(0);
@@ -22,23 +29,97 @@ const USER_COLOR = gradientHex(0.3);
 // vivid and readable on black, not the muddier default ANSI "green".
 const AGENT_COLOR = "#4ade80";
 
+/**
+ * Line-level churn between two blocks of text. Uses an LCS so the counts
+ * reflect the lines that actually changed, not the whole replaced block — a
+ * one-line tweak inside a 6-line oldText/newText reads as "+1 -1", not "+6 -6".
+ * Falls back to a block count for pathologically large edits so the O(m·n) DP
+ * can't stall the render.
+ */
+function lineChurn(oldText: string, newText: string): { added: number; removed: number } {
+	const a = oldText.split("\n");
+	const b = newText.split("\n");
+	const m = a.length;
+	const n = b.length;
+	if (m * n > 250_000) return { removed: m, added: n };
+	const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+	for (let i = m - 1; i >= 0; i--) {
+		for (let j = n - 1; j >= 0; j--) {
+			dp[i]![j] = a[i] === b[j] ? dp[i + 1]![j + 1]! + 1 : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
+		}
+	}
+	const lcs = dp[0]![0]!;
+	return { removed: m - lcs, added: n - lcs };
+}
+
+/**
+ * One-line summary for a tool call. edit/write get a readable file + change
+ * summary instead of a truncated JSON blob; every other tool keeps the generic
+ * `key=value` args. Args stream in as partial JSON, so anything that fails to
+ * parse (or doesn't match the expected shape) falls back to the raw/generic
+ * form — the rich view only kicks in once the call is complete.
+ */
+function ToolSummary({ name, args }: { name: string; args: string }): JSX.Element {
+	return useMemo(() => {
+		let parsed: Record<string, unknown> | null = null;
+		try {
+			parsed = JSON.parse(args) as Record<string, unknown>;
+		} catch {
+			parsed = null;
+		}
+
+		if (parsed && name === "edit" && typeof parsed.path === "string" && Array.isArray(parsed.edits)) {
+			let added = 0;
+			let removed = 0;
+			for (const e of parsed.edits) {
+				if (e && typeof e === "object" && typeof (e as { oldText?: unknown }).oldText === "string") {
+					const churn = lineChurn(
+						(e as { oldText: string }).oldText,
+						String((e as { newText?: unknown }).newText ?? ""),
+					);
+					added += churn.added;
+					removed += churn.removed;
+				}
+			}
+			return (
+				<Text wrap="truncate">
+					<Text color="gray">{parsed.path} · </Text>
+					<Text color="green">+{added}</Text>
+					<Text color="gray"> </Text>
+					<Text color="red">-{removed}</Text>
+				</Text>
+			);
+		}
+
+		if (parsed && name === "write" && typeof parsed.path === "string") {
+			const lines = typeof parsed.content === "string" ? parsed.content.split("\n").length : 0;
+			return (
+				<Text color="gray" wrap="truncate">
+					{parsed.path} · {lines} {lines === 1 ? "line" : "lines"}
+				</Text>
+			);
+		}
+
+		const generic = parsed
+			? Object.entries(parsed)
+					.map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+					.join(", ")
+			: args.slice(0, 200);
+		return (
+			<Text color="gray" wrap="truncate">
+				{generic}
+			</Text>
+		);
+	}, [name, args]);
+}
+
 function ToolCallView({ call }: { call: ToolCallEntry }): JSX.Element {
 	const statusColor = call.status === "running" ? "yellow" : call.status === "error" ? "red" : "green";
-	const argsDisplay = useMemo(() => {
-		try {
-			const parsed = JSON.parse(call.args) as Record<string, unknown>;
-			return Object.entries(parsed)
-				.map(([k, v]) => `${k}=${JSON.stringify(v)}`)
-				.join(", ");
-		} catch {
-			return call.args.slice(0, 200);
-		}
-	}, [call.args]);
 	return (
 		<Box flexDirection="column">
 			<Text>
 				<Text color={TOOL_COLOR}>[{call.name}]</Text> <Text color={statusColor}>[{call.status}]</Text>{" "}
-				<Text color="gray">{argsDisplay}</Text>
+				<ToolSummary name={call.name} args={call.args} />
 			</Text>
 			{call.result && (
 				<Text color={call.status === "error" ? "red" : "gray"} wrap="truncate">
@@ -64,6 +145,15 @@ function MessageView({ message }: { message: ChatMessage }): JSX.Element {
 	if (message.role === "assistant") {
 		return (
 			<Box flexDirection="column">
+				{/* Reasoning first (chronological: the model thinks, then answers) —
+				    same dim style as the live streaming view so it reads identically
+				    once the turn lands in history. */}
+				{message.thinking && (
+					<Text color="gray" dimColor>
+						<Text bold>[reasoning] </Text>
+						{message.thinking}
+					</Text>
+				)}
 				{message.content && (
 					<Text color={AGENT_COLOR}>
 						<Text bold>[agent] </Text>
@@ -90,7 +180,7 @@ function MessageView({ message }: { message: ChatMessage }): JSX.Element {
 	);
 }
 
-export function ChatLog({ messages, streaming, error, retry }: ChatLogProps): JSX.Element {
+export function ChatLog({ messages, streaming, error, retry, repaintKey }: ChatLogProps): JSX.Element {
 	const liveParts: JSX.Element[] = [];
 
 	// Error/warning before streaming — chronologically the error happened
@@ -120,6 +210,7 @@ export function ChatLog({ messages, streaming, error, retry }: ChatLogProps): JS
 		if (streaming.thinking) {
 			streamingParts.push(
 				<Text key="t" color="gray" dimColor>
+					<Text bold>[reasoning] </Text>
 					{streaming.thinking}
 				</Text>,
 			);
@@ -144,7 +235,9 @@ export function ChatLog({ messages, streaming, error, retry }: ChatLogProps): JS
 
 	return (
 		<>
-			<Static items={messages}>{(m, i) => <MessageView key={`m-${i}`} message={m} />}</Static>
+			<Static key={repaintKey} items={messages}>
+				{(m, i) => <MessageView key={`m-${i}`} message={m} />}
+			</Static>
 			<Box flexDirection="column">{liveParts}</Box>
 		</>
 	);

@@ -135,4 +135,28 @@ describe("streamAndCollect — usage accounting", () => {
 		const result = await streamAndCollect(client, "test-model", [], [], 100);
 		expect(result.generationMs).toBeUndefined();
 	});
+
+	it("captures delta.reasoning_content (DeepSeek/Qwen/MiMo) into thinking", async () => {
+		// These providers expose no reasoning metadata via /v1/models and stream
+		// their reasoning in reasoning_content, not `reasoning` or <think> tags —
+		// so this is the only signal we get that they reasoned at all.
+		const client = fakeClient([
+			{ choices: [{ delta: { reasoning_content: "let me think " } }] },
+			{ choices: [{ delta: { reasoning_content: "step by step" } }] },
+			{ choices: [{ delta: { content: "the answer is 42" } }] },
+			{ choices: [{ delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 5, completion_tokens: 4 } },
+		]);
+		const result = await streamAndCollect(client, "test-model", [], [], 100);
+		expect(result.thinking).toBe("let me think step by step");
+		expect(result.content).toBe("the answer is 42");
+	});
+
+	it("prefers delta.reasoning over reasoning_content when a provider sends both", async () => {
+		const client = fakeClient([
+			{ choices: [{ delta: { reasoning: "openrouter-style", reasoning_content: "should be ignored" } }] },
+			{ choices: [{ delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1 } },
+		]);
+		const result = await streamAndCollect(client, "test-model", [], [], 100);
+		expect(result.thinking).toBe("openrouter-style");
+	});
 });

@@ -232,10 +232,17 @@ export async function* streamChat(
 					continue;
 				}
 
-				// 1. Check for reasoning in delta fields (OpenRouter: delta.reasoning)
+				// 1. Reasoning in delta fields. OpenRouter streams it as
+				//    `delta.reasoning`; DeepSeek/Qwen/GLM/Xiaomi-MiMo and most other
+				//    OpenAI-compatible reasoners use `delta.reasoning_content` (the
+				//    de-facto standard R1 popularized) — without this branch their
+				//    thinking is silently dropped, since /v1/models exposes no
+				//    reasoning metadata to even flag them as reasoning models.
 				const deltaAny = delta as Record<string, unknown>;
 				if (typeof deltaAny.reasoning === "string" && deltaAny.reasoning) {
 					result.thinking = deltaAny.reasoning;
+				} else if (typeof deltaAny.reasoning_content === "string" && deltaAny.reasoning_content) {
+					result.thinking = deltaAny.reasoning_content;
 				}
 
 				// 2. Parse content for <think>...</think> blocks (Qwen/DeepSeek raw)
