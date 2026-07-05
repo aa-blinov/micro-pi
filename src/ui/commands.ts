@@ -137,6 +137,11 @@ function rebuildSystemPrompt(
 			overrides.rulesSuffix ?? deps.rulesSuffix,
 			overrides.skillsPromptSuffix ?? deps.skillsPromptSuffix,
 			cwd,
+			{
+				model: deps.session.model,
+				reasoningLevel: deps.config.reasoningLevel,
+				reasoningMeta: deps.reasoningMeta,
+			},
 		),
 	);
 }
@@ -169,17 +174,6 @@ export function canSubmitDuringRun(text: string): boolean {
 	if (!input.startsWith("/")) return false;
 	const cmd = input.split(/\s+/)[0]!;
 	return RUNNING_COMMANDS.has(cmd);
-}
-
-/**
- * Reasoning level as we can honestly state it. "off" is only truthful when the
- * provider actually advertised reasoning metadata and it's set off — with no
- * metadata (e.g. Xiaomi-MiMo/DeepSeek, which reason anyway) we can't claim off,
- * so say "unknown". Mirrors the status-line logic; keeps /model notices honest.
- */
-function reasoningDisplay(level: string, meta: ModelReasoningMeta | undefined): string {
-	if (level !== "off") return level;
-	return meta ? "off" : "unknown";
 }
 
 /**
@@ -315,9 +309,7 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 		await selectReasoningLevel(config, session.model, deps.pickers, selection.reasoningMeta);
 		updateSettings({ model: session.model, reasoningLevel: config.reasoningLevel });
 		agent.refresh();
-		showNotice(
-			`[Model: ${session.model} (reasoning: ${reasoningDisplay(config.reasoningLevel, selection.reasoningMeta)})]`,
-		);
+		showNotice(`[Model: ${session.model} (reasoning: ${config.reasoningLevel})]`);
 		return;
 	}
 
@@ -335,7 +327,7 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 		await selectReasoningLevel(config, newModel, deps.pickers, found?.reasoning);
 		updateSettings({ model: newModel, reasoningLevel: config.reasoningLevel });
 		agent.refresh();
-		showNotice(`[Model: ${newModel} (reasoning: ${reasoningDisplay(config.reasoningLevel, found?.reasoning)})]`);
+		showNotice(`[Model: ${newModel} (reasoning: ${config.reasoningLevel})]`);
 		return;
 	}
 
@@ -500,9 +492,7 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 		await selectReasoningLevel(config, session.model, deps.pickers, selection.reasoningMeta);
 		updateSettings({ model: session.model, reasoningLevel: config.reasoningLevel });
 		agent.refresh();
-		showNotice(
-			`[Model: ${session.model} (reasoning: ${reasoningDisplay(config.reasoningLevel, selection.reasoningMeta)})]`,
-		);
+		showNotice(`[Model: ${session.model} (reasoning: ${config.reasoningLevel})]`);
 		return;
 	}
 

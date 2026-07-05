@@ -246,7 +246,11 @@ export async function runStartup(
 
 	const session = resumedSession ? { ...resumedSession, model } : createSession(model, cwd);
 	const runner = createAgentRunner();
-	const systemPrompt = buildSystemPrompt(persona, contextFilesSuffix, rulesSuffix, skillsPromptSuffix, cwd);
+	const systemPrompt = buildSystemPrompt(persona, contextFilesSuffix, rulesSuffix, skillsPromptSuffix, cwd, {
+		model,
+		reasoningLevel: config.reasoningLevel,
+		reasoningMeta,
+	});
 	onProgress?.("Connecting MCP servers...");
 	const mcpResult = await resolveMcpForCwd(projectDeps, cwd, projectTrusted);
 	const confirmBash = makeConfirmBash(pickers, permissionMode);

@@ -49,6 +49,11 @@ export interface ReasoningParams {
 }
 
 export function buildReasoningParams(effort: string): ReasoningParams {
+	if (effort === "unknown") {
+		// Provider didn't report reasoning capabilities — don't send any
+		// reasoning params so the provider uses its own default.
+		return { body: {}, enabled: false };
+	}
 	if (effort === "off") {
 		// Must be explicit. Some models (e.g. OpenRouter's `default_enabled:
 		// true` ones) reason by default when the `reasoning` key is omitted

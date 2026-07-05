@@ -142,17 +142,34 @@ export function buildSystemPrompt(
 	rulesSuffix: string,
 	skillsPromptSuffix: string,
 	cwd: string,
+	state?: {
+		model: string;
+		reasoningLevel: string;
+		reasoningMeta?: { supportedEfforts: string[] } | null;
+	},
 ): string {
 	const now = new Date();
 	const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-	return [
-		persona.systemPrompt,
-		contextFilesSuffix,
-		rulesSuffix,
-		skillsPromptSuffix,
-		`\nCurrent date: ${date}`,
-		`Current working directory: ${cwd}`,
-	]
+
+	const stateBlock = state
+		? `${[
+				`\n\n## Current System State`,
+				`- Current date: ${date}`,
+				`- Current working directory: ${cwd}`,
+				`- Model: ${state.model}`,
+				`- Reasoning: ${state.reasoningLevel}`,
+				state.reasoningMeta?.supportedEfforts?.length
+					? `- Supported reasoning efforts: ${state.reasoningMeta.supportedEfforts.join(", ")}`
+					: null,
+				`- Persona: ${persona.name} (${persona.label})`,
+				persona.filePath ? `- Persona file: ${persona.filePath}` : null,
+				`- Persona source: ${persona.source}`,
+			]
+				.filter(Boolean)
+				.join("\n")}\n`
+		: `\nCurrent date: ${date}\nCurrent working directory: ${cwd}\n`;
+
+	return [persona.systemPrompt, contextFilesSuffix, rulesSuffix, skillsPromptSuffix, stateBlock]
 		.filter(Boolean)
 		.join("");
 }

@@ -29,6 +29,8 @@ export interface Persona {
 	description: string;
 	systemPrompt: string;
 	source: PersonaSource;
+	/** Absolute path to the .md file this persona was loaded from. */
+	filePath: string;
 }
 
 export const DEFAULT_PERSONA = "coding";
@@ -83,6 +85,7 @@ const FALLBACK_PERSONA: Persona = {
 	description: "Default persona.",
 	systemPrompt: [readFallbackPersonaPrompt(), readSharedErrorHandling()].filter(Boolean).join("\n\n"),
 	source: "builtin",
+	filePath: "",
 };
 
 function builtinPersonasDir(): string {
@@ -107,6 +110,7 @@ function loadPersonaFromFile(filePath: string, source: PersonaSource): Persona |
 		description: typeof frontmatter.description === "string" ? frontmatter.description : "",
 		systemPrompt: [body.trimEnd(), readSharedErrorHandling()].filter(Boolean).join("\n\n"),
 		source,
+		filePath,
 	};
 }
 

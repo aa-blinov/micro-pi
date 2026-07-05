@@ -226,7 +226,7 @@ export async function selectReasoningLevel(
 ): Promise<void> {
 	const options = getReasoningOptions(reasoningMeta ?? null);
 	if (options.length === 0) {
-		config.reasoningLevel = "off";
+		config.reasoningLevel = "unknown";
 		config.reasoningParams = { body: {}, enabled: false };
 		return;
 	}
