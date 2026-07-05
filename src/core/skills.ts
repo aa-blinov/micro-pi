@@ -46,7 +46,7 @@ export interface SkillDiagnostic {
 }
 
 /** Read a skill's body (frontmatter stripped) fresh from disk, for /skill:name invocation. */
-export function readSkillBody(skill: Skill): string {
+function readSkillBody(skill: Skill): string {
 	return parseFrontmatter(readFileSync(skill.filePath, "utf-8")).body;
 }
 

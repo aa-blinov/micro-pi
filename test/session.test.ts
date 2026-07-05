@@ -8,11 +8,9 @@ import {
 	createSession,
 	deleteSession,
 	estimateTokens,
-	formatSessionList,
 	getMostRecentSession,
 	listSessions,
 	loadSession,
-	pruneToFit,
 	saveSession,
 	shouldCompact,
 } from "../src/core/session.ts";
@@ -65,54 +63,6 @@ describe("shouldCompact", () => {
 	it("returns false when no API usage data", () => {
 		const messages: Message[] = [{ role: "user", content: "Hello" }];
 		expect(shouldCompact(messages, config as any)).toBe(false);
-	});
-});
-
-// ============================================================================
-// pruneToFit
-// ============================================================================
-
-describe("pruneToFit", () => {
-	it("returns messages unchanged when under limit", () => {
-		const messages: Message[] = [
-			{ role: "system", content: "You are helpful." },
-			{ role: "user", content: "Hello" },
-		];
-		const result = pruneToFit(messages, 100_000);
-		expect(result).toEqual(messages);
-	});
-
-	it("keeps system messages and recent messages", () => {
-		const messages: Message[] = [
-			{ role: "system", content: "System prompt" },
-			{ role: "user", content: "First message" },
-			{ role: "assistant", content: "First response" },
-			...Array.from({ length: 30 }, (_, i) => [
-				{ role: "user" as const, content: `Message ${i}` },
-				{ role: "assistant" as const, content: `Response ${i}` },
-			]).flat(),
-		];
-
-		const result = pruneToFit(messages, 100);
-		// Should keep system + recent 20
-		expect(result.length).toBeLessThan(messages.length);
-		expect(result[0]?.role).toBe("system");
-	});
-
-	it("preserves first user message when possible", () => {
-		const messages: Message[] = [
-			{ role: "system", content: "System" },
-			{ role: "user", content: "First user message" },
-			{ role: "assistant", content: "First response" },
-			...Array.from({ length: 30 }, (_, i) => [
-				{ role: "user" as const, content: `Msg ${i}` },
-				{ role: "assistant" as const, content: `Resp ${i}` },
-			]).flat(),
-		];
-
-		const result = pruneToFit(messages, 100);
-		const userMsgs = result.filter((m) => m.role === "user");
-		expect(userMsgs.length).toBeGreaterThan(0);
 	});
 });
 
@@ -401,16 +351,6 @@ describe("compaction cut points never split a tool_calls/tool pair", () => {
 		return -1;
 	}
 
-	it("pruneToFit never leaves a tool result without its assistant tool_calls", () => {
-		for (let seed = 1; seed <= 20; seed++) {
-			for (const turns of [10, 15, 20, 25]) {
-				const messages = buildRealisticHistory(turns, seed);
-				const pruned = pruneToFit(messages, 1); // maxTokens=1 forces pruning every time
-				expect(firstDanglingToolIndex(pruned)).toBe(-1);
-			}
-		}
-	});
-
 	it("compactMessages never leaves a tool result without its assistant tool_calls", async () => {
 		const summarize = async () => "summary";
 		for (let seed = 1; seed <= 20; seed++) {
@@ -533,15 +473,5 @@ describe("session persistence", () => {
 		saveSession(newer);
 
 		expect(getMostRecentSession()?.id).toBe(newer.id);
-	});
-
-	it("formatSessionList shows the project basename, and '-' for cwd-less sessions", () => {
-		const withCwd = createSession("gpt-4o", projectA);
-		const legacy = createSession("gpt-4o", projectA);
-		delete (legacy as { cwd?: string }).cwd;
-
-		const lines = formatSessionList([withCwd, legacy]);
-		expect(lines[0]).toContain("a"); // basename of projectA
-		expect(lines[1]).toContain(" - "); // no cwd -> "-" placeholder
 	});
 });

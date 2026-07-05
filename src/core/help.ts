@@ -90,34 +90,3 @@ Interactive commands:
   /help                  Show help
 `);
 }
-
-export function printInteractiveHelp(): void {
-	console.log(`
-  /quit, /exit           Save and exit
-  /clear                 Clear context (and save the cleared state)
-  /compact               Compact context now (auto-triggers near the limit)
-  /new                   Start a new session (autosaves current if non-empty)
-  /model [name]          Show/change model (validated)
-  /reasoning             Change reasoning level
-  /provider              Change provider endpoint and API key (validated)
-  /persona [name]        Show/change persona
-  /personas              List available personas
-  /sessions              List saved sessions, switch to one, or "d<N>" to delete
-  /permissions           Show/change bash confirmation mode (default/bypass)
-  /skills                List loaded skills
-  /mcp                   List connected MCP servers and their tools
-  /reload                Re-scan skills and reconnect MCP servers for the
-                         current directory (no restart needed after adding
-                         a skill or mcp.json entry)
-  /skill:name [args]     Force-load and run a skill
-  /usage                 Show cumulative token/cost usage for this session
-  /context               Show current context size vs. the model's window
-  /steer <message>       Inject message while agent is running
-  /queue <message>       Queue message for after agent stops
-  /queue-reset           Clear the message queue
-  /abort, /stop          Abort current agent run
-  /help                  Show help
-
-  Ctrl+C                 Interrupt (use /abort to stop agent)
-`);
-}

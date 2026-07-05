@@ -55,59 +55,6 @@ export function addUsage(session: SessionState, usage: Usage): void {
 	session.lastPromptTokens = usage.promptTokens;
 }
 
-function formatTokenCount(n: number): string {
-	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-	if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-	return String(n);
-}
-
-/**
- * Table of lines for a session picker (/sessions, --resume): number, id,
- * when, project, model, message count, token in/out + cost, and a preview of
- * the first user message. Column widths are computed across the whole batch
- * so everything actually lines up — a fixed per-field separator doesn't work
- * once id/model/usage lengths vary row to row. Shared between select.ts's
- * startup picker and index.ts's mid-session /sessions so the two don't
- * drift out of sync.
- */
-export function formatSessionList(sessions: SessionState[], currentId?: string): string[] {
-	const rows = sessions.map((s, i) => {
-		const num = `${i + 1}.`;
-		const marker = s.id === currentId ? " (current)" : "";
-		const id = `${s.id}${marker}`;
-		const when = s.updatedAt.slice(0, 16).replace("T", " ");
-		// Basename only, not the full path — the picker is a scannable list,
-		// not a filesystem browser. "-" for sessions saved before cwd was
-		// tracked (see the SessionState.cwd doc comment).
-		const project = s.cwd ? (s.cwd.split(/[/\\]/).filter(Boolean).pop() ?? s.cwd) : "-";
-		const costSuffix = s.usage.cost ? `, $${s.usage.cost.toFixed(4)}` : "";
-		const usage = `(${s.messages.length} msgs, ${formatTokenCount(s.usage.promptTokens)} in / ${formatTokenCount(s.usage.completionTokens)} out${costSuffix})`;
-		const firstUserMsg = s.messages.find((m) => m.role === "user");
-		const preview = firstUserMsg && typeof firstUserMsg.content === "string" ? firstUserMsg.content.slice(0, 50) : "";
-		return { num, id, when, project, model: s.model, usage, preview };
-	});
-
-	const width = (get: (r: (typeof rows)[number]) => string) => {
-		let max = 0;
-		for (const r of rows) {
-			const len = get(r).length;
-			if (len > max) max = len;
-		}
-		return max;
-	};
-	const numW = width((r) => r.num);
-	const idW = width((r) => r.id);
-	const whenW = width((r) => r.when);
-	const projectW = width((r) => r.project);
-	const modelW = width((r) => r.model);
-	const usageW = width((r) => r.usage);
-
-	return rows.map(
-		(r) =>
-			`  ${r.num.padStart(numW)} ${r.id.padEnd(idW)}  ${r.when.padEnd(whenW)}  ${r.project.padEnd(projectW)}  ${r.model.padEnd(modelW)}  ${r.usage.padEnd(usageW)}  ${r.preview}`,
-	);
-}
-
 // ============================================================================
 // Token estimation
 // ============================================================================
@@ -203,27 +150,6 @@ function safeCutIndex(messages: Message[], idx: number): number {
 		if (messages[i]?.role === "user") return i;
 	}
 	return 0;
-}
-
-/**
- * Simple pruning: keep system + first user + last N messages.
- * This is the fallback when no LLM summarization is available.
- */
-export function pruneToFit(messages: Message[], maxTokens: number): Message[] {
-	if (estimateTokens(messages) <= maxTokens) return messages;
-
-	const system = messages.filter((m) => m.role === "system");
-	const nonSystem = messages.filter((m) => m.role !== "system");
-
-	// Keep first user message and the last ~20 messages, snapped back to a
-	// safe boundary so "recent" never opens on an orphaned tool result.
-	const firstUser = nonSystem.find((m) => m.role === "user");
-	const cutIndex = safeCutIndex(nonSystem, Math.max(0, nonSystem.length - 20));
-	const recent = nonSystem.slice(cutIndex);
-
-	const pruned = [...system, ...(firstUser && !recent.includes(firstUser) ? [firstUser] : []), ...recent];
-
-	return pruned;
 }
 
 // ============================================================================
@@ -437,7 +363,7 @@ export async function compactMessages(
 const SESSIONS_DIR = ".cast/sessions";
 
 /** `~/.cast/sessions` — the root everything else lives under. */
-export function getSessionsRootDir(): string {
+function getSessionsRootDir(): string {
 	const dir = join(process.env.HOME ?? ".", SESSIONS_DIR);
 	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 	return dir;

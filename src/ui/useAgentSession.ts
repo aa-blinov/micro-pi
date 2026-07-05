@@ -336,12 +336,15 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 			process.on("SIGINT", onSigint);
 
 			const onUncaught = (err: Error) => {
-				if (!isRetryableStreamError(err)) {
-					console.error(err);
-					saveSession(session);
-					process.exit(1);
-				}
 				saveSession(session);
+				if (isRetryableStreamError(err)) {
+					// Retryable stream errors (mid-flight connection drop, 429 rate
+					// limit, 5xx) are transient — save the session and let the process
+					// live so the finally block can clean up the run state gracefully.
+					// Non-retryable errors (programming bugs, corrupted state) are fatal.
+					return;
+				}
+				console.error(err);
 				process.exit(1);
 			};
 			process.on("uncaughtException", onUncaught);

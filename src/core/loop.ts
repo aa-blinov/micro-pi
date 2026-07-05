@@ -98,7 +98,7 @@ export async function compactSessionMessages(
 		return { messages, compacted: false, messagesCompacted: 0, tokensBefore: result.summary.tokensBefore };
 	} catch (error) {
 		// Summarization failed (network error, provider outage, etc). Falling
-		// back to pruneToFit here used to silently and irreversibly discard
+		// back to pruning here used to silently and irreversibly discard
 		// old messages — the user had no way to tell a real summary from a
 		// lossy prune. Leave messages untouched instead: the caller sees
 		// compacted:false + error, so the transcript isn't lost, and the next
@@ -213,8 +213,7 @@ export interface LoopConfig {
  */
 export async function runAgentLoop(initialMessages: Message[], loopConfig: LoopConfig): Promise<Message[]> {
 	const messages = [...initialMessages];
-	const newMessages: Message[] = [];
-	await runLoop(messages, newMessages, loopConfig);
+	await runLoop(messages, loopConfig);
 	return messages;
 }
 
@@ -222,7 +221,7 @@ export async function runAgentLoop(initialMessages: Message[], loopConfig: LoopC
 // Core loop — outer (follow-up) + inner (tool calls + steering)
 // ============================================================================
 
-async function runLoop(messages: Message[], newMessages: Message[], loopConfig: LoopConfig): Promise<void> {
+async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<void> {
 	const { config, model: initialModel, cwd, systemPrompt, onEvent, onWarning, signal, mcpToolIndex } = loopConfig;
 	const tools = [...getToolDefinitions(), ...(loopConfig.mcpTools ?? [])];
 	const builtinExecuteTool = createToolExecutor(cwd, config, loopConfig.confirmBash);
@@ -288,7 +287,6 @@ async function runLoop(messages: Message[], newMessages: Message[], loopConfig: 
 				if (pendingMessages.length > 0) {
 					for (const msg of pendingMessages) {
 						messages.push(msg);
-						newMessages.push(msg);
 					}
 					onEvent({ type: "steering_injected", messages: [...pendingMessages] });
 					pendingMessages = [];
@@ -396,7 +394,6 @@ async function runLoop(messages: Message[], newMessages: Message[], loopConfig: 
 				if (completion.finishReason === "error" || completion.finishReason === "aborted") {
 					const assistantMsg: Message = { role: "assistant", content: completion.content || null };
 					messages.push(assistantMsg);
-					newMessages.push(assistantMsg);
 					onEvent({ type: "turn_end", toolResults: [] });
 					onEvent({ type: "end", reason: completion.finishReason });
 					return;
@@ -417,7 +414,6 @@ async function runLoop(messages: Message[], newMessages: Message[], loopConfig: 
 						: {}),
 				};
 				messages.push(assistantMsg);
-				newMessages.push(assistantMsg);
 
 				onEvent({
 					type: "assistant_message",
@@ -440,7 +436,6 @@ async function runLoop(messages: Message[], newMessages: Message[], loopConfig: 
 					for (const r of executedToolBatch) {
 						const toolMsg: Message = { role: "tool", tool_call_id: r.id, content: r.result.content };
 						messages.push(toolMsg);
-						newMessages.push(toolMsg);
 
 						// A `role: "tool"` message can't carry image content per the
 						// OpenAI-compatible chat API, so a `read` on an image file
@@ -454,7 +449,6 @@ async function runLoop(messages: Message[], newMessages: Message[], loopConfig: 
 								content: [{ type: "image_url", image_url: { url: r.result.imageDataUrl } }],
 							};
 							messages.push(imageMsg);
-							newMessages.push(imageMsg);
 						}
 					}
 				}
@@ -470,7 +464,6 @@ async function runLoop(messages: Message[], newMessages: Message[], loopConfig: 
 			if (followUpMsgs.length > 0) {
 				for (const msg of followUpMsgs) {
 					messages.push(msg);
-					newMessages.push(msg);
 				}
 				onEvent({ type: "followup_injected", messages: [...followUpMsgs] });
 				overflowCompacted = false;

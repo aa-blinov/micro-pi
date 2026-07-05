@@ -19,29 +19,56 @@
 
 ## Project Structure
 
+Paths below are relative to the repo root — there is no wrapping `cast/`
+directory (the npm package is named `cast`, but the source lives directly under
+`src/`). Source is split into `core/` (engine), `ui/` (Ink TUI), and
+`pickers/` (onboarding pickers).
+
 ```
-cast/
-  prompts/                  — system prompt, personas, tool/skill instructions (markdown)
-  scripts/build.mjs         — esbuild bundle step (dist/index.js) for releases
-  src/
-    index.ts                — CLI entry point, onboarding, interactive command loop
+prompts/                    — system prompt, personas, tool/skill/compaction instructions (markdown)
+  personas/                 — swappable persona prompt files
+scripts/build.mjs           — esbuild bundle step (dist/index.js) for releases
+bin/                        — published CLI launcher
+src/
+  index.ts                  — CLI entry point + arg parsing (delegates to core/startup.ts)
+  core/                     — engine, no UI:
+    startup.ts              — onboarding orchestration: provider/model/persona/reasoning, session/MCP/skills setup
     config.ts               — env/config loading, model validation, /v1/models discovery
-    llm.ts                  — OpenAI client, streaming, retry/backoff
+    llm.ts                  — OpenAI client, streaming, retry/backoff, reasoning capture
     loop.ts                 — ReAct agent loop (steering/follow-up queues, compaction trigger)
-    runner.ts / prompt.ts   — agent run orchestration per turn
+    runner.ts               — per-turn run orchestration
     tools.ts                — 7 built-in tools: bash, read, write, edit, find, grep, ls
     permissions.ts          — dangerous-bash-pattern detection for the confirmation gate
     mcp.ts                  — MCP client: config loading, stdio/streamableHTTP connections, tool namespacing
     skills.ts               — Agent Skills discovery/validation (agentskills.io spec)
     personas.ts             — swappable system prompts
+    project.ts              — per-cwd resolution of trust, skills, MCP, and system prompt
+    context-files.ts        — AGENTS.md-style context-file loading
+    rules.ts                — project/global rules (.cast/rules.md)
     frontmatter.ts          — shared frontmatter parser (skills.ts + personas.ts)
     session.ts              — message persistence, compaction, token/cost usage
     settings.ts             — ~/.cast/settings.json persistence
-    select.ts / readline.ts — interactive pickers, trust prompts, input handling
+    readline.ts             — models cache + low-level input helpers
     vendors.ts              — reasoning metadata, <think> block parsing
-    upgrade.ts / help.ts    — self-update flow, CLI help text
-  test/                     — vitest, mirrors src/ one file per module
-  evals/                    — grounded regression eval runner (see README's Eval Runner section)
+    upgrade.ts / help.ts    — self-update flow, CLI help/banner text
+  ui/                       — Ink TUI:
+    tui.tsx                 — TUI entry point, mounts App, terminal resize handling
+    App.tsx                 — root component: state wiring, status bar
+    ChatLog.tsx             — transcript rendering (Static history, streaming, tool calls)
+    Composer.tsx            — input box, slash-command palette, paste/keys
+    Spinner.tsx             — loading spinner
+    useAgentSession.ts      — agent turn/session React hook
+    commands.ts             — slash-command routing (SLASH_COMMANDS, handleInput)
+    pickerBridge.ts         — in-tree modal pickers used after mount
+    gradient.ts             — brand gradient + banner helpers
+    readClipboardImage.ts   — clipboard image paste
+    input/                  — key parsing, keybindings, textarea buffer, word-nav
+  pickers/                  — pre-mount onboarding pickers:
+    domain.ts               — model/persona/reasoning/session/permission selection
+    ink.tsx                 — Ink picker UI
+    types.ts                — Pickers interface
+test/                       — vitest, one test/<module>.test.ts per module
+evals/                      — grounded regression eval runner (run.ts, cases/; see README's Eval Runner section)
 ```
 
 ## Commands

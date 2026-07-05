@@ -78,17 +78,6 @@ export function saveProjectRules(cwd: string, content: string): void {
 }
 
 /**
- * Ensure the project's rules.md exists (creating .cast/ and an empty
- * file if needed) and return its path.
- */
-export function ensureProjectRulesFile(cwd: string): string {
-	const path = projectRulesPath(cwd);
-	mkdirSync(dirname(path), { recursive: true });
-	if (!existsSync(path)) writeFileSync(path, "", "utf-8");
-	return path;
-}
-
-/**
  * Parse a rules.md body into an array of rule texts. Accepts both numbered
  * lines ("1. text") and bare lines ("text"). Blank lines and lines that
  * look like markdown headings are skipped. The original numbering is
@@ -154,7 +143,7 @@ export function readProjectRules(cwd: string): string {
  * project rules, global rules are never gated behind trust — they always
  * load (see loadRules) — so this has no trust parameter to worry about.
  */
-export function readGlobalRules(): string {
+function readGlobalRules(): string {
 	const path = globalRulesPath();
 	if (!existsSync(path)) return "";
 	try {

@@ -67,7 +67,7 @@ export function loadSettings(): Settings {
 	}
 }
 
-export function saveSettings(settings: Settings): void {
+function saveSettings(settings: Settings): void {
 	const dir = join(process.env.HOME ?? ".", SETTINGS_DIR);
 	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
