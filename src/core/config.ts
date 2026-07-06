@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import OpenAI from "openai";
 import type { ModelReasoningMeta, ReasoningParams } from "./vendors.ts";
 import { extractReasoningMeta } from "./vendors.ts";
@@ -50,13 +47,14 @@ export function loadConfig(connection: { baseURL: string; apiKey: string }): App
 
 /**
  * Fallback context window sizes for known models when the provider's
- * /v1/models doesn't expose `context_length`. Loaded from
- * model-context-windows.json next to this file. Matched by substring
+ * /v1/models doesn't expose `context_length`. Matched by substring
  * (case-insensitive) against the model id — first match wins.
+ * Add new models here as { "model-substring": contextTokens }.
  */
-const KNOWN_MODEL_CONTEXT_WINDOWS: Record<string, number> = JSON.parse(
-	readFileSync(join(fileURLToPath(import.meta.url), "..", "model-context-windows.json"), "utf-8"),
-);
+const KNOWN_MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+	"mimo-v2.5": 1_000_000,
+	"mimo-v2.5-pro": 1_000_000,
+};
 
 export function lookupContextWindow(modelId: string): number | undefined {
 	const lower = modelId.toLowerCase();
