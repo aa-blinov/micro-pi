@@ -206,11 +206,9 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 			showNotice("[Usage: /steer <message> — injects it into the running turn]");
 			return;
 		}
-		// Steering only means something mid-run: it splices a message into the
-		// live turn. With nothing running there's no turn to steer, so don't
-		// silently park it in the queue — tell the user to just send it normally.
+		// Nothing running to steer — send it as a normal message instead.
 		if (!running) {
-			showNotice("[Nothing running to steer — press Enter to send the message normally]");
+			await agent.submit(msg, images);
 			return;
 		}
 		// No transient showNotice on success — agent.pendingSteers now renders

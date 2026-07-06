@@ -287,12 +287,11 @@ describe("handleInput", () => {
 		expect(noticeText(calls)).toContain("Usage");
 	});
 
-	it("/steer while idle is rejected (nothing to steer), not sent as a prompt", async () => {
+	it("/steer while idle sends the message as a normal prompt", async () => {
 		const { deps, calls } = createFakeDeps({ running: false });
 		await handleInput("/steer do the thing", undefined, deps);
 		expect(calls["agent.steer"]).toBeUndefined();
-		expect(calls["agent.submit"]).toBeUndefined();
-		expect(noticeText(calls)).toContain("Nothing running");
+		expect(calls["agent.submit"]).toEqual([["do the thing", undefined]]);
 	});
 
 	it("/queue without a message shows usage and does not enqueue or submit", async () => {
