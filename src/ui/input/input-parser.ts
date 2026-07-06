@@ -3,8 +3,8 @@
  * for key identification. Maps raw terminal input to semantic events that
  * the Composer can act on.
  *
- * Paste handling lives in the Composer's stdinDataHandler (before InputParser),
- * so this module only deals with keypresses and escape sequences.
+ * Paste handling lives in the shared StdinBuffer ("paste" events); this
+ * module only deals with keypresses and escape sequences ("data" events).
  */
 
 import { getKeybindings, type Keybinding } from "./keybindings.ts";
@@ -41,13 +41,15 @@ const BINDING_ORDER: Keybinding[] = [
  * sequences, identifies completed sequences as semantic InputEvents.
  */
 export class InputParser {
+	private externalBuffer: StdinBuffer | undefined;
 	private buffer: StdinBuffer;
 	private emit: (event: InputEvent) => void;
 	private keybindings = getKeybindings();
 
-	constructor(onEvent: (event: InputEvent) => void) {
+	constructor(onEvent: (event: InputEvent) => void, buffer?: StdinBuffer) {
 		this.emit = onEvent;
-		this.buffer = new StdinBuffer();
+		this.externalBuffer = buffer;
+		this.buffer = buffer ?? new StdinBuffer();
 
 		this.buffer.on("data", (sequence: string) => {
 			this.handleSequence(sequence);
@@ -93,6 +95,6 @@ export class InputParser {
 	}
 
 	destroy(): void {
-		this.buffer.destroy();
+		if (!this.externalBuffer) this.buffer.destroy();
 	}
 }

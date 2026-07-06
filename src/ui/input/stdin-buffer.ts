@@ -244,14 +244,23 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		// character (a real escape sequence is always >1 char) rules that out.
 		const isPlainBurst =
 			result.remainder === "" && result.sequences.length > 0 && result.sequences.every((seq) => seq.length === 1);
-		const hasNewline = result.sequences.some((seq) => seq === "\n" || seq === "\r");
-		// A bare Enter keypress is exactly one sequence ("\r") and must not
-		// start an accumulation on its own — hasNewline alone would swallow
-		// every plain Enter into a fake one-line "paste" instead of letting
-		// it match the submit binding. Continuing an accumulation already in
-		// progress has no such restriction: the last line of a real paste
-		// often arrives alone with no trailing newline in its own chunk.
-		const startsNewBurst = this.pendingPlainPaste === null && result.sequences.length >= 2 && hasNewline;
+		// A typed line + Enter arrives in one batch as `text\r` (or `text\n`)
+		// — the newline is the *last* character. A genuine multi-line paste has
+		// a newline *before* the end (e.g. `line1\nline2`, `a\nb\nc\n`). Only
+		// the latter should start a paste accumulation: requiring an "interior"
+		// newline lets fast typing + Enter submit normally (the Enter matches
+		// the submit binding instead of being swallowed into a fake paste),
+		// while still catching real multi-line pastes on terminals that don't
+		// emit bracketed-paste markers. A bare Enter ("\r") has no interior
+		// newline and is excluded by the same rule.
+		const joined = result.sequences.join("");
+		const norm = joined.replace(/\r/g, "\n");
+		const nlIndex = norm.indexOf("\n");
+		const hasInteriorNewline = nlIndex >= 0 && nlIndex < norm.length - 1;
+		const startsNewBurst = this.pendingPlainPaste === null && hasInteriorNewline;
+		// Once a burst is in progress, any plain chunk continues it: the last
+		// line of a real paste often arrives alone, with or without a trailing
+		// newline, in its own chunk.
 		const continuesBurst = this.pendingPlainPaste !== null;
 
 		if (isPlainBurst && (continuesBurst || startsNewBurst)) {

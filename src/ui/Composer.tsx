@@ -3,7 +3,9 @@ import { type JSX, useEffect, useMemo, useRef, useState } from "react";
 import { SLASH_COMMANDS } from "./commands.ts";
 import { gradientHex } from "./gradient.ts";
 import { type InputEvent, InputParser } from "./input/input-parser.ts";
+import { StdinBuffer } from "./input/stdin-buffer.ts";
 import { TextBuffer } from "./input/textarea.ts";
+import { chipCharFor, expandPastes, isChipChar, type PendingPaste, pasteLabel } from "./paste.ts";
 
 const PROMPT_COLOR = gradientHex(0);
 const BORDER_COLOR_ACTIVE = gradientHex(1);
@@ -19,38 +21,34 @@ interface ComposerProps {
 	locked: boolean;
 }
 
-interface PendingPaste {
-	placeholder: string;
-	text: string;
-}
+// Multi-line pastes are collapsed to a single PUA character ("chip") in the
+// TextBuffer instead of the literal `[Pasted N lines]` string. A chip is one
+// buffer character, so the composer stays one row tall, the cursor math never
+// has to reason about the chip's visible width, and every TextBuffer operation
+// (backspace, move, delete) treats the whole chip atomically — no way to
+// corrupt the placeholder by typing inside it. See paste.ts for the full
+// rationale. The renderer maps each chip character back to its yellow label,
+// and doSubmit swaps chips back to the real text on submit.
 
-// Multi-line pastes used to get inserted into the buffer verbatim — a big
-// code block would blow the composer out to dozens of rows and the cursor-
-// highlighting math (below) would visibly mangle it. Collapse pasted (not
-// typed — see the "paste" event branch) multi-line text into a placeholder
-// chip instead, like opencode's "Pasted N lines", and expand it back to the
-// real text right before submitting.
-const PASTE_PLACEHOLDER_RE = /\[Pasted \d+ lines\]/g;
-
-/** Renders `text`, highlighting any paste-placeholder chips like opencode's. */
-function renderWithPasteChips(text: string, keyPrefix: string): JSX.Element[] {
+/** Renders `text`, highlighting any chip characters with their yellow label. */
+function renderWithChips(text: string, chipLabels: Map<string, string>, keyPrefix: string): JSX.Element[] {
 	if (!text) return [];
 	const nodes: JSX.Element[] = [];
 	let lastIndex = 0;
 	let segment = 0;
-	PASTE_PLACEHOLDER_RE.lastIndex = 0;
-	let match: RegExpExecArray | null = PASTE_PLACEHOLDER_RE.exec(text);
-	while (match) {
-		if (match.index > lastIndex) {
-			nodes.push(<Text key={`${keyPrefix}-${segment++}`}>{text.slice(lastIndex, match.index)}</Text>);
+	for (let i = 0; i < text.length; i++) {
+		const ch = text[i];
+		if (ch !== undefined && isChipChar(ch) && chipLabels.has(ch)) {
+			if (i > lastIndex) {
+				nodes.push(<Text key={`${keyPrefix}-${segment++}`}>{text.slice(lastIndex, i)}</Text>);
+			}
+			nodes.push(
+				<Text key={`${keyPrefix}-${segment++}`} color="black" backgroundColor="yellow">
+					{chipLabels.get(ch)}
+				</Text>,
+			);
+			lastIndex = i + 1;
 		}
-		nodes.push(
-			<Text key={`${keyPrefix}-${segment++}`} color="black" backgroundColor="yellow">
-				{match[0]}
-			</Text>,
-		);
-		lastIndex = match.index + match[0].length;
-		match = PASTE_PLACEHOLDER_RE.exec(text);
 	}
 	if (lastIndex < text.length) {
 		nodes.push(<Text key={`${keyPrefix}-${segment++}`}>{text.slice(lastIndex)}</Text>);
@@ -91,10 +89,12 @@ export function Composer({
 	const [imageNotice, setImageNotice] = useState<string | null>(null);
 
 	// Paste state as refs — persists across renders, no useState needed
-	const pasteRef = useRef({ active: false, buffer: "" });
-
 	const pendingPastesRef = useRef(pendingPastes);
 	pendingPastesRef.current = pendingPastes;
+	// Per-turn counter allocating a unique PUA codepoint to each chip. Reset
+	// alongside pendingPastes on submit / clear so pastes in the next turn
+	// start from U+E000 again.
+	const chipCounterRef = useRef(0);
 	const runningRef = useRef(running);
 	runningRef.current = running;
 	const onSubmitRef = useRef(onSubmit);
@@ -126,6 +126,15 @@ export function Composer({
 	);
 	const safeIdx = paletteOpen ? Math.min(paletteIdx, Math.max(0, filteredCmds.length - 1)) : 0;
 
+	// char -> label lookup for the renderer. Built from pendingPastes so it
+	// stays in sync with what's actually in the buffer after chips are
+	// inserted or removed.
+	const chipLabels = useMemo(() => {
+		const m = new Map<string, string>();
+		for (const p of pendingPastes) m.set(p.char, p.label);
+		return m;
+	}, [pendingPastes]);
+
 	// Scroll the PALETTE_ROWS-tall window to keep safeIdx in view — a plain
 	// `slice(0, PALETTE_ROWS)` only ever showed the first page, so pressing
 	// Down past row 8 moved the selection off-screen with no visual sign of it.
@@ -147,13 +156,9 @@ export function Composer({
 	const doSubmit = () => {
 		const b = bufRef.current;
 		if (b.length === 0) return;
-		// Expand paste chips back to the real text. Sequential first-occurrence
-		// replace (not a global regex swap) so two chips with the same line
-		// count each get their own text instead of both becoming the first one's.
-		let value = b.value;
-		for (const paste of pendingPastesRef.current) {
-			value = value.replace(paste.placeholder, paste.text);
-		}
+		// Swap each chip character back to its real pasted text. Each chip is a
+		// unique PUA character, so per-entry first-occurrence replace is exact.
+		const value = expandPastes(b.value, pendingPastesRef.current);
 		// Ask the parent whether this submission should go through — if not
 		// (e.g. plain text while the agent is running), keep the buffer intact
 		// so the user can edit and retry without retyping.
@@ -161,6 +166,7 @@ export function Composer({
 		onSubmitRef.current(value);
 		b.clear();
 		setPendingPastes([]);
+		chipCounterRef.current = 0;
 	};
 
 	const handleCtrlC = () => {
@@ -247,6 +253,8 @@ export function Composer({
 		} else {
 			if (event.type === "binding" && event.binding === "input.escape") {
 				b.clear();
+				setPendingPastes([]);
+				chipCounterRef.current = 0;
 				return;
 			}
 		}
@@ -335,89 +343,48 @@ export function Composer({
 		};
 		process.on("SIGCONT", onCont);
 
-		const parser = new InputParser((event: InputEvent) => handleEventRef.current(event));
-		parserRef.current = parser;
-
-		// Paste state for bracketed paste accumulation
-		const stdinSource = stdin ?? process.stdin;
-		const stdinDataHandler = (chunk: Buffer) => {
-			if (lockedRef.current) return;
-
-			const data = chunk.toString("utf-8");
-
-			// Bracketed paste: accumulate until end marker
-			if (pasteRef.current.active) {
-				pasteRef.current.buffer += data;
-				const endIdx = pasteRef.current.buffer.indexOf("\x1b[201~");
-				if (endIdx !== -1) {
-					const content = pasteRef.current.buffer.slice(0, endIdx);
-					pasteRef.current.active = false;
-					pasteRef.current.buffer = "";
-					handlePasteContent(content);
-					const remaining = pasteRef.current.buffer.slice(endIdx + 6);
-					if (remaining) handlePlainOrStartPaste(remaining);
-				}
-				return;
-			}
-
-			handlePlainOrStartPaste(data);
-		};
-
-		const handlePlainOrStartPaste = (data: string) => {
-			// Bracketed paste start
-			const startIdx = data.indexOf("\x1b[200~");
-			if (startIdx !== -1) {
-				const before = data.slice(0, startIdx);
-				if (before) handlePlainInput(before);
-				pasteRef.current.buffer = data.slice(startIdx + 6);
-				pasteRef.current.active = true;
-				const endIdx = pasteRef.current.buffer.indexOf("\x1b[201~");
-				if (endIdx !== -1) {
-					const content = pasteRef.current.buffer.slice(0, endIdx);
-					pasteRef.current.active = false;
-					const remaining = pasteRef.current.buffer.slice(endIdx + 6);
-					pasteRef.current.buffer = "";
-					handlePasteContent(content);
-					if (remaining) handlePlainOrStartPaste(remaining);
-				}
-				return;
-			}
-			handlePlainInput(data);
-		};
-
 		const handlePasteContent = (raw: string) => {
 			// Normalize line endings (like opencode)
 			const text = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 			if (!text) return;
 			const lineCount = text.split("\n").length;
 			const totalChars = text.length;
-			// Match opencode: compress if > 10 lines or > 1000 chars
+			// Compress if > 10 lines or > 1000 chars: insert a single PUA chip
+			// character into the buffer (atomic, one row) and remember the real
+			// text for doSubmit to swap back. Small pastes insert verbatim.
 			if (lineCount > 10 || totalChars > 1000) {
-				const label = lineCount > 10 ? `+${lineCount} lines` : `${totalChars} chars`;
-				const placeholder = `[Pasted ${label}]`;
-				setPendingPastes((p) => [...p, { placeholder, text }]);
-				bufRef.current.insert(placeholder);
+				const index = chipCounterRef.current;
+				chipCounterRef.current += 1;
+				const char = chipCharFor(index);
+				const label = pasteLabel(lineCount, totalChars);
+				setPendingPastes((p) => [...p, { char, label, text }]);
+				bufRef.current.insert(char);
 			} else {
 				bufRef.current.insert(text);
 			}
 			setVersion((v) => v + 1);
 		};
 
-		const handlePlainInput = (data: string) => {
-			// In raw mode each keypress arrives as a single character.
-			// A multi-character chunk with line breaks is a paste without
-			// bracketed markers (e.g. Cursor, VS Code terminals).
-			if (data.length > 1 && (data.includes("\n") || data.includes("\r"))) {
-				handlePasteContent(data);
-				return;
-			}
-			parser.feed(Buffer.from(data, "utf-8"));
+		// Single StdinBuffer owns all stdin processing: bracketed paste
+		// detection, plain-multiline-burst coalescing (30 ms), and key
+		// sequence buffering. The InputParser receives only "data"
+		// events (individual key sequences); "paste" events bypass it.
+		const stdinBuf = new StdinBuffer();
+		const parser = new InputParser((event: InputEvent) => handleEventRef.current(event), stdinBuf);
+		parserRef.current = parser;
+
+		stdinBuf.on("paste", (text: string) => handlePasteContent(text));
+
+		const stdinSource = stdin ?? process.stdin;
+		const stdinDataHandler = (chunk: Buffer) => {
+			if (lockedRef.current) return;
+			stdinBuf.process(chunk);
 			setVersion((v) => v + 1);
 		};
-
 		stdinSource.on("data", stdinDataHandler);
 
 		return () => {
+			stdinBuf.destroy();
 			setRawMode(false);
 			esc.write(KITTY_POP);
 			esc.write(BRACKETED_PASTE_OFF);
@@ -475,18 +442,27 @@ export function Composer({
 					const beforeCol = isCursorLine ? line.slice(0, cursorCol) : line;
 					const atCol = isCursorLine ? line.slice(cursorCol, cursorCol + 1) : "";
 					const afterCol = isCursorLine ? line.slice(cursorCol + (atCol ? 1 : 0)) : "";
+					// If the cursor cell is a chip character, show the whole chip
+					// label in inverse (the chip is one buffer column, so the cursor
+					// can rest on it; backspace/delete then act on the whole chip).
+					const atColChip = isCursorLine ? (chipLabels.get(atCol) ?? null) : null;
 					return (
 						<Text key={realLine}>
 							<Text color={PROMPT_COLOR} bold>
 								{realLine === 0 ? "> " : "  "}
 							</Text>
-							{renderWithPasteChips(beforeCol, `${realLine}-before`)}
-							{isCursorLine && (
-								<Text color="white" inverse>
-									{atCol || " "}
-								</Text>
-							)}
-							{renderWithPasteChips(afterCol, `${realLine}-after`)}
+							{renderWithChips(beforeCol, chipLabels, `${realLine}-before`)}
+							{isCursorLine &&
+								(atColChip !== null ? (
+									<Text color="black" backgroundColor="yellow" inverse>
+										{atColChip}
+									</Text>
+								) : (
+									<Text color="white" inverse>
+										{atCol || " "}
+									</Text>
+								))}
+							{renderWithChips(afterCol, chipLabels, `${realLine}-after`)}
 						</Text>
 					);
 				})}
