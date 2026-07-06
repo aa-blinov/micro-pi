@@ -1,6 +1,6 @@
 {
 	"name": "cast",
-	"version": "0.3.3",
+	"version": "0.3.4",
 	"description": "Coding agent harness with swappable personas",
 	"type": "module",
 	"bin": {
