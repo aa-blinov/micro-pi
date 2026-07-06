@@ -209,4 +209,26 @@ describe("streamChat — message sanitization", () => {
 		}
 		expect((sent()[0] as { content: unknown }).content).toBeNull();
 	});
+
+	it("fixes truncated tool call arguments in loaded sessions", async () => {
+		const { client, sent } = capturingClient();
+		const toolMsg = {
+			role: "assistant",
+			content: [{ type: "text", text: "Writing file..." }],
+			tool_calls: [
+				{
+					id: "call_1",
+					type: "function",
+					function: { name: "write", arguments: '{"path": "/some/file.md", "content": "# truncated' },
+				},
+			],
+		};
+		const toolResult = { role: "tool", tool_call_id: "call_1", content: "EISDIR: illegal operation on a directory" };
+		for await (const _ of streamChat(client, "m", [toolMsg, toolResult] as never, [], 100)) {
+			// drain
+		}
+		const outToolCalls = (sent()[0] as { tool_calls: Array<{ function: { arguments: string } }> }).tool_calls;
+		const parsed = JSON.parse(outToolCalls[0].function.arguments);
+		expect(parsed.error).toContain("truncated");
+	});
 });

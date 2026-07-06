@@ -322,6 +322,7 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 async function execRead(args: Record<string, unknown>, cwd: string, config: AppConfig): Promise<ToolResult> {
 	const filePath = String(args.path ?? "");
+	if (!filePath) return { content: "path is required", isError: true };
 	const offset = typeof args.offset === "number" ? args.offset : undefined;
 	const limit = typeof args.limit === "number" ? args.limit : undefined;
 	const absolutePath = resolvePath(filePath, cwd);
@@ -389,6 +390,7 @@ async function execRead(args: Record<string, unknown>, cwd: string, config: AppC
 
 async function execWrite(args: Record<string, unknown>, cwd: string): Promise<ToolResult> {
 	const filePath = String(args.path ?? "");
+	if (!filePath) return { content: "path is required", isError: true };
 	const content = String(args.content ?? "");
 	const absolutePath = resolvePath(filePath, cwd);
 
@@ -404,6 +406,7 @@ async function execWrite(args: Record<string, unknown>, cwd: string): Promise<To
 
 async function execEdit(args: Record<string, unknown>, cwd: string): Promise<ToolResult> {
 	const filePath = String(args.path ?? "");
+	if (!filePath) return { content: "path is required", isError: true };
 	const edits = args.edits as Array<{ oldText: string; newText: string }> | undefined;
 
 	if (!Array.isArray(edits) || edits.length === 0) {

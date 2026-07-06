@@ -143,21 +143,37 @@ function sleep(ms: number): Promise<void> {
 export const EMPTY_ASSISTANT_PLACEHOLDER = "(no response)";
 
 /**
- * Guard against a malformed assistant message reaching the provider. A turn
- * that streamed only reasoning (all output in `reasoning_content`, none in
- * `content`) or that ended on error/abort before any output leaves an
- * assistant message with `content: null` and no `tool_calls`. Many
- * OpenAI-compatible providers reject that shape outright (e.g. GLM/z.ai
- * returns `400 Param Incorrect`), and because it's persisted in the session
- * it re-poisons every following turn until removed. Substituting a non-empty
- * placeholder keeps the message list valid without dropping history. Applied
- * here so it also covers messages loaded from an already-poisoned session.
+ * Guard against malformed assistant messages reaching the provider.
+ *
+ * 1. A turn that streamed only reasoning or ended on error/abort before any
+ *    output leaves `content: null` and no `tool_calls`. Many providers reject
+ *    that shape outright — substituting a non-empty placeholder keeps the
+ *    message list valid without dropping history.
+ *
+ * 2. Tool call arguments that are truncated (streaming cut off mid-generation)
+ *    produce invalid JSON in `tc.function.arguments`. The provider accepts the
+ *    raw string, but re-sending it wastes tokens on a doomed retry and the
+ *    subsequent tool result already carries the error. Replace truncated args
+ *    with a minimal valid JSON error so the request stays well-formed.
  */
 function sanitizeMessages(messages: Message[]): Message[] {
 	return messages.map((m) => {
 		if (m.role !== "assistant") return m;
 		const hasToolCalls = "tool_calls" in m && Array.isArray(m.tool_calls) && m.tool_calls.length > 0;
 		const hasContent = typeof m.content === "string" ? m.content.length > 0 : Boolean(m.content);
+
+		// Fix truncated tool call arguments in-place
+		if (hasToolCalls) {
+			for (const tc of m.tool_calls!) {
+				if (tc.type !== "function") continue;
+				try {
+					JSON.parse(tc.function.arguments);
+				} catch {
+					tc.function.arguments = '{"error": "arguments were truncated"}';
+				}
+			}
+		}
+
 		if (hasToolCalls || hasContent) return m;
 		return { ...m, content: EMPTY_ASSISTANT_PLACEHOLDER };
 	});

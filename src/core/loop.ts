@@ -584,25 +584,40 @@ async function executeToolCalls(
 	onEvent: (event: AgentEvent) => void,
 	signal: AbortSignal | undefined,
 ): Promise<ToolCallResult[]> {
-	const prepared: Array<{ id: string; name: string; args: Record<string, unknown> }> = [];
+	const prepared: Array<{ id: string; name: string; args: Record<string, unknown> | null }> = [];
 	for (const tc of toolCalls) {
 		let args: Record<string, unknown>;
 		try {
 			args = JSON.parse(tc.arguments);
 		} catch {
-			args = {};
+			// Truncated or malformed arguments (e.g. streaming cut off mid-generation).
+			// Don't execute with empty {} — that turns every tool into a confusing error.
+			prepared.push({ id: tc.id, name: tc.name, args: null });
+			continue;
 		}
 		prepared.push({ id: tc.id, name: tc.name, args });
 	}
 
 	for (const tc of prepared) {
-		onEvent({ type: "tool_start", id: tc.id, name: tc.name, args: JSON.stringify(tc.args) });
+		onEvent({ type: "tool_start", id: tc.id, name: tc.name, args: tc.args ? JSON.stringify(tc.args) : "{}" });
 	}
 
 	const results = await Promise.all(
 		prepared.map(async (tc): Promise<ToolCallResult> => {
 			if (signal?.aborted) {
 				return { id: tc.id, name: tc.name, result: { content: "Aborted", isError: true } };
+			}
+
+			// Truncated/malformed arguments — return an error so the model can retry.
+			if (tc.args === null) {
+				return {
+					id: tc.id,
+					name: tc.name,
+					result: {
+						content: "Tool call arguments were truncated or malformed (invalid JSON). Retry the tool call.",
+						isError: true,
+					},
+				};
 			}
 
 			let result: ToolResult;

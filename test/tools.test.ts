@@ -157,6 +157,13 @@ describe("read", () => {
 		expect(result.content).toContain("2→\t\tconst y = 1;");
 		expect(result.content).not.toContain("\t\t\tconst y = 1;");
 	});
+
+	it("rejects empty path", async () => {
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("read", { path: "" });
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("path");
+	});
 });
 
 // ============================================================================
@@ -178,6 +185,13 @@ describe("write", () => {
 		await exec("write", { path: "deep/nested/file.txt", content: "ok" });
 		const readResult = await exec("read", { path: "deep/nested/file.txt" });
 		expect(readResult.content).toContain("ok");
+	});
+
+	it("rejects empty path", async () => {
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("write", { path: "", content: "data" });
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("path");
 	});
 
 	it("overwrites existing file", async () => {
@@ -279,6 +293,13 @@ describe("edit", () => {
 		// not partially applied.
 		const readResult = await exec("read", { path: "overlap.txt" });
 		expect(readResult.content).toContain("hello world");
+	});
+
+	it("rejects empty path", async () => {
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("edit", { path: "", edits: [{ oldText: "a", newText: "b" }] });
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("path");
 	});
 });
 
