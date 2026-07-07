@@ -279,11 +279,7 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 		session.updatedAt = fresh.updatedAt;
 		session.usage = fresh.usage;
 		saveSession(session);
-		// See useAgentSession.ts's clearContext for why this is needed: the old
-		// transcript is permanently in the terminal's scrollback (Static), so
-		// resetting the messages array alone leaves it sitting on screen.
-		process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
-		agent.refresh();
+		agent.clearContext();
 		showNotice(`[New session: ${session.id}]`);
 		return;
 	}
