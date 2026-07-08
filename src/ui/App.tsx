@@ -21,6 +21,7 @@ import { canSubmitDuringRun, handleInput } from "./commands.ts";
 import { gradientHex } from "./gradient.ts";
 import { useModalBridge } from "./pickerBridge.ts";
 import { type UseAgentSession, useAgentSession } from "./useAgentSession.ts";
+import { useTerminalResync } from "./useTerminalResync.ts";
 
 /** Midpoint of the banner/loader/border palette — distinct from user (cyan end) and agent (violet end). */
 const PERSONA_COLOR = gradientHex(0.5);
@@ -44,37 +45,11 @@ export function App(props: AppProps): JSX.Element {
 		noticeDurationRef.current = duration ?? 6000;
 	}, []);
 
-	// Terminal resize + reflow (VS Code, iTerm) re-wraps the on-screen lines,
-	// which desyncs Ink's relative cursor-erase math: it keeps erasing the live
-	// region (composer/status) by a stale line count and leaves stale copies
-	// stacked on screen. Ink only self-corrects on width *decrease*; width
-	// increases and height changes ghost. Once a resize burst settles, do what
-	// Ink itself does when it needs a clean slate — clear the whole terminal and
-	// replay every <Static> item — by bumping repaintKey (see the ChatLog key
-	// below). The clear write itself lives in the same effect so it's ordered
-	// right before the forced repaint.
+	// Resize/reflow and terminal-scroll desyncs both need the same hard reset
+	// (clear + full <Static> replay) — see useTerminalResync for why. Bumping
+	// repaintKey is what triggers that replay (see the ChatLog key below).
 	const [repaintKey, setRepaintKey] = useState(0);
-	useEffect(() => {
-		const out = process.stdout;
-		if (!out.isTTY) return;
-		let timer: ReturnType<typeof setTimeout> | null = null;
-		const onResize = () => {
-			if (timer) clearTimeout(timer);
-			timer = setTimeout(() => {
-				// clearTerminal (\x1b[2J\x1b[3J\x1b[H): erase screen + scrollback +
-				// home. Scrollback too, so the full Static replay below can't leave a
-				// duplicate copy of the history behind — matches ansiEscapes.clearTerminal,
-				// the same sequence Ink writes on its own full-clear path.
-				out.write("\x1b[2J\x1b[3J\x1b[H");
-				setRepaintKey((k) => k + 1);
-			}, 80);
-		};
-		out.on("resize", onResize);
-		return () => {
-			out.off("resize", onResize);
-			if (timer) clearTimeout(timer);
-		};
-	}, []);
+	useTerminalResync(useCallback(() => setRepaintKey((k) => k + 1), []));
 
 	// Pickers used after mount (slash commands, confirmBash) render their
 	// modal inline in this same Ink tree instead of spinning up a second

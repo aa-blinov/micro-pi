@@ -285,10 +285,13 @@ export async function* streamChat(
 					result.thinking = deltaAny.reasoning_content;
 				}
 
-				// 2. Parse content for <think>...</think> blocks (Qwen/DeepSeek raw)
+				// 2. Parse content for <think>...</think> blocks (Qwen/DeepSeek raw).
+				//    The parser still tracks state (open/close tags) so it can strip
+				//    them from content, but only contributes thinking when no native
+				//    reasoning field is present — otherwise the same text arrives twice.
 				if (delta.content) {
 					const parsed = thinkParser.parseContent(delta.content);
-					if (parsed.thinking) result.thinking = (result.thinking ?? "") + parsed.thinking;
+					if (parsed.thinking && !result.thinking) result.thinking = parsed.thinking;
 					if (parsed.content) result.content = parsed.content;
 				}
 

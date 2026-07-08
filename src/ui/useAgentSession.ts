@@ -17,17 +17,33 @@ export interface ToolCallEntry {
 	result?: string;
 }
 
+/**
+ * One ordered block within a single assistant completion. The model streams
+ * reasoning, text, and tool calls in some order; a completion can even go
+ * text → tool → more text. Keeping them as an ordered list — instead of three
+ * fixed lanes (all reasoning, then all text, then all tools) — is what lets
+ * the transcript render in the true emission order. Adjacent same-kind chunks
+ * (token-by-token text, streamed reasoning) coalesce into one block; a tool
+ * call breaks the run so whatever streams after it starts a fresh block.
+ */
+export type StreamBlock =
+	| { kind: "thinking"; text: string }
+	| { kind: "content"; text: string }
+	| { kind: "tool"; call: ToolCallEntry };
+
 export interface ChatMessage {
 	role: "user" | "assistant" | "system" | "tool" | "warning";
+	/** Plain text for user/warning/system/tool rows. Assistant rows use `blocks`. */
 	content: string;
-	toolCalls?: ToolCallEntry[];
 	/**
-	 * Assistant reasoning captured while the turn streamed. Kept on the message
-	 * so it stays visible in history instead of vanishing when the turn ends —
-	 * it's only in the live streaming state otherwise. Not persisted to
-	 * session.messages, so a rebuild/resume won't restore it.
+	 * Assistant turn rendered as ordered reasoning/text/tool blocks. Carries the
+	 * turn's reasoning too, so it stays visible in history instead of vanishing
+	 * when the turn ends. Reasoning is not persisted to session.messages, so a
+	 * rebuild/resume reconstructs only content + tool blocks (no reasoning, and
+	 * no finer interleaving than "text then tools" — the wire format doesn't
+	 * record it).
 	 */
-	thinking?: string;
+	blocks?: StreamBlock[];
 }
 
 export interface PendingImage {
@@ -36,9 +52,16 @@ export interface PendingImage {
 }
 
 export interface StreamingState {
-	content: string;
-	thinking: string;
-	toolCalls: ToolCallEntry[];
+	blocks: StreamBlock[];
+}
+
+/** Append text to the trailing block if it's the same kind, else start a new one. */
+function appendText(blocks: StreamBlock[], kind: "thinking" | "content", text: string): StreamBlock[] {
+	const last = blocks[blocks.length - 1];
+	if (last && last.kind === kind) {
+		return [...blocks.slice(0, -1), { kind, text: last.text + text }];
+	}
+	return [...blocks, { kind, text }];
 }
 
 export interface RetryInfo {
@@ -156,31 +179,36 @@ function buildDisplayMessages(sessionMessages: SessionState["messages"]): ChatMe
 
 		if (m.role === "assistant") {
 			// Assistant turns are often tool-calls-only with null content — keep
-			// those blank; only structured arrays carry extractable text.
+			// those blank; only structured arrays carry extractable text. The wire
+			// format records no reasoning and no text/tool interleaving, so the
+			// best a rebuild can reconstruct is one content block (if any) followed
+			// by the tool blocks in order.
 			const content = Array.isArray(m.content) ? messageContentToText(m.content) : (m.content ?? "");
-			const toolCalls: ToolCallEntry[] = [];
+			const blocks: StreamBlock[] = [];
+			if (content) blocks.push({ kind: "content", text: content });
+			const toolBlocks: Array<Extract<StreamBlock, { kind: "tool" }>> = [];
 			if ("tool_calls" in m && m.tool_calls) {
 				for (const tc of m.tool_calls) {
 					if (tc.type !== "function") continue;
-					toolCalls.push({
-						id: tc.id,
-						name: tc.function.name,
-						args: tc.function.arguments,
-						status: "ok",
-					});
+					const block: Extract<StreamBlock, { kind: "tool" }> = {
+						kind: "tool",
+						call: { id: tc.id, name: tc.function.name, args: tc.function.arguments, status: "ok" },
+					};
+					toolBlocks.push(block);
+					blocks.push(block);
 				}
 			}
 			// Associate following tool result messages with this assistant turn
 			let next = i + 1;
 			while (next < sessionMessages.length && sessionMessages[next]!.role === "tool") {
 				const tr = sessionMessages[next] as { role: "tool"; content: string; tool_call_id?: string };
-				const target = toolCalls.find((t) => t.id === tr.tool_call_id);
-				if (target) target.result = String(tr.content).slice(0, 4000);
+				const target = toolBlocks.find((t) => t.call.id === tr.tool_call_id);
+				if (target) target.call.result = String(tr.content).slice(0, 4000);
 				next++;
 			}
 			// Advance i past the tool results so the for loop doesn't visit them again
 			i = next - 1;
-			out.push({ role: "assistant", content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined });
+			out.push({ role: "assistant", content: "", blocks: blocks.length > 0 ? blocks : undefined });
 		}
 	}
 	return out;
@@ -273,18 +301,10 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 	 */
 	const promoteStreamingToHistory = useCallback(() => {
 		const s = streamingRef.current;
-		if (s && (s.content || s.thinking || s.toolCalls.length > 0)) {
-			setMessages((msgs) => [
-				...msgs,
-				{
-					role: "assistant",
-					content: s.content,
-					toolCalls: s.toolCalls.length > 0 ? s.toolCalls : undefined,
-					thinking: s.thinking || undefined,
-				},
-			]);
+		if (s && s.blocks.length > 0) {
+			setMessages((msgs) => [...msgs, { role: "assistant", content: "", blocks: s.blocks }]);
 		}
-		updateStreaming(() => ({ content: "", thinking: "", toolCalls: [] }), true);
+		updateStreaming(() => ({ blocks: [] }), true);
 	}, [updateStreaming]);
 
 	const refresh = useCallback(() => {
@@ -368,7 +388,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 			process.on("uncaughtException", onUncaught);
 
 			setStatus("running");
-			updateStreaming(() => ({ content: "", thinking: "", toolCalls: [] }), true);
+			updateStreaming(() => ({ blocks: [] }), true);
 
 			try {
 				const result = await runAgentLoop(session.messages, {
@@ -389,20 +409,27 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 					onEvent: (event: AgentEvent) => {
 						switch (event.type) {
 							case "thinking":
-								updateStreaming((s) => (s ? { ...s, thinking: s.thinking + event.text } : s));
+								updateStreaming((s) => (s ? { blocks: appendText(s.blocks, "thinking", event.text) } : s));
 								break;
 							case "token":
-								updateStreaming((s) => (s ? { ...s, content: s.content + event.text } : s));
+								updateStreaming((s) => (s ? { blocks: appendText(s.blocks, "content", event.text) } : s));
 								break;
 							case "tool_start":
 								updateStreaming(
 									(s) =>
 										s
 											? {
-													...s,
-													toolCalls: [
-														...s.toolCalls,
-														{ id: event.id, name: event.name, args: event.args, status: "running" },
+													blocks: [
+														...s.blocks,
+														{
+															kind: "tool",
+															call: {
+																id: event.id,
+																name: event.name,
+																args: event.args,
+																status: "running",
+															},
+														},
 													],
 												}
 											: s,
@@ -413,15 +440,17 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 								updateStreaming((s) => {
 									if (!s) return s;
 									return {
-										...s,
-										toolCalls: s.toolCalls.map((t) =>
-											t.id === event.id
+										blocks: s.blocks.map((b) =>
+											b.kind === "tool" && b.call.id === event.id
 												? {
-														...t,
-														status: event.result.isError ? "error" : "ok",
-														result: event.result.content.slice(0, 4000),
+														kind: "tool",
+														call: {
+															...b.call,
+															status: event.result.isError ? "error" : "ok",
+															result: event.result.content.slice(0, 4000),
+														},
 													}
-												: t,
+												: b,
 										),
 									};
 								}, true);

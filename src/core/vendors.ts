@@ -111,7 +111,6 @@ export function getReasoningOptions(meta: ModelReasoningMeta | null): Array<{ va
 
 export class ThinkBlockParser {
 	private inThinkBlock = false;
-	private thinkBuffer = "";
 
 	parseContent(text: string): { thinking?: string; content?: string } {
 		const result: { thinking?: string; content?: string } = {};
@@ -119,14 +118,11 @@ export class ThinkBlockParser {
 		if (this.inThinkBlock) {
 			const endIdx = text.indexOf("</think>");
 			if (endIdx !== -1) {
-				this.thinkBuffer += text.slice(0, endIdx);
-				result.thinking = this.thinkBuffer;
-				this.thinkBuffer = "";
+				result.thinking = text.slice(0, endIdx);
 				this.inThinkBlock = false;
 				const remaining = text.slice(endIdx + 8);
 				if (remaining) result.content = remaining;
 			} else {
-				this.thinkBuffer += text;
 				result.thinking = text;
 			}
 		} else {
@@ -141,7 +137,6 @@ export class ThinkBlockParser {
 					const remaining = afterStart.slice(endIdx + 8);
 					if (remaining) result.content = (result.content ?? "") + remaining;
 				} else {
-					this.thinkBuffer = afterStart;
 					this.inThinkBlock = true;
 					result.thinking = afterStart;
 				}
@@ -154,12 +149,7 @@ export class ThinkBlockParser {
 	}
 
 	flush(): string | undefined {
-		if (this.inThinkBlock && this.thinkBuffer) {
-			const r = this.thinkBuffer;
-			this.thinkBuffer = "";
-			this.inThinkBlock = false;
-			return r;
-		}
+		this.inThinkBlock = false;
 		return undefined;
 	}
 }

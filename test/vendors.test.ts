@@ -188,17 +188,17 @@ describe("ThinkBlockParser", () => {
 		expect(r2.thinking).toBe(" middle");
 
 		const r3 = parser.parseContent(" end</think>after");
-		// The parser accumulates all chunks in thinkBuffer — the thinking
-		// content returned is the full buffer, not just the current chunk.
-		expect(r3.thinking).toBe("start of thinking middle end");
+		// Each chunk returns only its own portion — the caller accumulates.
+		expect(r3.thinking).toBe(" end");
 		expect(r3.content).toBe("after");
 	});
 
 	it("flush returns remaining buffer when stream ends mid-think", () => {
 		const parser = new ThinkBlockParser();
 		parser.parseContent("<think>incomplete");
+		// Intermediate chunks already yielded their portions; flush is a no-op.
 		const flushed = parser.flush();
-		expect(flushed).toBe("incomplete");
+		expect(flushed).toBeUndefined();
 	});
 
 	it("flush returns undefined when not in think block", () => {
