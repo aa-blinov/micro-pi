@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { StdinBuffer } from "../src/ui/input/stdin-buffer.ts";
 
 // Collect emitted "data" and "paste" events for inspection.
-function harness() {
-	const buf = new StdinBuffer();
+function harness(opts?: { pasteTimeout?: number }) {
+	const buf = new StdinBuffer({ pasteTimeout: opts?.pasteTimeout });
 	const data: string[] = [];
 	const pastes: string[] = [];
 	buf.on("data", (s) => data.push(s));
@@ -69,5 +69,34 @@ describe("StdinBuffer — plain-paste burst detection", () => {
 		h.process("\nline4\nline5");
 		await h.flushTimers();
 		expect(h.pastes).toEqual(["line1\nline2\nline3\nline4\nline5"]);
+	});
+});
+
+describe("StdinBuffer — bracketed paste timeout", () => {
+	it("normal bracketed paste still works", async () => {
+		const h = harness();
+		h.process("\x1b[200~hello world\x1b[201~");
+		expect(h.pastes).toEqual(["hello world"]);
+		expect(h.data).toEqual([]);
+	});
+
+	it("exits pasteMode after timeout when end marker never arrives", async () => {
+		const h = harness({ pasteTimeout: 100 });
+		h.process("\x1b[200~stuck content");
+		expect(h.pastes).toEqual([]);
+		await new Promise((r) => setTimeout(r, 150));
+		expect(h.pastes).toEqual(["stuck content"]);
+		// After timeout, stdin is functional again.
+		h.process("ok");
+		expect(h.data.join("")).toBe("ok");
+	});
+
+	it("timeout is cleaned up on clear()", async () => {
+		const h = harness();
+		h.process("\x1b[200~partial");
+		h.buf.clear();
+		h.process("after");
+		expect(h.data.join("")).toBe("after");
+		expect(h.pastes).toEqual([]);
 	});
 });

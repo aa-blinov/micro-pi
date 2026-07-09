@@ -13,23 +13,23 @@ import { useEffect } from "react";
  *    starting with CUU (`\x1b[<n>A`), assuming the cursor sits exactly where
  *    the previous frame left it. When the viewport is scrolled up that
  *    assumption is wrong and the erase/redraw lands on the wrong rows,
- *    corrupting the display. We can't know the real scrollback offset
- *    without cursor-position queries (DECXCPR), which interfere with Ink's
- *    stdin handling — and we can't capture the wheel to track it ourselves
- *    without disabling the terminal's *native* scrollback, which this app
- *    depends on (history lives in the main screen buffer via <Static>, not a
- *    virtual buffer we render). So we use a non-destructive heuristic:
- *    when a frame's CUU distance exceeds the terminal height, the live area
- *    is taller than the viewport — a strong signal it has scrolled — and we
- *    swallow that frame's cursor/erase writes so they can't corrupt rows.
- *    Recomputed every frame (not latched): once the frame fits again the
- *    guard releases on its own. Plain text/newlines from <Static> always
- *    pass through.
+ *    corrupting the display.
  *
- * Trade-off (unchanged from the original guard): a short response that fits
- * on screen never trips the height heuristic, so scrolling during a short
- * turn can still corrupt — a full fix needs an alternate-screen renderer
- * with its own scrollback, which would replace the <Static> model entirely.
+ *    Detection strategy (two layers):
+ *
+ *    a. Height heuristic (fast, no I/O): when a frame's CUU distance exceeds
+ *       the terminal height, the live area is taller than the viewport — a
+ *       strong signal it has scrolled. Recomputed every frame (non-sticky).
+ *
+ *    b. DECXCPR polling (periodic, handles short frames): send `\x1b[6n]`
+ *       to query the real cursor row. After Ink draws, the cursor sits at
+ *       the bottom of the viewport (row == terminal height). If the user
+ *       scrolled up, the cursor drops below the visible area and DECXCPR
+ *       reports row > height. stdin is paused during the query so Ink can't
+ *       consume the response. A 500 ms interval keeps the flag fresh.
+ *
+ *    Either signal triggers the guard: cursor/erase writes are swallowed
+ *    until the user scrolls back to the bottom.
  */
 export function useTerminalResync(onResync: () => void): void {
 	useEffect(() => {
@@ -53,14 +53,15 @@ export function useTerminalResync(onResync: () => void): void {
 		};
 		out.on("resize", onResize);
 
-		// --- scroll guard: swallow cursor/erase writes while the live frame
-		//     is taller than the viewport (recomputed per frame, non-sticky) ---
-		let isScrolledUp = false;
+		// --- scroll guard state (shared by both detection layers) ---
+		let scrollUp = false;
+
 		// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI CSI parsing
 		const CUU_RE = /\x1b\[(\d*)A/;
 		// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI CSI detection
 		const CURSOR_OR_ERASE_RE = /\x1b\[(?:\d+)*[A-HJKSTf]/;
 
+		// --- layer (a): height heuristic per frame ---
 		out.write = function scrollGuardWrite(
 			chunk: string | Uint8Array,
 			...args: [BufferEncoding?, ((err?: Error | null) => void)?]
@@ -71,13 +72,68 @@ export function useTerminalResync(onResync: () => void): void {
 			// previous frame). n > terminal rows means the live area doesn't fit
 			// on screen. Recompute both directions so the guard can never latch.
 			const m = CUU_RE.exec(s);
-			if (m) isScrolledUp = (Number(m[1]) || 1) > (out.rows || 24);
+			if (m) {
+				const cuuScrolled = (Number(m[1]) || 1) > (out.rows || 24);
+				if (cuuScrolled) scrollUp = true;
+				// Only clear the flag via CUU when DECXCPR is not active —
+				// DECXCPR is authoritative when the interval is running.
+				else if (!decxprActive) scrollUp = false;
+			}
 
-			if (isScrolledUp && CURSOR_OR_ERASE_RE.test(s)) {
+			if (scrollUp && CURSOR_OR_ERASE_RE.test(s)) {
 				return true; // swallow — don't erase/redraw while scrolled
 			}
 			return origWrite(chunk, ...args);
 		} as typeof out.write;
+
+		// --- layer (b): DECXCPR cursor-position polling ---
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: DECXCPR response format
+		const DECXCPR_RE = /\x1b\[(\d+);(\d+)R/;
+		const QUERY = "\x1b[6n";
+		const POLL_MS = 500;
+		const TIMEOUT_MS = 600;
+
+		let decxprActive = false;
+		let queryTimeout: ReturnType<typeof setTimeout> | null = null;
+
+		function startQuery() {
+			if (!process.stdin.isTTY) return;
+			// Pause stdin so Ink can't consume the DECXCPR response.
+			process.stdin.pause();
+			decxprActive = true;
+
+			let buf = "";
+			let active = true;
+
+			function cleanup(scrolled: boolean) {
+				if (!active) return;
+				active = false;
+				process.stdin.off("data", onStdin);
+				process.stdin.resume();
+				scrollUp = scrolled;
+			}
+
+			function onStdin(chunk: Buffer) {
+				if (!active) return;
+				buf += chunk.toString();
+				const match = DECXCPR_RE.exec(buf);
+				if (match) {
+					const row = Number(match[1]);
+					const rows = out.rows || 24;
+					cleanup(row > rows);
+				}
+			}
+
+			process.stdin.on("data", onStdin);
+			origWrite(QUERY);
+
+			queryTimeout = setTimeout(() => {
+				// Terminal didn't respond — assume no scroll.
+				cleanup(false);
+			}, TIMEOUT_MS);
+		}
+
+		const pollInterval = setInterval(startQuery, POLL_MS);
 
 		const restore = () => {
 			out.write = origWrite;
@@ -87,6 +143,8 @@ export function useTerminalResync(onResync: () => void): void {
 		return () => {
 			out.off("resize", onResize);
 			if (resizeTimer) clearTimeout(resizeTimer);
+			clearInterval(pollInterval);
+			if (queryTimeout) clearTimeout(queryTimeout);
 			restore();
 			process.off("exit", restore);
 		};

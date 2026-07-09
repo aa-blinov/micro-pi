@@ -146,19 +146,30 @@ export type StdinBufferEventMap = {
 // write() hitting the pty, short enough that it's not felt as input lag.
 const PLAIN_PASTE_COALESCE_MS = 30;
 
+// Safety timeout for bracketed paste mode: if the terminal sent the
+// paste-start marker (\x1b[200~) but the end marker (\x1b[201~) never
+// arrives (terminal bug, tmux/screen interference, interrupted paste),
+// pasteMode would stay true forever, silently swallowing ALL subsequent
+// stdin — Ctrl+C, Esc, Enter, everything. This timeout flushes whatever
+// has been accumulated and exits pasteMode so the user isn't stuck.
+const BRACKETED_PASTE_TIMEOUT_MS = 5000;
+
 export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 	private buffer = "";
 	private timeout: ReturnType<typeof setTimeout> | null = null;
 	private readonly timeoutMs: number;
+	private readonly bracketedPasteTimeoutMs: number;
 	private pasteMode = false;
 	private pasteBuffer = "";
+	private pasteModeTimeout: ReturnType<typeof setTimeout> | null = null;
 	private pendingKittyPrintableCodepoint: number | undefined;
 	private pendingPlainPaste: string | null = null;
 	private plainPasteTimeout: ReturnType<typeof setTimeout> | null = null;
 
-	constructor(options?: { timeout?: number }) {
+	constructor(options?: { timeout?: number; pasteTimeout?: number }) {
 		super();
 		this.timeoutMs = options?.timeout ?? 10;
+		this.bracketedPasteTimeoutMs = options?.pasteTimeout ?? BRACKETED_PASTE_TIMEOUT_MS;
 	}
 
 	public process(data: string | Buffer): void {
@@ -191,9 +202,7 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 			if (endIndex !== -1) {
 				const pastedContent = this.pasteBuffer.slice(0, endIndex);
 				const remaining = this.pasteBuffer.slice(endIndex + BRACKETED_PASTE_END.length);
-				this.pasteMode = false;
-				this.pasteBuffer = "";
-				this.pendingKittyPrintableCodepoint = undefined;
+				this.exitPasteMode();
 				this.emit("paste", pastedContent);
 				if (remaining.length > 0) this.process(remaining);
 			}
@@ -212,13 +221,12 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 			this.pasteMode = true;
 			this.pasteBuffer = this.buffer;
 			this.buffer = "";
+			this.pasteModeTimeout = setTimeout(() => this.abortPasteMode(), this.bracketedPasteTimeoutMs);
 			const endIndex = this.pasteBuffer.indexOf(BRACKETED_PASTE_END);
 			if (endIndex !== -1) {
 				const pastedContent = this.pasteBuffer.slice(0, endIndex);
 				const remaining = this.pasteBuffer.slice(endIndex + BRACKETED_PASTE_END.length);
-				this.pasteMode = false;
-				this.pasteBuffer = "";
-				this.pendingKittyPrintableCodepoint = undefined;
+				this.exitPasteMode();
 				this.emit("paste", pastedContent);
 				if (remaining.length > 0) this.process(remaining);
 			}
@@ -314,6 +322,30 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		this.emit("paste", text);
 	}
 
+	/** Cleanly exit pasteMode — clears the safety timeout and resets state. */
+	private exitPasteMode(): void {
+		if (this.pasteModeTimeout) {
+			clearTimeout(this.pasteModeTimeout);
+			this.pasteModeTimeout = null;
+		}
+		this.pasteMode = false;
+		this.pasteBuffer = "";
+		this.pendingKittyPrintableCodepoint = undefined;
+	}
+
+	/**
+	 * Bracketed-paste end marker never arrived — emit whatever was
+	 * accumulated as a paste so the user isn't stuck with a dead input.
+	 */
+	private abortPasteMode(): void {
+		const content = this.pasteBuffer;
+		this.pasteModeTimeout = null;
+		this.pasteMode = false;
+		this.pasteBuffer = "";
+		this.pendingKittyPrintableCodepoint = undefined;
+		if (content) this.emit("paste", content);
+	}
+
 	flush(): string[] {
 		if (this.timeout) {
 			clearTimeout(this.timeout);
@@ -337,6 +369,10 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		}
 		this.pendingPlainPaste = null;
 		this.buffer = "";
+		if (this.pasteModeTimeout) {
+			clearTimeout(this.pasteModeTimeout);
+			this.pasteModeTimeout = null;
+		}
 		this.pasteMode = false;
 		this.pasteBuffer = "";
 		this.pendingKittyPrintableCodepoint = undefined;
