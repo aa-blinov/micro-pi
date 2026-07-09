@@ -221,6 +221,13 @@ export function createToolExecutor(cwd: string, config: AppConfig, confirmBash?:
 // flash on screen; short enough to surface a real prompt promptly.
 const BASH_LIVE_GRACE_MS = 300;
 
+// If a command has been running for this long with *zero* output from both
+// stdout and stderr, assume it's waiting for interactive input that goes
+// through /dev/tty (bypassing our pipes): bash's `read -p`, `sudo` password,
+// `git push` credential prompt, etc. Without this, the go-live heuristic
+// never fires because the prompt never appears on our stderr pipe.
+const BASH_LIVE_SILENT_MS = 2000;
+
 async function execBash(
 	args: Record<string, unknown>,
 	cwd: string,
@@ -252,137 +259,150 @@ async function execBash(
 
 	const stdinSource = getStdinSource();
 
-	return suspendAndRun(
-		() =>
-			new Promise((resolve) => {
-				const child = spawn("bash", ["-c", command], {
-					cwd,
-					env: process.env,
-					stdio: ["pipe", "pipe", "pipe"],
-				});
+	return new Promise<ToolResult>((resolve) => {
+		const child = spawn("bash", ["-c", command], {
+			cwd,
+			env: process.env,
+			stdio: ["pipe", "pipe", "pipe"],
+		});
 
-				// Forward stdin to the child process so interactive commands
-				// (password prompts, confirmations) can receive user input.
-				if (stdinSource && child.stdin) {
-					stdinSource.pipe(child.stdin, { end: false });
-				}
+		let stdout = "";
+		let stderr = "";
+		let timedOut = false;
+		let aborted = false;
+		const maxBytes = config.maxToolOutputBytes;
 
-				let stdout = "";
-				let stderr = "";
-				let timedOut = false;
-				let aborted = false;
-				const maxBytes = config.maxToolOutputBytes;
+		// Reveal a command live only when it looks like it's *waiting for input*,
+		// not merely slow: still running past a short grace AND its latest output
+		// isn't newline-terminated (a prompt leaves the cursor on the line —
+		// "Enter value: "). Streaming logs from a long test/build end every line
+		// with "\n", so they stay silent and aren't duplicated; a fast command
+		// exits before the grace and is never shown. Output is always captured for
+		// the model regardless — the live echo is the only extra.
+		//
+		// Suspending Ink (which blanks the composer to hand the terminal to the
+		// child) is lazy too: only on go-live. A non-interactive command never
+		// suspends, so its frame never flickers — it just resolves into the
+		// transcript. On go-live we forward stdin and hold Ink suspended until the
+		// child closes, then resolve *after* Ink resumes so the transcript redraws
+		// onto a restored frame.
+		let live = false;
+		let graced = false;
+		let tail = ""; // trailing bytes of combined output, to spot a waiting prompt
+		let outputSeen = false; // any data from stdout or stderr at all
+		const preLive: Buffer[] = [];
+		let finalResult: ToolResult | null = null;
+		let releaseSuspend: () => void = () => {};
 
-				// Reveal a command live only when it looks like it's *waiting for
-				// input*, not merely slow: still running past a short grace AND its
-				// latest output isn't newline-terminated (a prompt leaves the cursor
-				// on the line — "Enter value: "). Streaming logs from a long test or
-				// build end every line with "\n", so they stay silent and aren't
-				// duplicated; a fast command exits before the grace and is never
-				// shown; an interactive prompt is surfaced (header + buffered prompt,
-				// then the rest live). Output is always captured for the model
-				// regardless — the live echo is the only extra.
-				let live = false;
-				let graced = false;
-				let tail = ""; // trailing bytes of combined output, to spot a waiting prompt
-				const preLive: Buffer[] = [];
-				const goLive = () => {
-					if (live) return;
-					live = true;
-					process.stderr.write(`\x1b[1m\x1b[36m$ ${command}\x1b[0m\n`);
-					for (const chunk of preLive) process.stderr.write(chunk);
-					preLive.length = 0;
-				};
-				const maybeGoLive = () => {
-					if (!live && graced && tail.length > 0 && !tail.endsWith("\n")) goLive();
-				};
-				const graceTimer = setTimeout(() => {
-					graced = true;
-					maybeGoLive();
-				}, BASH_LIVE_GRACE_MS);
-				const onChunk = (data: Buffer) => {
-					if (live) {
-						process.stderr.write(data);
-						return;
-					}
-					preLive.push(data);
-					tail = (tail + data.toString("utf-8")).slice(-256);
-					maybeGoLive();
-				};
+		const goLive = () => {
+			if (live) return;
+			live = true;
+			const suspended = new Promise<void>((r) => {
+				releaseSuspend = r;
+			});
+			void suspendAndRun(async () => {
+				// Ink is suspended and the composer has released stdin — only now
+				// forward it to the child, so keystrokes don't briefly go to both.
+				if (stdinSource && child.stdin) stdinSource.pipe(child.stdin, { end: false });
+				process.stderr.write(`\x1b[1m\x1b[36m$ ${command}\x1b[0m\n`);
+				for (const chunk of preLive) process.stderr.write(chunk);
+				preLive.length = 0;
+				await suspended;
+				process.stderr.write("\n");
+			}).then(() => {
+				if (finalResult) resolve(finalResult);
+			});
+		};
+		const maybeGoLive = () => {
+			if (!live && graced && tail.length > 0 && !tail.endsWith("\n")) goLive();
+		};
+		const graceTimer = setTimeout(() => {
+			graced = true;
+			maybeGoLive();
+		}, BASH_LIVE_GRACE_MS);
+		// Commands whose prompt goes to /dev/tty (read -p, sudo, git push)
+		// produce zero pipe output — detect that and go live anyway.
+		const silentTimer = setTimeout(() => {
+			if (!outputSeen) goLive();
+		}, BASH_LIVE_SILENT_MS);
+		const onChunk = (data: Buffer) => {
+			outputSeen = true;
+			if (live) {
+				process.stderr.write(data);
+				return;
+			}
+			preLive.push(data);
+			tail = (tail + data.toString("utf-8")).slice(-256);
+			maybeGoLive();
+		};
 
-				child.stdout.on("data", (data: Buffer) => {
-					if (stdout.length < maxBytes) stdout += data.toString("utf-8");
-					onChunk(data);
-				});
-				child.stderr.on("data", (data: Buffer) => {
-					if (stderr.length < maxBytes) stderr += data.toString("utf-8");
-					onChunk(data);
-				});
+		child.stdout.on("data", (data: Buffer) => {
+			if (stdout.length < maxBytes) stdout += data.toString("utf-8");
+			onChunk(data);
+		});
+		child.stderr.on("data", (data: Buffer) => {
+			if (stderr.length < maxBytes) stderr += data.toString("utf-8");
+			onChunk(data);
+		});
 
-				const timer = setTimeout(() => {
-					timedOut = true;
-					child.kill("SIGKILL");
-				}, timeout * 1000);
+		const timer = setTimeout(() => {
+			timedOut = true;
+			child.kill("SIGKILL");
+		}, timeout * 1000);
 
-				const onAbort = () => {
-					aborted = true;
-					child.kill("SIGKILL");
-				};
-				signal?.addEventListener("abort", onAbort, { once: true });
+		const onAbort = () => {
+			aborted = true;
+			child.kill("SIGKILL");
+		};
+		signal?.addEventListener("abort", onAbort, { once: true });
 
-				const cleanup = () => {
-					clearTimeout(timer);
-					clearTimeout(graceTimer);
-					signal?.removeEventListener("abort", onAbort);
-				};
+		const cleanup = () => {
+			clearTimeout(timer);
+			clearTimeout(graceTimer);
+			clearTimeout(silentTimer);
+			signal?.removeEventListener("abort", onAbort);
+		};
 
-				child.on("close", (code) => {
-					if (stdinSource && child.stdin) {
-						stdinSource.unpipe(child.stdin);
-					}
+		// Resolve directly when we never suspended; otherwise release the suspend
+		// so suspendAndRun resumes Ink, and its .then resolves once the frame is back.
+		const finish = (result: ToolResult) => {
+			finalResult = result;
+			if (live) releaseSuspend();
+			else resolve(result);
+		};
 
-					// Blank line between live output and Ink's frame — only if we
-					// actually showed something live.
-					if (live) process.stderr.write("\n");
+		child.on("close", (code) => {
+			if (live && stdinSource && child.stdin) stdinSource.unpipe(child.stdin);
+			cleanup();
+			let output = stdout;
+			if (stderr) output += (output ? "\n" : "") + stderr;
+			if (aborted) {
+				output += "\n\nCommand aborted";
+			} else if (timedOut) {
+				const hint =
+					stderr.toLowerCase().includes("password") ||
+					stderr.toLowerCase().includes("username for") ||
+					stdout === ""
+						? " (command may be waiting for interactive input — use non-interactive flags or ask the user to run it manually)"
+						: "";
+				output += `\n\nCommand timed out after ${timeout} seconds${hint}`;
+			} else if (code !== 0 && code !== null) {
+				output += `\n\nProcess exited with code ${code}`;
+			}
+			const lines = output.split("\n");
+			if (lines.length > config.maxToolOutputLines) {
+				const kept = lines.slice(-config.maxToolOutputLines);
+				output = `[Showing last ${config.maxToolOutputLines} of ${lines.length} lines]\n${kept.join("\n")}`;
+			}
+			finish({ content: output || "(no output)", isError: aborted || timedOut || (code !== 0 && code !== null) });
+		});
 
-					cleanup();
-					let output = stdout;
-					if (stderr) output += (output ? "\n" : "") + stderr;
-					if (aborted) {
-						output += "\n\nCommand aborted";
-					} else if (timedOut) {
-						const hint =
-							stderr.toLowerCase().includes("password") ||
-							stderr.toLowerCase().includes("username for") ||
-							stdout === ""
-								? " (command may be waiting for interactive input — use non-interactive flags or ask the user to run it manually)"
-								: "";
-						output += `\n\nCommand timed out after ${timeout} seconds${hint}`;
-					} else if (code !== 0 && code !== null) {
-						output += `\n\nProcess exited with code ${code}`;
-					}
-					// Truncate to max lines
-					const lines = output.split("\n");
-					if (lines.length > config.maxToolOutputLines) {
-						const kept = lines.slice(-config.maxToolOutputLines);
-						output = `[Showing last ${config.maxToolOutputLines} of ${lines.length} lines]\n${kept.join("\n")}`;
-					}
-					resolve({
-						content: output || "(no output)",
-						isError: aborted || timedOut || (code !== 0 && code !== null),
-					});
-				});
-
-				child.on("error", (err) => {
-					if (stdinSource && child.stdin) {
-						stdinSource.unpipe(child.stdin);
-					}
-					if (live) process.stderr.write("\n");
-					cleanup();
-					resolve({ content: err.message, isError: true });
-				});
-			}),
-	);
+		child.on("error", (err) => {
+			if (live && stdinSource && child.stdin) stdinSource.unpipe(child.stdin);
+			cleanup();
+			finish({ content: err.message, isError: true });
+		});
+	});
 }
 
 // ============================================================================

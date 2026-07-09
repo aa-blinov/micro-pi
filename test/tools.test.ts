@@ -96,6 +96,26 @@ describe("bash", () => {
 		}
 	});
 
+	it("goes live after silent timeout when command produces zero output (e.g. read -p, sudo)", async () => {
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const { writes, restore } = captureStderr();
+		try {
+			// A command that produces zero pipe output for >3 s — like `read -p`
+			// which writes its prompt to /dev/tty, not stderr. The silent timer
+			// must detect this and go live so stdin gets forwarded.
+			const start = Date.now();
+			const result = await exec("bash", { command: "sleep 3", timeout: 10 });
+			const elapsed = Date.now() - start;
+			const joined = writes.join("");
+			expect(joined).toContain("$"); // command header shown (goLive fired)
+			expect(result.isError).toBeFalsy();
+			// Should take ~4 s, not the full 10 s timeout
+			expect(elapsed).toBeLessThan(6000);
+		} finally {
+			restore();
+		}
+	});
+
 	it("respects timeout", async () => {
 		const exec = createToolExecutor(TEST_DIR, mockConfig);
 		const result = await exec("bash", { command: "sleep 10", timeout: 1 });
