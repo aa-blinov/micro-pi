@@ -1,7 +1,8 @@
 import { execFileSync, spawn } from "node:child_process";
 import { constants, type Dirent } from "node:fs";
-import { access, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+import type { Readable } from "node:stream";
 import type { AppConfig } from "./config.ts";
 import type { Tool } from "./llm.ts";
 import { checkDangerousBash } from "./permissions.ts";
@@ -333,6 +334,68 @@ function stripAnsi(s: string): string {
 	return s.replace(csi, "").replace(osc, "");
 }
 
+// Abstract child process — PTY when node-pty is installed (captures
+// interactive prompts like read -p, sudo, git push), pipe fallback
+// for release bundles where native modules aren't available.
+interface ChildHandle {
+	kill(signal: string): void;
+	write(data: string): void;
+	onData(handler: (data: string) => void): void;
+	onExit(handler: (info: { exitCode: number }) => void): void;
+	cleanup(): void;
+}
+
+function createBashProcess(command: string, cwd: string, stdinSource: Readable | null): ChildHandle {
+	try {
+		const ptyMod = require("node-pty");
+		const proc = ptyMod.spawn("bash", ["-c", command], {
+			name: "xterm-256color",
+			cols: process.stdout.columns || 80,
+			rows: process.stdout.rows || 24,
+			cwd,
+			env: process.env as Record<string, string>,
+		});
+		const listeners: ((data: string) => void)[] = [];
+		proc.onData((d: string) => {
+			for (const fn of listeners) fn(d);
+		});
+		return {
+			kill: (s) => proc.kill(s),
+			write: (d) => proc.write(d),
+			onData: (h) => listeners.push(h),
+			onExit: (h) => proc.onExit(h),
+			cleanup: () => {},
+		};
+	} catch {
+		// ponytail: no node-pty — pipe fallback. Can't capture /dev/tty
+		// prompts, but works for non-interactive commands.
+		const proc = spawn("bash", ["-c", command], {
+			cwd,
+			env: process.env,
+			stdio: ["pipe", "pipe", "pipe"],
+			detached: true, // separate process group so kill(-pid) wipes all children
+		});
+		const dataListeners: ((data: string) => void)[] = [];
+		proc.stdout.on("data", (d: Buffer) => {
+			for (const fn of dataListeners) fn(d.toString("utf-8"));
+		});
+		proc.stderr.on("data", (d: Buffer) => {
+			for (const fn of dataListeners) fn(d.toString("utf-8"));
+		});
+		const handle: ChildHandle = {
+			kill: (s) => process.kill(-proc.pid!, s as NodeJS.Signals),
+			write: (d) => proc.stdin?.write(d),
+			onData: (h) => dataListeners.push(h),
+			onExit: (h) => proc.on("close", (code) => h({ exitCode: code ?? 1 })),
+			cleanup: () => {
+				if (stdinSource && proc.stdin) stdinSource.unpipe(proc.stdin);
+			},
+		};
+		if (stdinSource && proc.stdin) stdinSource.pipe(proc.stdin, { end: false });
+		return handle;
+	}
+}
+
 async function execBash(
 	args: Record<string, unknown>,
 	cwd: string,
@@ -365,65 +428,7 @@ async function execBash(
 	const stdinSource = getStdinSource();
 
 	return new Promise<ToolResult>((resolve) => {
-		// Abstract child process — PTY when node-pty is installed (captures
-		// interactive prompts like read -p, sudo, git push), pipe fallback
-		// for release bundles where native modules aren't available.
-		interface ChildHandle {
-			kill(signal: string): void;
-			write(data: string): void;
-			onData(handler: (data: string) => void): void;
-			onExit(handler: (info: { exitCode: number }) => void): void;
-			cleanup(): void;
-		}
-
-		let child: ChildHandle;
-		try {
-			const ptyMod = require("node-pty");
-			const proc = ptyMod.spawn("bash", ["-c", command], {
-				name: "xterm-256color",
-				cols: process.stdout.columns || 80,
-				rows: process.stdout.rows || 24,
-				cwd,
-				env: process.env as Record<string, string>,
-			});
-			const listeners: ((data: string) => void)[] = [];
-			proc.onData((d: string) => {
-				for (const fn of listeners) fn(d);
-			});
-			child = {
-				kill: (s) => proc.kill(s),
-				write: (d) => proc.write(d),
-				onData: (h) => listeners.push(h),
-				onExit: (h) => proc.onExit(h),
-				cleanup: () => {},
-			};
-		} catch {
-			// ponytail: no node-pty — pipe fallback. Can't capture /dev/tty
-			// prompts, but works for non-interactive commands.
-			const proc = spawn("bash", ["-c", command], {
-				cwd,
-				env: process.env,
-				stdio: ["pipe", "pipe", "pipe"],
-				detached: true, // separate process group so kill(-pid) wipes all children
-			});
-			const dataListeners: ((data: string) => void)[] = [];
-			proc.stdout.on("data", (d: Buffer) => {
-				for (const fn of dataListeners) fn(d.toString("utf-8"));
-			});
-			proc.stderr.on("data", (d: Buffer) => {
-				for (const fn of dataListeners) fn(d.toString("utf-8"));
-			});
-			child = {
-				kill: (s) => process.kill(-proc.pid!, s as NodeJS.Signals),
-				write: (d) => proc.stdin?.write(d),
-				onData: (h) => dataListeners.push(h),
-				onExit: (h) => proc.on("close", (code) => h({ exitCode: code ?? 1 })),
-				cleanup: () => {
-					if (stdinSource && proc.stdin) stdinSource.unpipe(proc.stdin);
-				},
-			};
-			if (stdinSource && proc.stdin) stdinSource.pipe(proc.stdin, { end: false });
-		}
+		const child = createBashProcess(command, cwd, stdinSource);
 
 		let rawOutput = "";
 		let timedOut = false;
@@ -762,6 +767,7 @@ const MAX_GREP_FILE_BYTES = 5 * 1024 * 1024;
 interface GitignoreRule {
 	regex: RegExp;
 	dirOnly: boolean;
+	negated: boolean;
 }
 
 function escapeRegExp(text: string): string {
@@ -786,11 +792,42 @@ function globToRegExpSource(glob: string): string {
 			}
 		} else if (ch === "?") {
 			out += "[^/]";
+		} else if (ch === "{") {
+			// Brace expansion: {a,b,c} → (a|b|c)
+			const close = glob.indexOf("}", i);
+			if (close !== -1) {
+				const alternatives = glob
+					.slice(i + 1, close)
+					.split(",")
+					.map((alt) => globToRegExpSource(alt));
+				out += `(${alternatives.join("|")})`;
+				i = close;
+			} else {
+				out += escapeRegExp(ch);
+			}
 		} else {
 			out += escapeRegExp(ch);
 		}
 	}
 	return out;
+}
+
+function parseGitignoreFile(text: string): GitignoreRule[] {
+	const rules: GitignoreRule[] = [];
+	for (const rawLine of text.split("\n")) {
+		const line = rawLine.trim();
+		if (!line || line.startsWith("#")) continue;
+
+		const negated = line.startsWith("!");
+		const body = negated ? line.slice(1) : line;
+		const dirOnly = body.endsWith("/");
+		const pattern = dirOnly ? body.slice(0, -1) : body;
+		const anchored = pattern.startsWith("/");
+		const globBody = globToRegExpSource(anchored ? pattern.slice(1) : pattern);
+
+		rules.push({ regex: new RegExp(anchored ? `^${globBody}$` : `(^|/)${globBody}$`), dirOnly, negated });
+	}
+	return rules;
 }
 
 async function parseGitignore(root: string): Promise<GitignoreRule[]> {
@@ -800,39 +837,44 @@ async function parseGitignore(root: string): Promise<GitignoreRule[]> {
 	} catch {
 		return [];
 	}
+	return parseGitignoreFile(text);
+}
 
-	const rules: GitignoreRule[] = [];
-	for (const rawLine of text.split("\n")) {
-		const line = rawLine.trim();
-		if (!line || line.startsWith("#") || line.startsWith("!")) continue;
-
-		const dirOnly = line.endsWith("/");
-		const pattern = dirOnly ? line.slice(0, -1) : line;
-		const anchored = pattern.startsWith("/");
-		const body = anchored ? pattern.slice(1) : pattern;
-		const globBody = globToRegExpSource(body);
-
-		rules.push({ regex: new RegExp(anchored ? `^${globBody}$` : `(^|/)${globBody}$`), dirOnly });
+async function parseGitignoreNested(dir: string): Promise<GitignoreRule[]> {
+	let text: string;
+	try {
+		text = await readFile(join(dir, ".gitignore"), "utf-8");
+	} catch {
+		return [];
 	}
-	return rules;
+	return parseGitignoreFile(text);
 }
 
 function isGitignored(relPath: string, isDir: boolean, rules: GitignoreRule[]): boolean {
-	return rules.some((rule) => (!rule.dirOnly || isDir) && rule.regex.test(relPath));
+	let ignored = false;
+	for (const rule of rules) {
+		if (!rule.dirOnly || isDir) {
+			if (rule.regex.test(relPath)) {
+				ignored = !rule.negated;
+			}
+		}
+	}
+	return ignored;
 }
 
 function globToFileRegExp(glob: string): RegExp {
 	return new RegExp(`^${globToRegExpSource(glob)}$`);
 }
 
-/** Collect file paths under searchPath, skipping default-ignored dirs and cwd's .gitignore matches. */
+/** Collect file paths under searchPath, skipping default-ignored dirs and .gitignore matches. */
 async function walkFiles(cwd: string, searchPath: string, maxFiles: number = MAX_WALK_FILES): Promise<string[]> {
-	const rules = await parseGitignore(cwd);
-	const stack: string[] = [searchPath];
+	const rootRules = await parseGitignore(cwd);
+	const visited = new Set<string>();
+	const stack: Array<{ dir: string; rules: GitignoreRule[] }> = [{ dir: searchPath, rules: rootRules }];
 	const results: string[] = [];
 
 	while (stack.length > 0 && results.length < maxFiles) {
-		const dir = stack.pop()!;
+		const { dir, rules } = stack.pop()!;
 		let entries: Dirent[];
 		try {
 			entries = await readdir(dir, { withFileTypes: true });
@@ -847,10 +889,35 @@ async function walkFiles(cwd: string, searchPath: string, maxFiles: number = MAX
 			const isDir = entry.isDirectory();
 
 			if (isDir && DEFAULT_IGNORE_DIRS.has(entry.name)) continue;
+
+			// Resolve symlinks to detect cycles — a symlink pointing to an
+			// ancestor directory would loop forever without this.
+			if (entry.isSymbolicLink()) {
+				try {
+					const real = await realpath(absPath);
+					if (visited.has(real)) continue;
+					visited.add(real);
+					const st = await stat(real);
+					if (st.isDirectory()) {
+						const nestedRules = await parseGitignoreNested(real);
+						stack.push({ dir: real, rules: [...rules, ...nestedRules] });
+					} else if (st.isFile()) {
+						if (!isGitignored(relPath, false, rules)) results.push(real);
+					}
+				} catch {
+					continue;
+				}
+				continue;
+			}
+
 			if (isGitignored(relPath, isDir, rules)) continue;
 
-			if (isDir) stack.push(absPath);
-			else if (entry.isFile()) results.push(absPath);
+			if (isDir) {
+				const nestedRules = await parseGitignoreNested(absPath);
+				stack.push({ dir: absPath, rules: [...rules, ...nestedRules] });
+			} else if (entry.isFile()) {
+				results.push(absPath);
+			}
 		}
 	}
 	return results;
@@ -865,6 +932,11 @@ async function execFind(args: Record<string, unknown>, cwd: string, _config: App
 	const searchPath = args.path ? resolvePath(String(args.path), cwd) : cwd;
 	const limit = typeof args.limit === "number" ? args.limit : 1000;
 
+	const gitignorePath = join(searchPath, ".gitignore");
+	const hasGitignore = await access(gitignorePath, constants.R_OK)
+		.then(() => true)
+		.catch(() => false);
+
 	let absolutePaths: string[];
 	try {
 		// execFileSync runs the binary directly, no shell involved — unlike the
@@ -874,21 +946,24 @@ async function execFind(args: Record<string, unknown>, cwd: string, _config: App
 		// `x'; echo pwned > /tmp/x; echo '` ran the injected command). Callers
 		// don't get a say here — pattern/path come straight from a tool call
 		// argument, so this can't rely on the input being well-behaved.
-		const output = execFileSync("fd", ["--type", "f", "--max-results", String(limit), pattern, searchPath], {
+		//
+		// --ignore-file: fd doesn't respect .gitignore outside git repos;
+		// pass it explicitly so negation rules work everywhere. Nested
+		// .gitignore files in subdirectories are not auto-discovered by fd
+		// (ponytail: would need a pre-walk to collect them); the walkFiles
+		// fallback handles them when fd is absent.
+		const fdArgs = ["--glob", "--type", "f", "--max-results", String(limit)];
+		if (hasGitignore) fdArgs.push("--ignore-file", gitignorePath);
+		fdArgs.push(pattern, searchPath);
+		const output = execFileSync("fd", fdArgs, {
 			encoding: "utf-8",
 			timeout: 10_000,
 			cwd: searchPath,
 		});
 		absolutePaths = output.trim().split("\n").filter(Boolean);
-	} catch (error) {
-		// Unlike the old shell-based execSync, a missing binary now surfaces as
-		// a real Node ENOENT (execFileSync spawns the binary directly, no shell
-		// "command not found" translation to an exit code) — more reliable
-		// than the exit-127 heuristic this used to need.
-		if ((error as { code?: string }).code !== "ENOENT") {
-			return { content: "No files found" };
-		}
-		// fd isn't installed — walk the tree ourselves, matching the pattern
+	} catch {
+		// fd isn't installed or returned an error (e.g. invalid glob
+		// pattern) — walk the tree ourselves, matching the pattern
 		// against basenames like `find -name` does.
 		const nameRe = globToFileRegExp(pattern);
 		const allFiles = await walkFiles(cwd, searchPath);
@@ -934,17 +1009,10 @@ async function execGrep(args: Record<string, unknown>, cwd: string, config: AppC
 			timeout: 10_000,
 			maxBuffer: config.maxToolOutputBytes,
 		});
-	} catch (error) {
-		// Unlike the old shell-based execSync, a missing binary now surfaces as
-		// a real Node ENOENT rather than the shell's exit 127.
-		if ((error as { code?: string }).code !== "ENOENT") {
-			// rg ran but found nothing (or errored on the pattern) — same outcome
-			// either way, no point re-running the same search by hand.
-			return { content: "No matches found" };
-		}
-
-		// rg isn't installed — walk the tree and match content ourselves,
-		// skipping node_modules/.git/etc and .gitignore matches.
+	} catch {
+		// rg isn't installed or returned an error — walk the tree and
+		// match content ourselves, skipping node_modules/.git/etc and
+		// .gitignore matches.
 		let patternRe: RegExp;
 		try {
 			patternRe = new RegExp(literal ? escapeRegExp(pattern) : pattern, ignoreCase ? "i" : "");

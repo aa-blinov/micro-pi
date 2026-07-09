@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppConfig } from "../src/core/config.ts";
@@ -457,6 +457,170 @@ describe("grep", () => {
 			glob: `*'; touch '${canary}`,
 		});
 		expect(existsSync(canary)).toBe(false);
+	});
+});
+
+// ============================================================================
+// brace expansion in glob patterns
+// ============================================================================
+
+describe("brace expansion", () => {
+	it("expands {a,b} to match alternatives", async () => {
+		writeFileSync(join(TEST_DIR, "a.ts"), "");
+		writeFileSync(join(TEST_DIR, "b.js"), "");
+		writeFileSync(join(TEST_DIR, "c.css"), "");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("find", { pattern: "*.{ts,js}", path: TEST_DIR });
+		expect(result.content).toContain("a.ts");
+		expect(result.content).toContain("b.js");
+		expect(result.content).not.toContain("c.css");
+	});
+
+	it("expands {a,b,c} with three alternatives", async () => {
+		writeFileSync(join(TEST_DIR, "x.ts"), "");
+		writeFileSync(join(TEST_DIR, "y.js"), "");
+		writeFileSync(join(TEST_DIR, "z.css"), "");
+		writeFileSync(join(TEST_DIR, "w.md"), "");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("find", { pattern: "*.{ts,js,md}", path: TEST_DIR });
+		expect(result.content).toContain("x.ts");
+		expect(result.content).toContain("y.js");
+		expect(result.content).toContain("w.md");
+		expect(result.content).not.toContain("z.css");
+	});
+
+	it("handles nested globs inside braces", async () => {
+		writeFileSync(join(TEST_DIR, "test.spec.ts"), "");
+		writeFileSync(join(TEST_DIR, "test.test.ts"), "");
+		writeFileSync(join(TEST_DIR, "bare.ts"), "");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("find", { pattern: "*.{spec,test}.ts", path: TEST_DIR });
+		expect(result.content).toContain("test.spec.ts");
+		expect(result.content).toContain("test.test.ts");
+		expect(result.content).not.toContain("bare.ts");
+	});
+
+	it("treats unmatched { as literal", async () => {
+		writeFileSync(join(TEST_DIR, "a{b"), "");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("find", { pattern: "a{b", path: TEST_DIR });
+		expect(result.content).toContain("a{b");
+	});
+});
+
+// ============================================================================
+// symlink cycle detection
+// ============================================================================
+
+describe("symlink cycle detection", () => {
+	it("does not loop on circular symlinks", async () => {
+		const dirA = join(TEST_DIR, "a");
+		const dirB = join(dirA, "b");
+		mkdirSync(dirB, { recursive: true });
+		writeFileSync(join(dirA, "file.txt"), "");
+		// dirA/b/link -> dirA (cycle!)
+		symlinkSync(dirA, join(dirB, "link"));
+
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		// Should complete without hanging
+		const result = await exec("find", { pattern: "*.txt", path: TEST_DIR, timeout: 5 });
+		expect(result.isError).toBeFalsy();
+		expect(result.content).toContain("file.txt");
+	});
+
+	it("follows symlinks but does not revisit targets", async () => {
+		const realDir = join(TEST_DIR, "real");
+		const linkDir = join(TEST_DIR, "link");
+		mkdirSync(realDir);
+		writeFileSync(join(realDir, "data.txt"), "");
+		symlinkSync(realDir, linkDir);
+
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("find", { pattern: "data.txt", path: TEST_DIR });
+		// Should find data.txt once (via real/ or link/), not loop
+		expect(result.content).toContain("data.txt");
+	});
+
+	it("handles self-referencing symlink", async () => {
+		const selfDir = join(TEST_DIR, "self");
+		mkdirSync(selfDir);
+		writeFileSync(join(selfDir, "ok.txt"), "");
+		symlinkSync(selfDir, join(selfDir, "loop"));
+
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("find", { pattern: "ok.txt", path: TEST_DIR, timeout: 5 });
+		expect(result.isError).toBeFalsy();
+		expect(result.content).toContain("ok.txt");
+	});
+});
+
+// ============================================================================
+// gitignore: negation and nested .gitignore
+// ============================================================================
+
+describe("gitignore negation", () => {
+	it("ignores files matching a pattern", async () => {
+		writeFileSync(join(TEST_DIR, ".gitignore"), "*.log");
+		writeFileSync(join(TEST_DIR, "app.log"), "");
+		writeFileSync(join(TEST_DIR, "app.ts"), "");
+
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("find", { pattern: "*", path: TEST_DIR });
+		expect(result.content).toContain("app.ts");
+		expect(result.content).not.toContain("app.log");
+	});
+
+	it("un-ignores files with negation pattern", async () => {
+		writeFileSync(join(TEST_DIR, ".gitignore"), "*.log\n!important.log");
+		writeFileSync(join(TEST_DIR, "debug.log"), "");
+		writeFileSync(join(TEST_DIR, "important.log"), "");
+		writeFileSync(join(TEST_DIR, "app.ts"), "");
+
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("find", { pattern: "*", path: TEST_DIR });
+		expect(result.content).toContain("app.ts");
+		expect(result.content).toContain("important.log");
+		expect(result.content).not.toContain("debug.log");
+	});
+
+	it("last matching rule wins", async () => {
+		writeFileSync(join(TEST_DIR, ".gitignore"), "*.txt\n!important.txt\n*.txt");
+		writeFileSync(join(TEST_DIR, "file.txt"), "");
+
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("find", { pattern: "*.txt", path: TEST_DIR });
+		expect(result.content).not.toContain("file.txt");
+	});
+});
+
+describe("nested .gitignore", () => {
+	it("applies rules from nested .gitignore in subdirectories", async () => {
+		mkdirSync(join(TEST_DIR, "src"), { recursive: true });
+		writeFileSync(join(TEST_DIR, "src", ".gitignore"), "*.tmp");
+		writeFileSync(join(TEST_DIR, "src", "app.ts"), "");
+		writeFileSync(join(TEST_DIR, "src", "cache.tmp"), "");
+		writeFileSync(join(TEST_DIR, "root.tmp"), "");
+
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("find", { pattern: "*.tmp", path: TEST_DIR });
+		// src/.gitignore ignores *.tmp only under src/
+		expect(result.content).toContain("root.tmp");
+		expect(result.content).not.toContain("cache.tmp");
+	});
+
+	it("inherits parent rules and adds nested rules", async () => {
+		writeFileSync(join(TEST_DIR, ".gitignore"), "*.log");
+		mkdirSync(join(TEST_DIR, "sub"), { recursive: true });
+		writeFileSync(join(TEST_DIR, "sub", ".gitignore"), "*.tmp");
+		writeFileSync(join(TEST_DIR, "sub", "app.ts"), "");
+		writeFileSync(join(TEST_DIR, "sub", "debug.log"), "");
+		writeFileSync(join(TEST_DIR, "sub", "cache.tmp"), "");
+
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("find", { pattern: "*", path: TEST_DIR });
+		expect(result.content).toContain("app.ts");
+		expect(result.content).not.toContain("debug.log"); // root rule
+		expect(result.content).not.toContain("cache.tmp"); // nested rule
 	});
 });
 
