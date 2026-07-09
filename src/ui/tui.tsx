@@ -67,13 +67,13 @@ export async function runTui(args: ParsedArgs): Promise<void> {
 		},
 	};
 
+	// Load the saved theme before any UI — the startup spinner reads gradient
+	// endpoints from the active theme.
+	loadTheme(args.settings.theme);
+
 	showLoader("Starting cast...");
 	const result = await runStartup(args, pickersWithLoaderHandoff, showLoader);
 	hideLoader();
-
-	// Load the saved theme before rendering the banner — gradientBanner reads
-	// from the active theme's gradient endpoints.
-	loadTheme(args.settings.theme);
 
 	console.log(gradientBanner(CAST_BANNER, args.version));
 
