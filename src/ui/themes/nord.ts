@@ -7,7 +7,7 @@ export const nord: Theme = {
 	colors: {
 		gradient: { from: "#88c0d0", to: "#81a1c1" },
 		user: "#88c0d0",
-		agent: "#a3be8c",
+		agent: "#b48ead",
 		tool: "#81a1c1",
 		persona: "#b48ead",
 		accent: "#88c0d0",

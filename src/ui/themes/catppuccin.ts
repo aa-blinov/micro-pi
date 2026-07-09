@@ -7,8 +7,8 @@ export const catppuccin: Theme = {
 	description: "Pastel dark — soothing pastel colors for the cozy night owl",
 	colors: {
 		gradient: { from: "#89b4fa", to: "#cba6f7" },
-		user: "#89dceb",
-		agent: "#a6e3a1",
+		user: "#89b4fa",
+		agent: "#cba6f7",
 		tool: "#89b4fa",
 		persona: "#cba6f7",
 		accent: "#89b4fa",

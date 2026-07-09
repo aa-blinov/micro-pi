@@ -8,7 +8,7 @@ export const oneDark: Theme = {
 	colors: {
 		gradient: { from: "#61afef", to: "#c678dd" },
 		user: "#56b6c2",
-		agent: "#98c379",
+		agent: "#c678dd",
 		tool: "#61afef",
 		persona: "#c678dd",
 		accent: "#61afef",

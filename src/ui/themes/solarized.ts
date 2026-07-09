@@ -8,7 +8,7 @@ export const solarized: Theme = {
 	colors: {
 		gradient: { from: "#268bd2", to: "#2aa198" },
 		user: "#2aa198",
-		agent: "#859900",
+		agent: "#6c71c4",
 		tool: "#268bd2",
 		persona: "#d33682",
 		accent: "#268bd2",

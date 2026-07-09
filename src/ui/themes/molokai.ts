@@ -7,7 +7,7 @@ export const molokai: Theme = {
 	colors: {
 		gradient: { from: "#66d9ef", to: "#ae81ff" },
 		user: "#66d9ef",
-		agent: "#a6e22e",
+		agent: "#ae81ff",
 		tool: "#66d9ef",
 		persona: "#f92672",
 		accent: "#66d9ef",

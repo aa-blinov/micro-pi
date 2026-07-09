@@ -7,13 +7,13 @@ export const nightOwl: Theme = {
 	colors: {
 		gradient: { from: "#82aaff", to: "#c792ea" },
 		user: "#7fdbca",
-		agent: "#addb67",
+		agent: "#c792ea",
 		tool: "#82aaff",
 		persona: "#c792ea",
 		accent: "#82aaff",
-		success: "#addb67",
-		warning: "#ffcb6b",
-		error: "#ff5874",
-		muted: "#637777",
+		success: "#22da6e",
+		warning: "#FFCA28",
+		error: "#EF5350",
+		muted: "#5f7e97",
 	},
 };

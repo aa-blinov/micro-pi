@@ -7,7 +7,7 @@ export const tomorrowNight: Theme = {
 	colors: {
 		gradient: { from: "#81a2be", to: "#b294bb" },
 		user: "#8abeb7",
-		agent: "#b5bd68",
+		agent: "#b294bb",
 		tool: "#81a2be",
 		persona: "#b294bb",
 		accent: "#81a2be",

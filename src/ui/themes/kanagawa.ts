@@ -8,7 +8,7 @@ export const kanagawa: Theme = {
 	colors: {
 		gradient: { from: "#7e9cd8", to: "#957fb8" },
 		user: "#7fb4ca",
-		agent: "#98bb6c",
+		agent: "#957fb8",
 		tool: "#7e9cd8",
 		persona: "#957fb8",
 		accent: "#7e9cd8",

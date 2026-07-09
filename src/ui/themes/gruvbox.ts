@@ -7,7 +7,7 @@ export const gruvbox: Theme = {
 	colors: {
 		gradient: { from: "#fabd2f", to: "#d3869b" },
 		user: "#83a598",
-		agent: "#b8bb26",
+		agent: "#d3869b",
 		tool: "#fabd2f",
 		persona: "#d3869b",
 		accent: "#fabd2f",

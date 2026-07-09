@@ -7,11 +7,11 @@ export const tokyoNight: Theme = {
 	colors: {
 		gradient: { from: "#7aa2f7", to: "#bb9af7" },
 		user: "#7dcfff",
-		agent: "#9ece6a",
+		agent: "#bb9af7",
 		tool: "#7aa2f7",
 		persona: "#bb9af7",
 		accent: "#7aa2f7",
-		success: "#9ece6a",
+		success: "#73daca",
 		warning: "#e0af68",
 		error: "#f7768e",
 		muted: "#565f89",

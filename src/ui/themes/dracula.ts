@@ -7,7 +7,7 @@ export const dracula: Theme = {
 	colors: {
 		gradient: { from: "#bd93f9", to: "#ff79c6" },
 		user: "#8be9fd",
-		agent: "#50fa7b",
+		agent: "#ff79c6",
 		tool: "#bd93f9",
 		persona: "#ff79c6",
 		accent: "#bd93f9",

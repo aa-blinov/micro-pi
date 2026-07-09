@@ -80,6 +80,17 @@ function ToolSummary({ name, args }: { name: string; args: string }): JSX.Elemen
 			);
 		}
 
+		if (parsed && name === "read" && typeof parsed.path === "string") {
+			const offset = typeof parsed.offset === "number" ? parsed.offset : 0;
+			const limit = typeof parsed.limit === "number" ? parsed.limit : undefined;
+			const range = limit ? `${offset + 1}-${offset + limit}` : "all";
+			return (
+				<Text color={theme().muted} wrap="truncate">
+					{parsed.path} · lines {range}
+				</Text>
+			);
+		}
+
 		if (parsed && name === "write" && typeof parsed.path === "string") {
 			const lines = typeof parsed.content === "string" ? parsed.content.split("\n").length : 0;
 			return (

@@ -8,7 +8,7 @@ export const rosePine: Theme = {
 	colors: {
 		gradient: { from: "#9ccfd8", to: "#c4a7e7" },
 		user: "#9ccfd8",
-		agent: "#31748f",
+		agent: "#c4a7e7",
 		tool: "#c4a7e7",
 		persona: "#ebbcba",
 		accent: "#c4a7e7",

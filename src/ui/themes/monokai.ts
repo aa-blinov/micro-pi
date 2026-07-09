@@ -7,7 +7,7 @@ export const monokai: Theme = {
 	colors: {
 		gradient: { from: "#f92672", to: "#ae81ff" },
 		user: "#66d9ef",
-		agent: "#a6e22e",
+		agent: "#f92672",
 		tool: "#f92672",
 		persona: "#ae81ff",
 		accent: "#f92672",
