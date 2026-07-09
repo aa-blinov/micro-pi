@@ -118,12 +118,17 @@ describe("bash", () => {
 
 	it("captures read -p prompt via PTY (not /dev/tty)", async () => {
 		const exec = createToolExecutor(TEST_DIR, mockConfig);
-		// With PTY, read -p writes prompt to the PTY (not /dev/tty),
-		// so our onData handler sees it and grace+tail detects it.
-		const result = await exec("bash", { command: "read -p 'Name: ' name && echo Hello_$name", timeout: 3 });
-		// read blocks forever (no stdin in test) — expect timeout
-		expect(result.isError).toBe(true);
-		expect(result.content).toContain("timed out");
+		const { restore } = captureStderr();
+		try {
+			// With PTY, read -p writes prompt to the PTY (not /dev/tty),
+			// so our onData handler sees it and grace+tail detects it.
+			const result = await exec("bash", { command: "read -p 'Name: ' name && echo Hello_$name", timeout: 3 });
+			// read blocks forever (no stdin in test) — expect timeout
+			expect(result.isError).toBe(true);
+			expect(result.content).toContain("timed out");
+		} finally {
+			restore();
+		}
 	});
 
 	it("respects timeout", async () => {
