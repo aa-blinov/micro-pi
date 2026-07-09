@@ -36,7 +36,7 @@ const AGENT_COLOR = "#4ade80";
  * Falls back to a block count for pathologically large edits so the O(m·n) DP
  * can't stall the render.
  */
-function lineChurn(oldText: string, newText: string): { added: number; removed: number } {
+export function lineChurn(oldText: string, newText: string): { added: number; removed: number } {
 	const a = oldText.split("\n");
 	const b = newText.split("\n");
 	const m = a.length;

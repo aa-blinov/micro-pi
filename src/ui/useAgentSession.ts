@@ -158,7 +158,7 @@ interface UseAgentSessionParams {
  * session — or a <Static> repaint after a terminal resize — renders the user's
  * own prompt (and the assistant's replies) as that placeholder.
  */
-function messageContentToText(content: unknown): string {
+export function messageContentToText(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
 		const parts: string[] = [];
@@ -185,7 +185,7 @@ function messageContentToText(content: unknown): string {
  * (assistant message, then separate tool messages) leaks provider protocol
  * details into the transcript that the user shouldn't have to read.
  */
-function buildDisplayMessages(sessionMessages: SessionState["messages"]): ChatMessage[] {
+export function buildDisplayMessages(sessionMessages: SessionState["messages"]): ChatMessage[] {
 	const out: ChatMessage[] = [];
 	for (let i = 0; i < sessionMessages.length; i++) {
 		const m = sessionMessages[i]!;
