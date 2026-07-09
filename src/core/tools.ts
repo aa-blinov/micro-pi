@@ -1,8 +1,7 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { constants, type Dirent } from "node:fs";
 import { access, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
-import * as pty from "node-pty";
 import type { AppConfig } from "./config.ts";
 import type { Tool } from "./llm.ts";
 import { checkDangerousBash } from "./permissions.ts";
@@ -270,13 +269,64 @@ async function execBash(
 	const stdinSource = getStdinSource();
 
 	return new Promise<ToolResult>((resolve) => {
-		const child = pty.spawn("bash", ["-c", command], {
-			name: "xterm-256color",
-			cols: process.stdout.columns || 80,
-			rows: process.stdout.rows || 24,
-			cwd,
-			env: process.env as Record<string, string>,
-		});
+		// Abstract child process — PTY when node-pty is installed (captures
+		// interactive prompts like read -p, sudo, git push), pipe fallback
+		// for release bundles where native modules aren't available.
+		interface ChildHandle {
+			kill(signal: string): void;
+			write(data: string): void;
+			onData(handler: (data: string) => void): void;
+			onExit(handler: (info: { exitCode: number }) => void): void;
+			cleanup(): void;
+		}
+
+		let child: ChildHandle;
+		try {
+			const ptyMod = require("node-pty");
+			const proc = ptyMod.spawn("bash", ["-c", command], {
+				name: "xterm-256color",
+				cols: process.stdout.columns || 80,
+				rows: process.stdout.rows || 24,
+				cwd,
+				env: process.env as Record<string, string>,
+			});
+			const listeners: ((data: string) => void)[] = [];
+			proc.onData((d: string) => {
+				for (const fn of listeners) fn(d);
+			});
+			child = {
+				kill: (s) => proc.kill(s),
+				write: (d) => proc.write(d),
+				onData: (h) => listeners.push(h),
+				onExit: (h) => proc.onExit(h),
+				cleanup: () => {},
+			};
+		} catch {
+			// ponytail: no node-pty — pipe fallback. Can't capture /dev/tty
+			// prompts, but works for non-interactive commands.
+			const proc = spawn("bash", ["-c", command], {
+				cwd,
+				env: process.env,
+				stdio: ["pipe", "pipe", "pipe"],
+			});
+			const dataListeners: ((data: string) => void)[] = [];
+			proc.stdout.on("data", (d: Buffer) => {
+				for (const fn of dataListeners) fn(d.toString("utf-8"));
+			});
+			proc.stderr.on("data", (d: Buffer) => {
+				for (const fn of dataListeners) fn(d.toString("utf-8"));
+			});
+			child = {
+				kill: (s) => proc.kill(s as NodeJS.Signals),
+				write: (d) => proc.stdin?.write(d),
+				onData: (h) => dataListeners.push(h),
+				onExit: (h) => proc.on("close", (code) => h({ exitCode: code ?? 1 })),
+				cleanup: () => {
+					if (stdinSource && proc.stdin) stdinSource.unpipe(proc.stdin);
+				},
+			};
+			if (stdinSource && proc.stdin) stdinSource.pipe(proc.stdin, { end: false });
+		}
 
 		let rawOutput = "";
 		let timedOut = false;
