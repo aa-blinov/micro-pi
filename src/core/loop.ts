@@ -1,7 +1,4 @@
 import { setMaxListeners } from "node:events";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { AppConfig } from "./config.ts";
 import type { Message, Tool, Usage } from "./llm.ts";
 import {
@@ -14,7 +11,7 @@ import {
 } from "./llm.ts";
 import type { McpToolHandle } from "./mcp.ts";
 import type { Persona } from "./personas.ts";
-import { readRequiredPrompt } from "./prompts.ts";
+import { promptsDir, readRequiredPrompt } from "./prompts.ts";
 import { compactMessages, estimateTokens, shouldCompact } from "./session.ts";
 import type { SubagentPrompt } from "./subagents.ts";
 import { type ConfirmBash, createToolExecutor, getToolDefinitions, type ToolResult } from "./tools.ts";
@@ -25,17 +22,9 @@ import { type ConfirmBash, createToolExecutor, getToolDefinitions, type ToolResu
 // summary when this is the first compaction this session has hit, or an
 // update-in-place instruction set when compactMessages found a previous
 // summary to fold new messages into.
-//
-// The bundle (dist/index.js) sits one level below the install root where
-// prompts/ lives; source files (src/core/*.ts) sit two levels below the
-// repo root. Try the bundle path first, fall back to the dev path.
-const _selfDir = dirname(fileURLToPath(import.meta.url));
-const PROMPTS_DIR = existsSync(join(_selfDir, "..", "prompts"))
-	? join(_selfDir, "..", "prompts")
-	: join(_selfDir, "..", "..", "prompts");
-const COMPACTION_SYSTEM_PROMPT = readRequiredPrompt(PROMPTS_DIR, "compaction-system.md");
-const COMPACTION_PROMPT = readRequiredPrompt(PROMPTS_DIR, "compaction.md");
-const COMPACTION_UPDATE_PROMPT = readRequiredPrompt(PROMPTS_DIR, "compaction-update.md");
+const COMPACTION_SYSTEM_PROMPT = readRequiredPrompt(promptsDir, "compaction-system.md");
+const COMPACTION_PROMPT = readRequiredPrompt(promptsDir, "compaction.md");
+const COMPACTION_UPDATE_PROMPT = readRequiredPrompt(promptsDir, "compaction-update.md");
 
 // ============================================================================
 // Compaction

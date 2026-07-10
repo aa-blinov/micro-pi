@@ -9,8 +9,23 @@
  * module-level readFileSync crash the whole CLI before it even starts.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+/**
+ * Absolute path to the shipped `prompts/` directory.
+ *
+ * The bundle (dist/index.js) sits one level below the install root where
+ * prompts/ lives; source files (src/core/*.ts) sit two levels below the repo
+ * root. This module is under src/core/ (and bundled into dist/), so the same
+ * two-candidate probe every prompt-reading module used to duplicate resolves
+ * correctly from here for both layouts.
+ */
+const _selfDir = dirname(fileURLToPath(import.meta.url));
+export const promptsDir = existsSync(join(_selfDir, "..", "prompts"))
+	? join(_selfDir, "..", "prompts")
+	: join(_selfDir, "..", "..", "prompts");
 
 /** Read a required prompt file, throwing a clear error if it's missing. */
 export function readRequiredPrompt(promptsDir: string, fileName: string): string {

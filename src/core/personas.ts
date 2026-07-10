@@ -16,10 +16,10 @@
  * readSharedErrorHandling below).
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { parseFrontmatter } from "./frontmatter.ts";
+import { promptsDir } from "./prompts.ts";
 
 export type PersonaSource = "builtin" | "global" | "project";
 
@@ -39,10 +39,7 @@ export const DEFAULT_PERSONA = "coding";
 
 export const globalPersonasDir = join(process.env.HOME ?? ".", ".cast", "personas");
 
-const _selfDir = dirname(fileURLToPath(import.meta.url));
-const PROMPTS_DIR = existsSync(join(_selfDir, "..", "prompts"))
-	? join(_selfDir, "..", "prompts")
-	: join(_selfDir, "..", "..", "prompts");
+const PROMPTS_DIR = promptsDir;
 
 /**
  * Appended to every persona's system prompt, read fresh from

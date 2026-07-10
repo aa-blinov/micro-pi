@@ -19,19 +19,14 @@
 
 import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { parseFrontmatter } from "./frontmatter.ts";
-import { readRequiredPrompt } from "./prompts.ts";
+import { promptsDir, readRequiredPrompt } from "./prompts.ts";
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const _selfDir = dirname(fileURLToPath(import.meta.url));
-const _promptsDir = existsSync(join(_selfDir, "..", "prompts"))
-	? join(_selfDir, "..", "prompts")
-	: join(_selfDir, "..", "..", "prompts");
-const RULES_INSTRUCTIONS = readRequiredPrompt(_promptsDir, "rules-instructions.md");
+const RULES_INSTRUCTIONS = readRequiredPrompt(promptsDir, "rules-instructions.md");
 
 // ============================================================================
 // Types

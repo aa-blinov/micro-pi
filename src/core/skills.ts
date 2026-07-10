@@ -13,9 +13,8 @@
 
 import { type Dirent, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { parseFrontmatter } from "./frontmatter.ts";
-import { readRequiredPrompt } from "./prompts.ts";
+import { promptsDir, readRequiredPrompt } from "./prompts.ts";
 
 const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
@@ -23,13 +22,9 @@ const MAX_DESCRIPTION_LENGTH = 1024;
 // Instructions injected into the system prompt alongside the discovered
 // skill list — content, not code, so it lives in prompts/ with the other
 // prompt files instead of as inline strings here.
-const _selfDir = dirname(fileURLToPath(import.meta.url));
-const _promptsDir = existsSync(join(_selfDir, "..", "prompts"))
-	? join(_selfDir, "..", "prompts")
-	: join(_selfDir, "..", "..", "prompts");
-const SKILLS_INSTRUCTIONS = readRequiredPrompt(_promptsDir, "skills-instructions.md");
+const SKILLS_INSTRUCTIONS = readRequiredPrompt(promptsDir, "skills-instructions.md");
 
-export const builtinSkillsDir = join(_promptsDir, "skills");
+export const builtinSkillsDir = join(promptsDir, "skills");
 
 export type SkillSource = "builtin" | "global" | "project" | "path";
 

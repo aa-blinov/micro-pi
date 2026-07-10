@@ -8,10 +8,10 @@
  * selected by the task tool at spawn time.
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { parseFrontmatter } from "./frontmatter.ts";
+import { promptsDir } from "./prompts.ts";
 
 export interface SubagentPrompt {
 	name: string;
@@ -20,10 +20,7 @@ export interface SubagentPrompt {
 	systemPrompt: string;
 }
 
-const _selfDir = dirname(fileURLToPath(import.meta.url));
-const SUBAGENTS_DIR = existsSync(join(_selfDir, "..", "prompts", "subagents"))
-	? join(_selfDir, "..", "prompts", "subagents")
-	: join(_selfDir, "..", "..", "prompts", "subagents");
+const SUBAGENTS_DIR = join(promptsDir, "subagents");
 
 function loadSubagentFromFile(filePath: string): SubagentPrompt | null {
 	let raw: string;
