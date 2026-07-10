@@ -49,6 +49,15 @@ export function useTerminalResync(onResync: () => void): void {
 
 		// --- scroll guard state (shared by both detection layers) ---
 		let scrollUp = false;
+		// scrollUp is refreshed only by the DECXCPR poll, and the poll is
+		// disabled during streaming and terminal suspension — so right after
+		// either ends the flag is stale. A resync must not trust a stale
+		// "not scrolled": the user may have scrolled up with the trackpad
+		// mid-generation, and clearing (+ \x1b[3J scrollback wipe) in the
+		// ~200-700ms window before the first fresh poll would yank them to
+		// the top of the replayed history. Set stale while streaming/suspended;
+		// cleared by every completed poll (which only runs outside both).
+		let scrollUpStale = false;
 
 		// --- resize: debounce a settle, then hard reset ---
 		let resizeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -60,12 +69,18 @@ export function useTerminalResync(onResync: () => void): void {
 		let lastCols = out.columns;
 		let lastRows = out.rows;
 
+		// Whether the scroll flag can be trusted right now. Non-TTY stdin never
+		// polls, so staleness can't clear there — don't let it block forever.
+		const scrollKnown = () => !scrollUpStale || !process.stdin.isTTY;
+
 		const doResync = () => {
 			// The clear below includes \x1b[3J (wipe scrollback) — running it
 			// while the user is scrolled up reading history yanks them to the
 			// bottom and destroys what they were reading. Defer until they
-			// return to the bottom (scrollUp is refreshed by the DECXCPR poll).
-			if (isStreamingActive() || isTerminalSuspended() || scrollUp) {
+			// return to the bottom (scrollUp is refreshed by the DECXCPR poll),
+			// and until the poll has actually run since streaming/suspension
+			// ended — a stale "not scrolled" is not a green light.
+			if (isStreamingActive() || isTerminalSuspended() || scrollUp || !scrollKnown()) {
 				resyncPending = true;
 				return;
 			}
@@ -85,9 +100,14 @@ export function useTerminalResync(onResync: () => void): void {
 		out.on("resize", onResize);
 
 		// Flush a deferred resync once streaming ends / terminal is released /
-		// the user scrolls back to the bottom.
+		// the user scrolls back to the bottom — but only after a fresh poll has
+		// confirmed the scroll state (see scrollUpStale above).
 		const checkDeferredResync = () => {
-			if (resyncPending && !isStreamingActive() && !isTerminalSuspended() && !scrollUp) {
+			if (isStreamingActive() || isTerminalSuspended()) {
+				scrollUpStale = true;
+				return;
+			}
+			if (resyncPending && !scrollUp && scrollKnown()) {
 				if (resizeTimer) clearTimeout(resizeTimer);
 				resizeTimer = setTimeout(doResync, 80);
 				resyncPending = false;
@@ -157,6 +177,9 @@ export function useTerminalResync(onResync: () => void): void {
 				process.stdin.off("data", onStdin);
 				process.stdin.resume();
 				scrollUp = scrolled;
+				// This poll only runs outside streaming/suspension, so its answer
+				// is fresh — deferred resyncs may trust the flag again.
+				scrollUpStale = false;
 			}
 
 			function onStdin(chunk: Buffer) {
