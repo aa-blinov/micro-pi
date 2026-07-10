@@ -15,6 +15,7 @@ import { type Dirent, existsSync, readdirSync, readFileSync, statSync } from "no
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseFrontmatter } from "./frontmatter.ts";
+import { readRequiredPrompt } from "./prompts.ts";
 
 const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
@@ -26,7 +27,7 @@ const _selfDir = dirname(fileURLToPath(import.meta.url));
 const _promptsDir = existsSync(join(_selfDir, "..", "prompts"))
 	? join(_selfDir, "..", "prompts")
 	: join(_selfDir, "..", "..", "prompts");
-const SKILLS_INSTRUCTIONS = readFileSync(join(_promptsDir, "skills-instructions.md"), "utf-8").trim();
+const SKILLS_INSTRUCTIONS = readRequiredPrompt(_promptsDir, "skills-instructions.md");
 
 export const builtinSkillsDir = join(_promptsDir, "skills");
 

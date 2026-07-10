@@ -1,5 +1,5 @@
 import { setMaxListeners } from "node:events";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AppConfig } from "./config.ts";
@@ -14,6 +14,7 @@ import {
 } from "./llm.ts";
 import type { McpToolHandle } from "./mcp.ts";
 import type { Persona } from "./personas.ts";
+import { readRequiredPrompt } from "./prompts.ts";
 import { compactMessages, estimateTokens, shouldCompact } from "./session.ts";
 import type { SubagentPrompt } from "./subagents.ts";
 import { type ConfirmBash, createToolExecutor, getToolDefinitions, type ToolResult } from "./tools.ts";
@@ -32,9 +33,9 @@ const _selfDir = dirname(fileURLToPath(import.meta.url));
 const PROMPTS_DIR = existsSync(join(_selfDir, "..", "prompts"))
 	? join(_selfDir, "..", "prompts")
 	: join(_selfDir, "..", "..", "prompts");
-const COMPACTION_SYSTEM_PROMPT = readFileSync(join(PROMPTS_DIR, "compaction-system.md"), "utf-8").trim();
-const COMPACTION_PROMPT = readFileSync(join(PROMPTS_DIR, "compaction.md"), "utf-8").trim();
-const COMPACTION_UPDATE_PROMPT = readFileSync(join(PROMPTS_DIR, "compaction-update.md"), "utf-8").trim();
+const COMPACTION_SYSTEM_PROMPT = readRequiredPrompt(PROMPTS_DIR, "compaction-system.md");
+const COMPACTION_PROMPT = readRequiredPrompt(PROMPTS_DIR, "compaction.md");
+const COMPACTION_UPDATE_PROMPT = readRequiredPrompt(PROMPTS_DIR, "compaction-update.md");
 
 // ============================================================================
 // Compaction

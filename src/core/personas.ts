@@ -119,7 +119,7 @@ function loadPersonaFromFile(filePath: string, source: PersonaSource): Persona |
 }
 
 /**
- * Load all .md personas from a directory, returning them sorted by name.
+ * Load all .md personas from a directory, returning them sorted by label.
  * Silently returns an empty array if the directory doesn't exist.
  */
 function loadPersonasFromDir(dir: string, source: PersonaSource): Persona[] {
