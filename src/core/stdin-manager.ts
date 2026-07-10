@@ -13,8 +13,6 @@
  * (c) resumes Ink when the child exits.
  */
 
-import type { Readable } from "node:stream";
-
 export interface StdinOwner {
 	/** Unique label for debugging. */
 	id: string;
@@ -25,7 +23,6 @@ export interface StdinOwner {
 }
 
 let currentOwner: StdinOwner | null = null;
-let stdinSource: Readable | null = null;
 
 /** True while a child process owns the terminal (suspendAndRun is active). */
 let terminalSuspended = false;
@@ -55,13 +52,6 @@ export function registerStdinOwner(owner: StdinOwner): void {
 /** Unregister the current owner (e.g. on component unmount). */
 export function unregisterStdinOwner(owner: StdinOwner): void {
 	if (currentOwner === owner) currentOwner = null;
-}
-
-/**
- * Set the raw stdin stream (process.stdin). Called once from Composer.
- */
-export function setStdinSource(source: Readable): void {
-	stdinSource = source;
 }
 
 /**
@@ -109,11 +99,6 @@ export async function suspendAndRun<T>(callback: () => Promise<T>): Promise<T> {
 	return result!;
 }
 
-/** Whether stdin is currently paused (a child process owns it). */
-export function isPaused(): boolean {
-	return suspendHook !== null;
-}
-
 export function isTerminalSuspended(): boolean {
 	return terminalSuspended;
 }
@@ -126,9 +111,4 @@ export function setStreamingActive(active: boolean): void {
 /** Whether the agent is actively streaming tokens. */
 export function isStreamingActive(): boolean {
 	return streamingActive;
-}
-
-/** Get the underlying stdin stream. */
-export function getStdinSource(): Readable | null {
-	return stdinSource;
 }

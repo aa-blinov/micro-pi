@@ -108,6 +108,8 @@ export interface TaskExecutorDeps {
 	mainModel?: string;
 	/** Model override for subagents (falls back to main model if undefined). */
 	subagentModel?: string;
+	/** Tool names to exclude from the definitions sent to the model. */
+	disabledTools?: Set<string>;
 	/** Injected to avoid circular dependency with loop.ts. */
 	runAgentLoop: (messages: Message[], config: LoopConfig) => Promise<Message[]>;
 }
@@ -200,6 +202,7 @@ export async function execTask(
 			confirmBash: serializeConfirm(deps.confirmBash),
 			mcpTools: deps.mcpTools,
 			mcpToolIndex: deps.mcpToolIndex,
+			disabledTools: deps.disabledTools,
 			// ponytail: no personas/currentPersona/subagentModel — child can't delegate further
 		});
 	} finally {

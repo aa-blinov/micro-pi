@@ -1,6 +1,6 @@
 import { Box, Text, useStdin } from "ink";
 import { type JSX, useEffect, useMemo, useRef, useState } from "react";
-import { registerStdinOwner, type StdinOwner, setStdinSource, unregisterStdinOwner } from "../core/stdin-manager.ts";
+import { registerStdinOwner, type StdinOwner, unregisterStdinOwner } from "../core/stdin-manager.ts";
 import { SLASH_COMMANDS } from "./commands.ts";
 import { type InputEvent, InputParser } from "./input/input-parser.ts";
 import { StdinBuffer } from "./input/stdin-buffer.ts";
@@ -387,7 +387,6 @@ export function Composer({
 		stdinBuf.on("paste", (text: string) => handlePasteContent(text));
 
 		const stdinSource = stdin ?? process.stdin;
-		setStdinSource(stdinSource);
 
 		const stdinDataHandler = (chunk: Buffer) => {
 			if (lockedRef.current) return;

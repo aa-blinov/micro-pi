@@ -201,7 +201,7 @@ export interface LoopConfig {
 	steeringQueue?: MessageQueue;
 	followUpQueue?: MessageQueue;
 	confirmBash?: ConfirmBash;
-	/** Definitions for connected MCP servers' tools, appended to the 7 built-in ones. */
+	/** Definitions for connected MCP servers' tools, appended to the built-in ones. */
 	mcpTools?: Tool[];
 	/** Dispatch table for mcpTools — checked before falling back to the built-in executor. */
 	mcpToolIndex?: Map<string, McpToolHandle>;
@@ -213,6 +213,8 @@ export interface LoopConfig {
 	subagentPrompts?: SubagentPrompt[];
 	/** Model override for subagents (falls back to main model if undefined). */
 	subagentModel?: string;
+	/** Tool names to exclude from the definitions sent to the model. */
+	disabledTools?: Set<string>;
 	/** promptTokens from the most recent API response — used by shouldCompact
 	 * as the authoritative context size instead of character-based estimation. */
 	lastPromptTokens?: number;
@@ -264,10 +266,12 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 	const currentPersonaObj = loopConfig.personas?.find((p) => p.name === loopConfig.currentPersona);
 	const subagentsEnabled = currentPersonaObj?.subagents === true;
 	const subagentNames = subagentsEnabled ? loopConfig.subagentPrompts?.map((p) => p.name) : undefined;
-	const tools = [
+	const allTools = [
 		...getToolDefinitions(subagentNames, initialModel, loopConfig.subagentModel),
 		...(loopConfig.mcpTools ?? []),
 	];
+	const disabledTools = loopConfig.disabledTools;
+	const tools = disabledTools?.size ? allTools.filter((t) => !disabledTools.has(t.function.name)) : allTools;
 
 	// Doom-loop detector: tracks the last DOOM_LOOP_THRESHOLD tool calls
 	// (name + serialized args). When the same call appears that many times in
@@ -290,6 +294,7 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 					confirmBash: loopConfig.confirmBash,
 					mainModel: initialModel,
 					subagentModel: loopConfig.subagentModel,
+					disabledTools: loopConfig.disabledTools,
 					runAgentLoop,
 				}
 			: undefined,

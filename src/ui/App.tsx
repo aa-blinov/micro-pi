@@ -12,6 +12,7 @@ import {
 } from "../core/rules.ts";
 import type { SessionUsage } from "../core/session.ts";
 import { estimateTokens } from "../core/session.ts";
+import { loadSettings } from "../core/settings.ts";
 import type { StartupResult } from "../core/startup.ts";
 import { setSuspendHook } from "../core/stdin-manager.ts";
 import { fetchLatestVersion, isNewerVersion, isReleaseInstall } from "../core/upgrade.ts";
@@ -94,6 +95,15 @@ export function App(props: AppProps): JSX.Element {
 	const [personas] = useState(result.personas);
 	const [subagentPrompts] = useState(result.subagentPrompts);
 	const [subagentModel, setSubagentModel] = useState(result.subagentModel);
+	const [webToolsEnabled, setWebToolsEnabled] = useState(() => loadSettings().webTools === true);
+	const disabledTools = useMemo(() => {
+		const s = new Set<string>();
+		if (!webToolsEnabled) {
+			s.add("web_search");
+			s.add("web_fetch");
+		}
+		return s;
+	}, [webToolsEnabled]);
 	// Theme change counter — forces a re-render when /theme switches the active
 	// theme, since theme() reads from a module-level singleton that Ink can't
 	// detect on its own.
@@ -171,6 +181,7 @@ export function App(props: AppProps): JSX.Element {
 		currentPersona: currentPersona.name,
 		subagentPrompts,
 		subagentModel,
+		disabledTools,
 	});
 	const running = agent.status === "running";
 	const canSubmit = useCallback(
@@ -255,6 +266,8 @@ export function App(props: AppProps): JSX.Element {
 		setPersonaOptions,
 		subagentModel,
 		setSubagentModel,
+		webToolsEnabled,
+		setWebToolsEnabled,
 		onThemeChange,
 	});
 	depsRef.current = {
@@ -298,6 +311,8 @@ export function App(props: AppProps): JSX.Element {
 		setPersonaOptions,
 		subagentModel,
 		setSubagentModel,
+		webToolsEnabled,
+		setWebToolsEnabled,
 		onThemeChange,
 	};
 

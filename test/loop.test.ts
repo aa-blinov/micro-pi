@@ -992,3 +992,75 @@ describe("runAgentLoop — doom loop detection", () => {
 		expect(t4 && t4.type === "tool_end" && !t4.result.isError).toBe(true);
 	});
 });
+
+// ============================================================================
+// runAgentLoop — disabledTools filtering
+// ============================================================================
+
+type ToolDef = { type: "function"; function: { name: string } };
+
+describe("runAgentLoop — disabledTools filtering", () => {
+	it("excludes web_search and web_fetch when disabledTools contains them", async () => {
+		let capturedTools: ToolDef[] = [];
+		vi.mocked(streamAndCollect).mockImplementationOnce(async (_c, _m, _msgs, tools) => {
+			capturedTools = tools as ToolDef[];
+			return { content: "ok", thinking: "", finishReason: "stop" };
+		});
+
+		await runAgentLoop([{ role: "user", content: "hi" }], {
+			config: testConfig,
+			model: "test-model",
+			cwd: process.cwd(),
+			systemPrompt: "test",
+			disabledTools: new Set(["web_search", "web_fetch"]),
+			onEvent: () => {},
+		});
+
+		const names = capturedTools.map((t) => t.function.name);
+		expect(names).toContain("bash");
+		expect(names).toContain("read");
+		expect(names).not.toContain("web_search");
+		expect(names).not.toContain("web_fetch");
+	});
+
+	it("includes web_search and web_fetch when disabledTools is empty", async () => {
+		let capturedTools: ToolDef[] = [];
+		vi.mocked(streamAndCollect).mockImplementationOnce(async (_c, _m, _msgs, tools) => {
+			capturedTools = tools as ToolDef[];
+			return { content: "ok", thinking: "", finishReason: "stop" };
+		});
+
+		await runAgentLoop([{ role: "user", content: "hi" }], {
+			config: testConfig,
+			model: "test-model",
+			cwd: process.cwd(),
+			systemPrompt: "test",
+			disabledTools: new Set<string>(),
+			onEvent: () => {},
+		});
+
+		const names = capturedTools.map((t) => t.function.name);
+		expect(names).toContain("web_search");
+		expect(names).toContain("web_fetch");
+	});
+
+	it("includes web tools when disabledTools is undefined", async () => {
+		let capturedTools: ToolDef[] = [];
+		vi.mocked(streamAndCollect).mockImplementationOnce(async (_c, _m, _msgs, tools) => {
+			capturedTools = tools as ToolDef[];
+			return { content: "ok", thinking: "", finishReason: "stop" };
+		});
+
+		await runAgentLoop([{ role: "user", content: "hi" }], {
+			config: testConfig,
+			model: "test-model",
+			cwd: process.cwd(),
+			systemPrompt: "test",
+			onEvent: () => {},
+		});
+
+		const names = capturedTools.map((t) => t.function.name);
+		expect(names).toContain("web_search");
+		expect(names).toContain("web_fetch");
+	});
+});

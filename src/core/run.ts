@@ -4,6 +4,7 @@ import type { AgentEvent } from "./loop.ts";
 import { runAgentLoop } from "./loop.ts";
 import { closeMcpConnections } from "./mcp.ts";
 import { addUsage, appendMessage, type SessionState, saveSession } from "./session.ts";
+import { loadSettings } from "./settings.ts";
 import type { ParsedArgs } from "./startup.ts";
 import { runStartup } from "./startup.ts";
 
@@ -39,6 +40,13 @@ export async function runNonInteractive(args: ParsedArgs, options: RunOptions): 
 
 	appendMessage(session, { role: "user", content: options.message });
 
+	const settings = loadSettings();
+	const disabledTools = new Set<string>();
+	if (settings.webTools !== true) {
+		disabledTools.add("web_search");
+		disabledTools.add("web_fetch");
+	}
+
 	const ac = new AbortController();
 	runner.startRun(ac);
 
@@ -60,6 +68,7 @@ export async function runNonInteractive(args: ParsedArgs, options: RunOptions): 
 			currentPersona: persona.name,
 			subagentPrompts,
 			subagentModel,
+			disabledTools,
 			onEvent: (event: AgentEvent) => handleEvent(event, session, options.format),
 		});
 

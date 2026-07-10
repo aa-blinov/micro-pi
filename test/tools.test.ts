@@ -82,53 +82,12 @@ describe("bash", () => {
 		}
 	});
 
-	it("reveals a command live once it prints a waiting prompt (no trailing newline)", async () => {
+	it("blocks interactive read -p command", async () => {
 		const exec = createToolExecutor(TEST_DIR, mockConfig);
-		const { writes, restore } = captureStderr();
-		try {
-			// Prompt with no trailing newline + still running → looks interactive.
-			await exec("bash", { command: "printf 'Enter value: '; sleep 0.5" });
-			const joined = writes.join("");
-			expect(joined).toContain("Enter value: "); // prompt echoed live
-			expect(joined).toContain("$ "); // command header shown
-		} finally {
-			restore();
-		}
-	});
-
-	it("goes live after silent timeout when command produces zero output (e.g. read -p, sudo)", async () => {
-		const exec = createToolExecutor(TEST_DIR, mockConfig);
-		const { writes, restore } = captureStderr();
-		try {
-			// A command that produces zero pipe output for >3 s — like `read -p`
-			// which writes its prompt to /dev/tty, not stderr. The silent timer
-			// must detect this and go live so stdin gets forwarded.
-			const start = Date.now();
-			const result = await exec("bash", { command: "sleep 3", timeout: 10 });
-			const elapsed = Date.now() - start;
-			const joined = writes.join("");
-			expect(joined).toContain("$"); // command header shown (goLive fired)
-			expect(result.isError).toBeFalsy();
-			// Should take ~4 s, not the full 10 s timeout
-			expect(elapsed).toBeLessThan(6000);
-		} finally {
-			restore();
-		}
-	});
-
-	it("captures read -p prompt via PTY (not /dev/tty)", async () => {
-		const exec = createToolExecutor(TEST_DIR, mockConfig);
-		const { restore } = captureStderr();
-		try {
-			// With PTY, read -p writes prompt to the PTY (not /dev/tty),
-			// so our onData handler sees it and grace+tail detects it.
-			const result = await exec("bash", { command: "read -p 'Name: ' name && echo Hello_$name", timeout: 3 });
-			// read blocks forever (no stdin in test) — expect timeout
-			expect(result.isError).toBe(true);
-			expect(result.content).toContain("[TIMED OUT]");
-		} finally {
-			restore();
-		}
+		const result = await exec("bash", { command: "read -p 'Name: ' name && echo Hello_$name" });
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("Blocked");
+		expect(result.content).toContain("interactive");
 	});
 
 	it("respects timeout", async () => {

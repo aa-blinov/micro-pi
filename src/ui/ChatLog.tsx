@@ -121,8 +121,9 @@ function ToolCallView({ call }: { call: ToolCallEntry }): JSX.Element {
 			<Text>
 				<Text color={theme().tool}>[{call.name}]</Text> <Text color={statusColor}>[{call.status}]</Text>{" "}
 				<ToolSummary name={call.name} args={call.args} />
+				{call.result && <WebResultSummary name={call.name} result={call.result} />}
 			</Text>
-			{call.result && call.name !== "read" && (
+			{call.result && call.name !== "read" && !isWebTool(call.name) && (
 				<Text color={call.status === "error" ? theme().error : theme().muted} wrap="truncate">
 					{call.result.slice(0, 500)}
 					{call.result.length > 500 ? " ..." : ""}
@@ -130,6 +131,44 @@ function ToolCallView({ call }: { call: ToolCallEntry }): JSX.Element {
 			)}
 		</Box>
 	);
+}
+
+function isWebTool(name: string): boolean {
+	return name === "web_search" || name === "web_fetch";
+}
+
+function WebResultSummary({ name, result }: { name: string; result: string }): JSX.Element | null {
+	if (name === "web_search") {
+		const meta = /^<!--(\{.*?})-->/.exec(result);
+		if (meta) {
+			try {
+				const { count } = JSON.parse(meta[1]) as { count: number };
+				return (
+					<Text color={theme().muted}>
+						{" · "}
+						{count} result{count !== 1 ? "s" : ""}
+					</Text>
+				);
+			} catch {
+				// malformed — fall through
+			}
+		}
+		return (
+			<Text color={theme().muted}>
+				{" · "}
+				{result.startsWith("No results") ? 0 : result.split("\n\n").length} results
+			</Text>
+		);
+	}
+	if (name === "web_fetch") {
+		return (
+			<Text color={theme().muted}>
+				{" · "}
+				{result.length.toLocaleString()} chars
+			</Text>
+		);
+	}
+	return null;
 }
 
 /**

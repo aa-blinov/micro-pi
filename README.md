@@ -57,9 +57,9 @@ cast -c
 
 ## What it can do
 
-### 8 built-in tools
+### Built-in tools
 
-`bash` `read` `write` `edit` `find` `grep` `ls` `task` — the agent has full filesystem and shell access. Multiple tools run in parallel. The `task` tool delegates work to isolated sub-agents (with their own persona and context) and returns only the final result. Image files (jpg/png/gif/webp/bmp) are sent directly to vision-capable models.
+`bash` `read` `write` `edit` `find` `grep` `ls` `task` `web_search` `web_fetch` — the agent has full filesystem, shell, and web access. Multiple tools run in parallel. The `task` tool delegates work to isolated sub-agents (with their own persona and context) and returns only the final result. Image files (jpg/png/gif/webp/bmp) are sent directly to vision-capable models. Web tools can be toggled on/off via `/web` (persists to settings).
 
 ### Rules
 
@@ -117,6 +117,7 @@ Every conversation auto-saves. Resume with `--continue`, pick from a list with `
 | `/personas` | List available personas |
 | `/provider` | Change provider endpoint and API key |
 | `/permissions [default\|bypass]` | Show/change bash confirmation mode |
+| `/web` | Toggle web tools (web_search, web_fetch) |
 | `/sessions` | List/switch/delete saved sessions |
 | `/skills` | List loaded skills |
 | `/skill:name [args]` | Force-load and run a skill |
@@ -194,7 +195,7 @@ Works with anything that speaks the OpenAI API: OpenRouter, OpenAI, Ollama (`htt
 src/
   core/           Agent logic (no UI dependency)
     loop.ts         Agent loop — streaming, tool dispatch, compaction
-    tools.ts        8 built-in tool definitions + executors
+    tools.ts        10 built-in tool definitions + executors
     llm.ts          LLM interaction, streaming, retry, prompt caching
     session.ts      Session persistence, token estimation, compaction
     mcp.ts          MCP server connection (stdio + streamable HTTP)

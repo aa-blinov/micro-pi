@@ -47,6 +47,8 @@ export interface Settings {
 	updatedAt?: string;
 	/** Active color theme id (see src/ui/themes/registry.ts). */
 	theme?: string;
+	/** When false, web_search and web_fetch tools are not advertised to the model. */
+	webTools?: boolean;
 }
 
 // ============================================================================

@@ -62,6 +62,7 @@ export const SLASH_COMMANDS: Array<{ name: string; description: string; takesArg
 	{ name: "/rule:", description: "Invoke a rule by name", takesArgs: true },
 	{ name: "/provider", description: "Change provider URL and API key" },
 	{ name: "/permissions", description: "Change bash confirmation mode" },
+	{ name: "/web", description: "Toggle web tools (web_search, web_fetch)" },
 	{ name: "/theme", description: "Change color theme" },
 	{ name: "/sessions", description: "List / switch / delete sessions" },
 	{ name: "/rules", description: "List loaded rules" },
@@ -112,6 +113,8 @@ export interface CommandDeps {
 	setReasoningMeta: (m: ModelReasoningMeta | undefined) => void;
 	subagentModel?: string;
 	setSubagentModel: (m: string | undefined) => void;
+	webToolsEnabled: boolean;
+	setWebToolsEnabled: (v: boolean) => void;
 	onThemeChange?: () => void;
 }
 
@@ -567,6 +570,25 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 		return;
 	}
 
+	if (input === "/web") {
+		const enabled = deps.webToolsEnabled;
+		const picked = await deps.pickers.pickOption(
+			[
+				{ value: true, label: `Enable web tools (currently ${enabled ? "on" : "off"})` },
+				{ value: false, label: `Disable web tools (currently ${enabled ? "on" : "off"})` },
+			],
+			{ title: "Web tools (web_search, web_fetch)" },
+		);
+		if (picked === null) {
+			showNotice("[Cancelled — web tools unchanged]");
+			return;
+		}
+		deps.setWebToolsEnabled(picked);
+		updateSettings({ webTools: picked });
+		showNotice(`[Web tools: ${picked ? "enabled" : "disabled"}]`);
+		return;
+	}
+
 	if (input === "/theme" || input.startsWith("/theme ")) {
 		const arg = input.slice("/theme".length).trim();
 		if (arg) {
@@ -764,6 +786,7 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 				"  /rule:<name>        Invoke a rule\n" +
 				"  /provider           Change provider URL\n" +
 				"  /permissions        Change bash confirmation mode\n" +
+				"  /web                Toggle web tools (web_search, web_fetch)\n" +
 				"  /theme              Change color theme\n" +
 				"  /sessions           List/switch sessions\n" +
 				"  /rules              List loaded rules\n" +

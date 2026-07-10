@@ -156,6 +156,8 @@ interface UseAgentSessionParams {
 	subagentPrompts?: import("../core/subagents.ts").SubagentPrompt[];
 	/** Model override for subagents. */
 	subagentModel?: string;
+	/** Tool names to exclude from the definitions sent to the model. */
+	disabledTools?: Set<string>;
 }
 
 /**
@@ -261,6 +263,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 		currentPersona,
 		subagentPrompts,
 		subagentModel,
+		disabledTools,
 	} = params;
 	const [messages, setMessages] = useState<ChatMessage[]>(() => buildDisplayMessages(session.messages));
 	const [streaming, setStreaming] = useState<StreamingState | null>(null);
@@ -503,6 +506,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 					currentPersona,
 					subagentPrompts,
 					subagentModel,
+					disabledTools,
 					onWarning: (message: string) => setWarnings((w) => [...w, message]),
 					onEvent: (event: AgentEvent) => {
 						switch (event.type) {
@@ -696,6 +700,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 			currentPersona,
 			subagentPrompts,
 			subagentModel,
+			disabledTools,
 		],
 	);
 

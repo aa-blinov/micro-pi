@@ -5,6 +5,7 @@ import { execEdit, execRead, execWrite } from "./tools/files.ts";
 import { execFind, execGrep, execLs } from "./tools/search.ts";
 import type { ConfirmBash, ToolExecutor, ToolResult } from "./tools/shared.ts";
 import { execTask, type TaskExecutorDeps } from "./tools/task.ts";
+import { execWebFetch, execWebSearch } from "./tools/web.ts";
 
 // Re-export the public tool types so existing importers of "./tools.ts"
 // (loop.ts, mcp.ts, tests) keep working after the split into tools/*.
@@ -30,12 +31,17 @@ export function getToolDefinitions(personaNames?: string[], mainModel?: string, 
 				description:
 					"Execute a bash command in the current working directory. Returns stdout and stderr. " +
 					"Output is truncated to last 2000 lines or 64KB (whichever is hit first). " +
-					"Optionally provide a timeout in seconds.",
+					"Default timeout 180s. For long-running commands (docker build, npm install, large test suites), " +
+					"pass a higher timeout value.",
 				parameters: {
 					type: "object",
 					properties: {
 						command: { type: "string", description: "Bash command to execute" },
-						timeout: { type: "number", description: "Timeout in seconds (optional)" },
+						timeout: {
+							type: "number",
+							description:
+								"Timeout in seconds. Default 180. Increase for long-running commands (e.g. 600 for docker build)",
+						},
 					},
 					required: ["command"],
 				},
@@ -161,6 +167,56 @@ export function getToolDefinitions(personaNames?: string[], mainModel?: string, 
 				},
 			},
 		},
+		{
+			type: "function",
+			function: {
+				name: "web_search",
+				description:
+					"Search the web via DuckDuckGo. Returns titles, URLs, and snippets. " +
+					"No API key required. Good for finding current information, documentation, " +
+					"and answers to questions that require up-to-date knowledge.",
+				parameters: {
+					type: "object",
+					properties: {
+						query: { type: "string", description: "Search query" },
+						maxResults: {
+							type: "number",
+							description: "Maximum number of results (default: 10)",
+						},
+						region: {
+							type: "string",
+							description: "Region code, e.g. 'us-en', 'ru-ru', 'wt-wt' (default: wt-wt)",
+						},
+						time: {
+							type: "string",
+							description: "Time filter: 'd' (day), 'w' (week), 'm' (month), 'y' (year)",
+						},
+					},
+					required: ["query"],
+				},
+			},
+		},
+		{
+			type: "function",
+			function: {
+				name: "web_fetch",
+				description:
+					"Fetch a web page and return clean markdown via Jina Reader. " +
+					"Handles JS rendering, PDFs, and content extraction. " +
+					"Useful for reading articles, documentation, and any web content.",
+				parameters: {
+					type: "object",
+					properties: {
+						url: { type: "string", description: "URL to fetch" },
+						maxChars: {
+							type: "number",
+							description: "Maximum characters to return (default: 12000)",
+						},
+					},
+					required: ["url"],
+				},
+			},
+		},
 		...(personaNames?.length
 			? [
 					{
@@ -220,6 +276,10 @@ export function createToolExecutor(
 					return await execGrep(args, cwd, config);
 				case "ls":
 					return await execLs(args, cwd, config);
+				case "web_search":
+					return await execWebSearch(args, signal);
+				case "web_fetch":
+					return await execWebFetch(args, signal);
 				case "task":
 					if (!taskDeps)
 						return { content: "Task tool not available — no dependencies configured.", isError: true };

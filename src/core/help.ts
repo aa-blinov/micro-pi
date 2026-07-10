@@ -59,8 +59,9 @@ MCP servers: Model Context Protocol servers, configured in ~/.cast/mcp.json
 (global) and .cast/mcp.json (project — asked to trust once, remembered
 after that), same "mcpServers" shape most MCP clients already use — local
 { "command", "args" } or remote { "url", "headers" } (static header/token
-auth only, no OAuth). Their tools are added alongside the 7 built-in ones,
-no special syntax needed to call them.
+auth only, no OAuth). Their tools are added alongside the built-in ones,
+no special syntax needed to call them. Web tools (web_search, web_fetch)
+can be toggled on/off with /web — persists to settings.json.
 
 Personas: swappable system prompts for different roles (coding, sysadmin, ...)
 — see prompts/personas/. Same tools either way; only the instructions change.
@@ -77,6 +78,7 @@ Interactive commands:
   /personas              List available personas
   /sessions              List saved sessions, switch to one, or "d<N>" to delete
   /permissions           Show/change bash confirmation mode (default/bypass)
+  /web                   Toggle web tools (web_search, web_fetch)
   /skills                List loaded skills
   /mcp                   List connected MCP servers and their tools
   /reload                Re-scan skills, personas, and reconnect MCP servers

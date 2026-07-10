@@ -8,7 +8,7 @@
  * tool names per server, and converting MCP's tool/result shapes into the
  * ones tools.ts already uses (Tool for definitions, ToolResult for call
  * outcomes) so the rest of the codebase doesn't need to know MCP tools are
- * any different from the 7 built-in ones.
+ * any different from the built-in ones.
  *
  * Deliberately not supporting OAuth (browser redirect, token storage/
  * refresh, local callback server) — that's a meaningfully bigger surface
