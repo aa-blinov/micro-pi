@@ -5,13 +5,12 @@
  * immediately instead of hanging. This is how OpenCode handles it: no PTY,
  * no prompt detection, no interactive command blocking at runtime.
  *
- * Static checkInteractiveBash still catches obvious cases (ssh, vim, etc.)
- * before they even spawn, as a UX improvement (instant error vs exit code 1).
+
  */
 
 import { spawn } from "node:child_process";
 import type { AppConfig } from "../config.ts";
-import { checkDangerousBash, checkInteractiveBash } from "../permissions.ts";
+import { checkDangerousBash } from "../permissions.ts";
 import type { ConfirmBash, ToolResult } from "./shared.ts";
 
 /** Strip ANSI escape sequences from output. */
@@ -44,15 +43,6 @@ export async function execBash(
 				isError: true,
 			};
 		}
-	}
-
-	// Static interactive check — instant error for obvious cases (ssh, vim, etc.)
-	const interactiveReason = checkInteractiveBash(command);
-	if (interactiveReason) {
-		return {
-			content: `Blocked: ${interactiveReason}. Use non-interactive alternatives (e.g. \`git commit -m "msg"\`, \`git push --no-edit\`).`,
-			isError: true,
-		};
 	}
 
 	if (signal?.aborted) {

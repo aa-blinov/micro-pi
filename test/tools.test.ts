@@ -86,8 +86,7 @@ describe("bash", () => {
 		const exec = createToolExecutor(TEST_DIR, mockConfig);
 		const result = await exec("bash", { command: "read -p 'Name: ' name && echo Hello_$name" });
 		expect(result.isError).toBe(true);
-		expect(result.content).toContain("Blocked");
-		expect(result.content).toContain("interactive");
+		// stdin is /dev/null — read gets EOF and the command fails
 	});
 
 	it("respects timeout", async () => {
