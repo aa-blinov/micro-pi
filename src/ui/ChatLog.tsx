@@ -137,11 +137,11 @@ function ToolCallView({ call }: { call: ToolCallEntry }): JSX.Element {
  * history so a turn reads identically before and after it lands — the reason
  * StreamBlock is the single source of truth for row order.
  */
-function BlockView({ block }: { block: StreamBlock }): JSX.Element {
+function BlockView({ block, truncated }: { block: StreamBlock; truncated?: boolean }): JSX.Element {
 	if (block.kind === "thinking") {
 		return (
 			<Text color={theme().muted} dimColor>
-				<Text bold>[reasoning] </Text>
+				<Text bold>[reasoning] {truncated ? "… " : ""}</Text>
 				{block.text}
 			</Text>
 		);
@@ -149,12 +149,81 @@ function BlockView({ block }: { block: StreamBlock }): JSX.Element {
 	if (block.kind === "content") {
 		return (
 			<Text color={theme().agent}>
-				<Text bold>[agent] </Text>
+				<Text bold>[agent] {truncated ? "… " : ""}</Text>
 				{block.text}
 			</Text>
 		);
 	}
 	return <ToolCallView call={block.call} />;
+}
+
+/**
+ * Clamp the live streaming blocks to fit the terminal viewport, keeping the
+ * tail. Ink's log-update redraws the live region by moving the cursor up N
+ * rows and erasing — but the cursor can't move above the top of the screen,
+ * so a live region taller than the viewport can't be fully erased and every
+ * redraw stacks a duplicate frame into scrollback (repeated [reasoning] /
+ * [agent] lines). Settled blocks already drain into <Static> (see
+ * useAgentSession), but a single still-streaming block can grow past the
+ * viewport on its own; here we render only its last lines that fit. The full
+ * text still lands in history when the block settles — only the live preview
+ * is clipped.
+ */
+export function clampStreamingBlocks(
+	blocks: StreamBlock[],
+	rows: number,
+	columns: number,
+): Array<{ block: StreamBlock; truncated: boolean }> {
+	// Rows reserved for everything below the streaming area: composer frame
+	// (3), status bar (1), notices/steer/queue lines and a safety margin.
+	const budget = Math.max(4, rows - 8);
+	const cols = Math.max(20, columns);
+
+	const wrappedRows = (text: string, prefixLen: number): number => {
+		let total = 0;
+		const lines = text.split("\n");
+		for (let i = 0; i < lines.length; i++) {
+			const len = lines[i]!.length + (i === 0 ? prefixLen : 0);
+			total += Math.max(1, Math.ceil(len / cols));
+		}
+		return total;
+	};
+
+	const out: Array<{ block: StreamBlock; truncated: boolean }> = [];
+	let used = 0;
+	for (let i = blocks.length - 1; i >= 0; i--) {
+		const block = blocks[i]!;
+		if (used >= budget) break;
+		if (block.kind === "tool") {
+			out.unshift({ block, truncated: false });
+			used += 1;
+			continue;
+		}
+		const prefixLen = block.kind === "thinking" ? "[reasoning] ".length : "[agent] ".length;
+		const need = wrappedRows(block.text, prefixLen);
+		if (used + need <= budget) {
+			out.unshift({ block, truncated: false });
+			used += need;
+			continue;
+		}
+		// Keep only the tail lines of this block that fit the remaining budget.
+		const remaining = budget - used;
+		const lines = block.text.split("\n");
+		const kept: string[] = [];
+		let tailRows = 0;
+		for (let j = lines.length - 1; j >= 0 && tailRows < remaining; j--) {
+			kept.unshift(lines[j]!);
+			tailRows += Math.max(1, Math.ceil(lines[j]!.length / cols));
+		}
+		// A single wrapped line longer than the budget: hard-cut by characters.
+		let text = kept.join("\n");
+		const maxChars = remaining * cols;
+		if (kept.length === 1 && text.length > maxChars) text = text.slice(-maxChars);
+		out.unshift({ block: { ...block, text }, truncated: true });
+		used = budget;
+		break;
+	}
+	return out;
 }
 
 /**
@@ -226,8 +295,9 @@ export function ChatLog({ messages, streaming, error, retry, repaintKey }: ChatL
 		if (streaming.blocks.length === 0) {
 			streamingParts.push(<Spinner key="wait" />);
 		}
-		streaming.blocks.forEach((b, i) => {
-			streamingParts.push(<BlockView key={blockKey(b, i)} block={b} />);
+		const clamped = clampStreamingBlocks(streaming.blocks, process.stdout.rows || 24, process.stdout.columns || 80);
+		clamped.forEach(({ block, truncated }, i) => {
+			streamingParts.push(<BlockView key={blockKey(block, i)} block={block} truncated={truncated} />);
 		});
 		liveParts.push(
 			<Box key="streaming" flexDirection="column">
