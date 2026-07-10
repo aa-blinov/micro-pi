@@ -132,7 +132,7 @@ function loadPersonasFromDir(dir: string, source: PersonaSource): Persona[] {
 	return files
 		.map((f) => loadPersonaFromFile(join(dir, f), source))
 		.filter((p): p is Persona => p !== null)
-		.sort((a, b) => a.name.localeCompare(b.name));
+		.sort((a, b) => a.label.localeCompare(b.label));
 }
 
 export interface LoadPersonasOptions {
@@ -168,9 +168,9 @@ export function loadPersonas(options: LoadPersonasOptions = {}): Persona[] {
 	}
 
 	const personas = Array.from(personaMap.values());
-	// Sort with DEFAULT_PERSONA first, then alphabetically.
+	// Sort with DEFAULT_PERSONA first, then alphabetically by label (what the user sees).
 	personas.sort((a, b) =>
-		a.name === DEFAULT_PERSONA ? -1 : b.name === DEFAULT_PERSONA ? 1 : a.name.localeCompare(b.name),
+		a.name === DEFAULT_PERSONA ? -1 : b.name === DEFAULT_PERSONA ? 1 : a.label.localeCompare(b.label),
 	);
 	return personas.length > 0 ? personas : [FALLBACK_PERSONA];
 }
