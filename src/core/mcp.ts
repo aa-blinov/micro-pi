@@ -87,7 +87,13 @@ export interface McpSetupResult {
 const CONNECT_TIMEOUT_MS = 30_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-	return Promise.race([promise, new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms))]);
+	let timer: ReturnType<typeof setTimeout>;
+	const timeout = new Promise<T>((_, reject) => {
+		timer = setTimeout(() => reject(new Error(message)), ms);
+	});
+	// Clear the timer once the real promise settles so a fast success doesn't
+	// leave a pending timer keeping the event loop (and process exit) alive.
+	return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 interface McpContentPart {

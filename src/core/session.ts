@@ -456,10 +456,23 @@ function findSessionFilePath(id: string): string | null {
 	return null;
 }
 
+/**
+ * Read and parse a session file, returning null if it's missing, truncated,
+ * or not valid JSON — a session file can be left half-written if the process
+ * dies mid-save, and one bad file shouldn't take down the whole listing.
+ */
+function readSessionFile(filePath: string): SessionState | null {
+	try {
+		return withUsageDefault(JSON.parse(readFileSync(filePath, "utf-8")));
+	} catch {
+		return null;
+	}
+}
+
 export function loadSession(id: string): SessionState | null {
 	const filePath = findSessionFilePath(id);
 	if (!filePath) return null;
-	return withUsageDefault(JSON.parse(readFileSync(filePath, "utf-8")));
+	return readSessionFile(filePath);
 }
 
 /** Delete a saved session's file from disk. Returns false if it wasn't found. */
@@ -477,13 +490,15 @@ export function listSessions(): SessionState[] {
 	for (const entry of readdirSync(root, { withFileTypes: true })) {
 		if (entry.isFile() && entry.name.endsWith(".json")) {
 			// Legacy flat file, pre-project-grouping.
-			sessions.push(withUsageDefault(JSON.parse(readFileSync(join(root, entry.name), "utf-8"))));
+			const session = readSessionFile(join(root, entry.name));
+			if (session) sessions.push(session);
 			continue;
 		}
 		if (!entry.isDirectory()) continue;
 		const projectDir = join(root, entry.name);
 		for (const f of readdirSync(projectDir).filter((name) => name.endsWith(".json"))) {
-			sessions.push(withUsageDefault(JSON.parse(readFileSync(join(projectDir, f), "utf-8"))));
+			const session = readSessionFile(join(projectDir, f));
+			if (session) sessions.push(session);
 		}
 	}
 
