@@ -76,6 +76,9 @@ export function App(props: AppProps): JSX.Element {
 	const [cwd, setCwd] = useState(result.cwd);
 	const [reasoningMeta, setReasoningMeta] = useState(result.reasoningMeta);
 	const [personaOptions, setPersonaOptions] = useState(result.personaOptions);
+	const [personas] = useState(result.personas);
+	const [subagentPrompts] = useState(result.subagentPrompts);
+	const [subagentModel, setSubagentModel] = useState(result.subagentModel);
 	// Theme change counter — forces a re-render when /theme switches the active
 	// theme, since theme() reads from a module-level singleton that Ink can't
 	// detect on its own.
@@ -149,6 +152,10 @@ export function App(props: AppProps): JSX.Element {
 		mcpResult,
 		confirmBash,
 		rebuildSystemPrompt,
+		personas,
+		currentPersona: currentPersona.name,
+		subagentPrompts,
+		subagentModel,
 	});
 	const running = agent.status === "running";
 	const canSubmit = useCallback(
@@ -231,6 +238,8 @@ export function App(props: AppProps): JSX.Element {
 		setReasoningMeta,
 		personaOptions,
 		setPersonaOptions,
+		subagentModel,
+		setSubagentModel,
 		onThemeChange,
 	});
 	depsRef.current = {
@@ -272,6 +281,8 @@ export function App(props: AppProps): JSX.Element {
 		setReasoningMeta,
 		personaOptions,
 		setPersonaOptions,
+		subagentModel,
+		setSubagentModel,
 		onThemeChange,
 	};
 
@@ -404,8 +415,9 @@ function formatUsageTotals(
 			: "";
 	const tpsStr = lastTurnUsage?.tokensPerSecond ? ` │ ${lastTurnUsage.tokensPerSecond.toFixed(1)} tok/s` : "";
 	const turnStr = elapsedMs > 0 ? ` │ ${fmtElapsed(elapsedMs)}` : "";
+	const subStr = usage.subagentTokens > 0 ? ` │ ${abbreviateTokens(usage.subagentTokens)} sub` : "";
 	const ctxStr = formatContextPct(messages, config);
-	return `${abbreviateTokens(usage.promptTokens)} in${cacheStr} / ${abbreviateTokens(usage.completionTokens)} out │ ${ctxStr}${tpsStr}${turnStr}`;
+	return `${abbreviateTokens(usage.promptTokens)} in${cacheStr} / ${abbreviateTokens(usage.completionTokens)} out │ ${ctxStr}${tpsStr}${turnStr}${subStr}`;
 }
 
 export function formatContextPct(messages: import("../core/llm.ts").Message[], config: AppConfig): string {

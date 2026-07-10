@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { isStreamingActive, isTerminalSuspended } from "../core/stdin-manager.ts";
 
 /**
  * Two distinct terminal desyncs, one shared remedy (clear + full <Static>
@@ -30,6 +31,12 @@ import { useEffect } from "react";
  *
  *    Either signal triggers the guard: cursor/erase writes are swallowed
  *    until the user scrolls back to the bottom.
+ *
+ * Resize events are suppressed while streaming is active (detected by
+ * isStreamingActive, set by useAgentSession) or while a child process
+ * owns the terminal (suspendAndRun). A resize mid-stream just reflows
+ * the live region — no replay needed. The actual resync fires once
+ * after streaming ends if a resize happened.
  */
 export function useTerminalResync(onResync: () => void): void {
 	useEffect(() => {
@@ -40,18 +47,36 @@ export function useTerminalResync(onResync: () => void): void {
 
 		// --- resize: debounce a settle, then hard reset ---
 		let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+		let resizeDuringStream = false;
 		const onResize = () => {
+			// Defer the resync in two cases:
+			// 1. Streaming — Ink manages the live region, a resize just reflows it.
+			// 2. Child process owns the terminal (suspendAndRun) — isRawMode is
+			//    false but clearing now would erase the child's output.
+			if (isStreamingActive() || isTerminalSuspended()) {
+				resizeDuringStream = true;
+				return;
+			}
 			if (resizeTimer) clearTimeout(resizeTimer);
 			resizeTimer = setTimeout(() => {
-				// clearTerminal (\x1b[2J\x1b[3J\x1b[H): erase screen + scrollback +
-				// home. Scrollback too, so the forced replay below can't leave a
-				// duplicate copy of history behind — matches ansiEscapes.clearTerminal,
-				// the same sequence Ink writes on its own full-clear path.
 				origWrite("\x1b[2J\x1b[3J\x1b[H");
 				onResync();
 			}, 80);
 		};
 		out.on("resize", onResize);
+
+		// Flush a deferred resize once streaming ends.
+		const checkDeferredResize = () => {
+			if (resizeDuringStream && !isStreamingActive() && !isTerminalSuspended()) {
+				resizeDuringStream = false;
+				if (resizeTimer) clearTimeout(resizeTimer);
+				resizeTimer = setTimeout(() => {
+					origWrite("\x1b[2J\x1b[3J\x1b[H");
+					onResync();
+				}, 80);
+			}
+		};
+		const rawModeCheck = setInterval(checkDeferredResize, 200);
 
 		// --- scroll guard state (shared by both detection layers) ---
 		let scrollUp = false;
@@ -99,6 +124,10 @@ export function useTerminalResync(onResync: () => void): void {
 
 		function startQuery() {
 			if (!process.stdin.isTTY) return;
+			if (isTerminalSuspended()) return;
+			// Skip during streaming — pausing stdin disrupts Ink's keystroke
+			// handling and the live region is managed by Ink, not the user.
+			if (isStreamingActive()) return;
 			if (queryTimeout) clearTimeout(queryTimeout);
 			// Pause stdin so Ink can't consume the DECXCPR response.
 			process.stdin.pause();
@@ -147,6 +176,7 @@ export function useTerminalResync(onResync: () => void): void {
 			out.off("resize", onResize);
 			if (resizeTimer) clearTimeout(resizeTimer);
 			clearInterval(pollInterval);
+			clearInterval(rawModeCheck);
 			if (queryTimeout) clearTimeout(queryTimeout);
 			restore();
 			process.off("exit", restore);

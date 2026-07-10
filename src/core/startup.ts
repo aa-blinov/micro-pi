@@ -37,6 +37,7 @@ import { type AgentRunner, createAgentRunner } from "./runner.ts";
 import { createSession, getMostRecentSession, loadSession, type SessionState } from "./session.ts";
 import { type PermissionMode, type Settings, updateSettings } from "./settings.ts";
 import type { Skill } from "./skills.ts";
+import { loadSubagentPrompts, type SubagentPrompt } from "./subagents.ts";
 import { buildReasoningParams, type ModelReasoningMeta } from "./vendors.ts";
 
 export interface ParsedArgs {
@@ -68,6 +69,12 @@ export interface StartupResult {
 	skills: Skill[];
 	persona: Persona;
 	personaOptions: LoadPersonasOptions;
+	/** All available personas for the task tool. */
+	personas: Persona[];
+	/** Subagent prompts for the task tool. */
+	subagentPrompts: SubagentPrompt[];
+	/** Model for subagents (falls back to main model if unset). */
+	subagentModel?: string;
 	reasoningMeta?: ModelReasoningMeta;
 	confirmBash: (command: string, reason: string) => Promise<boolean>;
 	projectDeps: ProjectResolverDeps;
@@ -177,6 +184,7 @@ export async function runStartup(
 	const rulesSuffix = resolvedRules.alwaysApplySuffix;
 	const rulesLazySuffix = resolvedRules.lazySuffix;
 	const personaOpts = personaOptionsForCwd(cwd, projectTrusted);
+	const allPersonas = listPersonas(personaOpts);
 
 	// Persona: CLI > saved settings > interactive selection.
 	let persona: Persona;
@@ -351,6 +359,9 @@ export async function runStartup(
 		skills,
 		persona,
 		personaOptions: personaOpts,
+		personas: allPersonas,
+		subagentPrompts: loadSubagentPrompts(),
+		subagentModel: settings.subagentModel,
 		reasoningMeta,
 		confirmBash,
 		projectDeps,

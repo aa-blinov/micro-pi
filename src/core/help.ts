@@ -62,7 +62,7 @@ after that), same "mcpServers" shape most MCP clients already use — local
 auth only, no OAuth). Their tools are added alongside the 7 built-in ones,
 no special syntax needed to call them.
 
-Personas: swappable system prompts for different roles (coding, writer, ...)
+Personas: swappable system prompts for different roles (coding, sysadmin, ...)
 — see prompts/personas/. Same tools either way; only the instructions change.
 
 Interactive commands:

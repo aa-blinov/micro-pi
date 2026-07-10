@@ -52,6 +52,7 @@ export const SLASH_COMMANDS: Array<{ name: string; description: string; takesArg
 	{ name: "/queue", description: "Queue a message for after the run", takesArgs: true },
 	{ name: "/queue-reset", description: "Clear the message queue" },
 	{ name: "/model", description: "Show or change model" },
+	{ name: "/subagent-model", description: "Show or change subagent model" },
 	{ name: "/reasoning", description: "Change reasoning level" },
 	{ name: "/persona", description: "Show or change persona" },
 	{ name: "/skills", description: "List loaded skills" },
@@ -108,6 +109,8 @@ export interface CommandDeps {
 	pickers: Pickers;
 	reasoningMeta: ModelReasoningMeta | undefined;
 	setReasoningMeta: (m: ModelReasoningMeta | undefined) => void;
+	subagentModel?: string;
+	setSubagentModel: (m: string | undefined) => void;
 	onThemeChange?: () => void;
 }
 
@@ -327,6 +330,34 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 		updateSettings({ model: newModel, reasoningLevel: config.reasoningLevel });
 		agent.refresh();
 		showNotice(`[Model: ${newModel} (reasoning: ${config.reasoningLevel})]`);
+		return;
+	}
+
+	if (input === "/subagent-model") {
+		const current = deps.subagentModel;
+		const selection = await selectModel(config, deps.pickers, current);
+		if (!selection) {
+			showNotice("[Cancelled — subagent model unchanged]");
+			return;
+		}
+		deps.setSubagentModel(selection.model);
+		updateSettings({ subagentModel: selection.model });
+		agent.refresh();
+		showNotice(`[Subagent model: ${selection.model}]`);
+		return;
+	}
+
+	if (input.startsWith("/subagent-model ")) {
+		const newModel = input.slice(16).trim();
+		const ok = await runOnboardingCheck(config, newModel, { log: deps.pickers.log });
+		if (!ok) {
+			showNotice(`[Model ${newModel} failed validation]`);
+			return;
+		}
+		deps.setSubagentModel(newModel);
+		updateSettings({ subagentModel: newModel });
+		agent.refresh();
+		showNotice(`[Subagent model: ${newModel}]`);
 		return;
 	}
 
@@ -696,6 +727,7 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 				"  /queue-reset        Clear queue\n" +
 				"  /steer (/s)         Inject message into running turn\n" +
 				"  /model [name]       Show/change model\n" +
+				"  /subagent-model [name]  Show/change subagent model\n" +
 				"  /reasoning [level]  Show/change reasoning level\n" +
 				"  /persona [name]     Show/change persona\n" +
 				"  /skills             List loaded skills\n" +

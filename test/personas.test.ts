@@ -2,15 +2,16 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_PERSONA, findPersona, listPersonas, loadPersonas } from "../src/core/personas.ts";
+import { getToolDefinitions } from "../src/core/tools.ts";
 
 const PERSONAS_DIR = join(import.meta.dirname, "..", "prompts", "personas");
 const ERROR_HANDLING_FILE = join(import.meta.dirname, "..", "prompts", "error-handling.md");
 
 describe("listPersonas", () => {
-	it("finds the shipped coding and writer personas", () => {
+	it("finds the shipped coding and fiction-writer personas", () => {
 		const names = listPersonas().map((p) => p.name);
 		expect(names).toContain("coding");
-		expect(names).toContain("writer");
+		expect(names).toContain("fiction-writer");
 	});
 
 	it("sorts the default persona first", () => {
@@ -26,14 +27,17 @@ describe("listPersonas", () => {
 
 	it("strips frontmatter from the system prompt body", () => {
 		for (const persona of listPersonas()) {
-			expect(persona.systemPrompt).not.toContain("---");
+			// The body must not begin with a frontmatter block — that's the sign
+			// the `---`-delimited header wasn't stripped. (A bare `---` further down
+			// is fine: e.g. tech-writer teaches Mermaid config, which uses it.)
+			expect(persona.systemPrompt.trimStart().startsWith("---")).toBe(false);
 			expect(persona.systemPrompt.length).toBeGreaterThan(0);
 		}
 	});
 
 	it("gives each persona a distinct system prompt", () => {
 		const coding = findPersona("coding")!;
-		const writer = findPersona("writer")!;
+		const writer = findPersona("fiction-writer")!;
 		expect(coding.systemPrompt).not.toBe(writer.systemPrompt);
 		expect(writer.systemPrompt.toLowerCase()).toContain("fiction");
 	});
@@ -64,7 +68,7 @@ describe("findPersona", () => {
 	});
 
 	it("finds a known persona by exact name", () => {
-		expect(findPersona("writer")?.name).toBe("writer");
+		expect(findPersona("fiction-writer")?.name).toBe("fiction-writer");
 	});
 });
 
@@ -146,5 +150,100 @@ describe("loadPersonas multi-source", () => {
 		const personas = loadPersonas({ globalDir: GLOBAL_DIR });
 		const testPers = personas.find((p) => p.name === "test-pers")!;
 		expect(testPers.systemPrompt).toContain("## Error Handling");
+	});
+});
+
+describe("subagents field", () => {
+	it("defaults to false when not specified in frontmatter", () => {
+		writePersona(GLOBAL_DIR, "no-field", "No subagents field.");
+		const personas = loadPersonas({ globalDir: GLOBAL_DIR });
+		const p = personas.find((p) => p.name === "no-field")!;
+		expect(p.subagents).toBe(false);
+	});
+
+	it("parses subagents: true from frontmatter", () => {
+		mkdirSync(GLOBAL_DIR, { recursive: true });
+		writeFileSync(
+			join(GLOBAL_DIR, "with-sub.md"),
+			`---\nname: with-sub\nlabel: With Sub\nsubagents: true\n---\n\nBody.\n`,
+			"utf-8",
+		);
+		const personas = loadPersonas({ globalDir: GLOBAL_DIR });
+		const p = personas.find((p) => p.name === "with-sub")!;
+		expect(p.subagents).toBe(true);
+	});
+
+	it("parses subagents: false from frontmatter", () => {
+		mkdirSync(GLOBAL_DIR, { recursive: true });
+		writeFileSync(
+			join(GLOBAL_DIR, "no-sub.md"),
+			`---\nname: no-sub\nlabel: No Sub\nsubagents: false\n---\n\nBody.\n`,
+			"utf-8",
+		);
+		const personas = loadPersonas({ globalDir: GLOBAL_DIR });
+		const p = personas.find((p) => p.name === "no-sub")!;
+		expect(p.subagents).toBe(false);
+	});
+
+	it("only coder-with-subagents has subagents: true among builtins", () => {
+		const personas = loadPersonas();
+		const withSub = personas.filter((p) => p.subagents);
+		expect(withSub.map((p) => p.name).sort()).toEqual(["coder-with-subagents"]);
+	});
+});
+
+describe("getToolDefinitions + subagents", () => {
+	it("includes task tool when personaNames is provided", () => {
+		const tools = getToolDefinitions(["qa", "writer"]);
+		const taskTool = tools.find((t) => t.function.name === "task");
+		expect(taskTool).toBeDefined();
+	});
+
+	it("excludes task tool when personaNames is undefined", () => {
+		const tools = getToolDefinitions(undefined);
+		const taskTool = tools.find((t) => t.function.name === "task");
+		expect(taskTool).toBeUndefined();
+	});
+
+	it("excludes task tool when personaNames is empty array", () => {
+		const tools = getToolDefinitions([]);
+		const taskTool = tools.find((t) => t.function.name === "task");
+		expect(taskTool).toBeUndefined();
+	});
+
+	it("task description lists only the provided subagent names", () => {
+		const tools = getToolDefinitions(["qa", "writer"]);
+		const taskTool = tools.find((t) => t.function.name === "task")!;
+		expect(taskTool.function.description).toContain("qa, writer");
+	});
+
+	it("task tool exposes a `subagent` parameter, not `persona`", () => {
+		const tools = getToolDefinitions(["worker"]);
+		const taskTool = tools.find((t) => t.function.name === "task")!;
+		const props = (taskTool.function.parameters as { properties: Record<string, unknown> }).properties;
+		expect(props).toHaveProperty("subagent");
+		expect(props).not.toHaveProperty("persona");
+	});
+
+	it("task description advertises 'worker' as the default when present", () => {
+		const tools = getToolDefinitions(["analyst", "worker"]);
+		const taskTool = tools.find((t) => t.function.name === "task")!;
+		expect(taskTool.function.description).toContain('Defaults to "worker"');
+	});
+});
+
+describe("subagents integration with getToolDefinitions", () => {
+	it("coding persona (subagents: false) produces no task tool", () => {
+		const persona = findPersona("coding")!;
+		const subagentNames = persona.subagents ? ["worker"] : undefined;
+		const tools = getToolDefinitions(subagentNames);
+		expect(tools.some((t) => t.function.name === "task")).toBe(false);
+	});
+
+	it("coder-with-subagents persona (subagents: true) produces task tool", () => {
+		const persona = findPersona("coder-with-subagents")!;
+		const subagentNames = persona.subagents ? ["worker"] : undefined;
+		const tools = getToolDefinitions(subagentNames);
+		expect(tools.some((t) => t.function.name === "task")).toBe(true);
 	});
 });

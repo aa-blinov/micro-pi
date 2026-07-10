@@ -6,6 +6,7 @@ import type { McpSetupResult } from "../core/mcp.ts";
 import type { AgentRunner } from "../core/runner.ts";
 import { addUsage, appendMessage, type SessionState, type SessionUsage, saveSession } from "../core/session.ts";
 import type { PermissionMode } from "../core/settings.ts";
+import { setStreamingActive } from "../core/stdin-manager.ts";
 
 export type AgentStatus = "idle" | "running" | "error";
 
@@ -147,6 +148,14 @@ interface UseAgentSessionParams {
 	confirmBash: (command: string, reason: string) => Promise<boolean>;
 	/** Per-turn system prompt rebuild for sticky rules + @-mention. */
 	rebuildSystemPrompt?: (context: { userText: string; contextFiles: string[] }) => string;
+	/** Available personas for the task tool. */
+	personas?: import("../core/personas.ts").Persona[];
+	/** Current persona name. */
+	currentPersona?: string;
+	/** Subagent prompts for the task tool. */
+	subagentPrompts?: import("../core/subagents.ts").SubagentPrompt[];
+	/** Model override for subagents. */
+	subagentModel?: string;
 }
 
 /**
@@ -238,8 +247,21 @@ export function buildDisplayMessages(sessionMessages: SessionState["messages"]):
 }
 
 export function useAgentSession(params: UseAgentSessionParams): UseAgentSession {
-	const { session, config, cwd, systemPrompt, runner, permissionMode, mcpResult, confirmBash, rebuildSystemPrompt } =
-		params;
+	const {
+		session,
+		config,
+		cwd,
+		systemPrompt,
+		runner,
+		permissionMode,
+		mcpResult,
+		confirmBash,
+		rebuildSystemPrompt,
+		personas,
+		currentPersona,
+		subagentPrompts,
+		subagentModel,
+	} = params;
 	const [messages, setMessages] = useState<ChatMessage[]>(() => buildDisplayMessages(session.messages));
 	const [streaming, setStreaming] = useState<StreamingState | null>(null);
 	const [status, setStatus] = useState<AgentStatus>("idle");
@@ -261,6 +283,9 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 	const [pendingQueue, setPendingQueue] = useState<string[]>([]);
 
 	const acRef = useRef<AbortController | null>(null);
+	// Set when a retry event arrives; cleared on the first streaming event
+	// (token/thinking) so the retry banner disappears once new content flows.
+	const clearRetryOnNextChunk = useRef(false);
 	// The authoritative "current streaming" value — read and written directly,
 	// never through setStreaming's own updater callback. React only guarantees
 	// a setState updater function runs by the time of the *next render*, not
@@ -448,6 +473,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 
 			setStatus("running");
 			updateStreaming(() => ({ blocks: [] }), true);
+			setStreamingActive(true);
 
 			try {
 				const result = await runAgentLoop(session.messages, {
@@ -464,13 +490,25 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 					lastPromptTokens: session.lastPromptTokens,
 					rebuildSystemPrompt,
 					contextFiles: contextFilesRef.current,
+					personas,
+					currentPersona,
+					subagentPrompts,
+					subagentModel,
 					onWarning: (message: string) => setWarnings((w) => [...w, message]),
 					onEvent: (event: AgentEvent) => {
 						switch (event.type) {
 							case "thinking":
+								if (clearRetryOnNextChunk.current) {
+									clearRetryOnNextChunk.current = false;
+									setRetry(null);
+								}
 								updateStreaming((s) => (s ? { blocks: appendText(s.blocks, "thinking", event.text) } : s));
 								break;
 							case "token":
+								if (clearRetryOnNextChunk.current) {
+									clearRetryOnNextChunk.current = false;
+									setRetry(null);
+								}
 								updateStreaming((s) => (s ? { blocks: appendText(s.blocks, "content", event.text) } : s));
 								break;
 							case "tool_start":
@@ -550,10 +588,14 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 								break;
 							case "retry":
 								setRetry({ attempt: event.attempt, maxAttempts: event.maxAttempts, reason: event.reason });
+								clearRetryOnNextChunk.current = true;
 								break;
 							case "usage": {
-								addUsage(session, event.usage);
+								addUsage(session, event.usage, { subagent: event.subagent });
 								setUsage({ ...session.usage });
+								// A subagent's usage isn't a user-facing turn — don't let it
+								// overwrite the main agent's last-turn / tok-s readout.
+								if (event.subagent) break;
 								const tokensPerSecond =
 									event.generationMs && event.generationMs > 0 && event.usage.completionTokens > 0
 										? event.usage.completionTokens / (event.generationMs / 1000)
@@ -604,6 +646,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 				// lose each tool call's real status (see promoteStreamingToHistory).
 				promoteStreamingToHistory();
 				updateStreaming(() => null, true);
+				setStreamingActive(false);
 				setRetry(null);
 				setStatus("idle");
 				process.off("SIGINT", onSigint);
@@ -626,6 +669,10 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 			promoteStreamingToHistory,
 			updateStreaming,
 			rebuildSystemPrompt,
+			personas,
+			currentPersona,
+			subagentPrompts,
+			subagentModel,
 		],
 	);
 

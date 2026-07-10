@@ -13,7 +13,9 @@ import {
 	streamAndCollect,
 } from "./llm.ts";
 import type { McpToolHandle } from "./mcp.ts";
+import type { Persona } from "./personas.ts";
 import { compactMessages, estimateTokens, shouldCompact } from "./session.ts";
+import type { SubagentPrompt } from "./subagents.ts";
 import { type ConfirmBash, createToolExecutor, getToolDefinitions, type ToolResult } from "./tools.ts";
 
 // Prompts for the LLM call that summarizes old messages during compaction —
@@ -182,7 +184,7 @@ export type AgentEvent =
 	// generationMs is only set for the main completion's usage — compaction's
 	// own summarization call reports usage too (for cumulative cost tracking)
 	// but isn't a user-facing turn, so there's no "last request" TPS to show for it.
-	| { type: "usage"; usage: Usage; generationMs?: number }
+	| { type: "usage"; usage: Usage; generationMs?: number; subagent?: boolean }
 	| { type: "end"; reason: string }
 	| { type: "error"; message: string };
 
@@ -206,6 +208,14 @@ export interface LoopConfig {
 	mcpTools?: Tool[];
 	/** Dispatch table for mcpTools — checked before falling back to the built-in executor. */
 	mcpToolIndex?: Map<string, McpToolHandle>;
+	/** Available personas for the task tool. */
+	personas?: Persona[];
+	/** Current persona name (inherited by subagents by default). */
+	currentPersona?: string;
+	/** Subagent prompts for the task tool. */
+	subagentPrompts?: SubagentPrompt[];
+	/** Model override for subagents (falls back to main model if undefined). */
+	subagentModel?: string;
 	/** promptTokens from the most recent API response — used by shouldCompact
 	 * as the authoritative context size instead of character-based estimation. */
 	lastPromptTokens?: number;
@@ -254,8 +264,33 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 	// (OpenAI SDK, child-process kill handlers, etc.). Raise the cap once so
 	// Node doesn't warn on long-running agentic sessions.
 	if (signal) setMaxListeners(100, signal);
-	const tools = [...getToolDefinitions(), ...(loopConfig.mcpTools ?? [])];
-	const builtinExecuteTool = createToolExecutor(cwd, config, loopConfig.confirmBash);
+	const currentPersonaObj = loopConfig.personas?.find((p) => p.name === loopConfig.currentPersona);
+	const subagentsEnabled = currentPersonaObj?.subagents === true;
+	const subagentNames = subagentsEnabled ? loopConfig.subagentPrompts?.map((p) => p.name) : undefined;
+	const tools = [
+		...getToolDefinitions(subagentNames, initialModel, loopConfig.subagentModel),
+		...(loopConfig.mcpTools ?? []),
+	];
+	const builtinExecuteTool = createToolExecutor(
+		cwd,
+		config,
+		loopConfig.confirmBash,
+		// Gate the executor on the same condition as tool advertisement: a persona
+		// without `subagents: true` can neither see nor run `task`, even if the
+		// model fabricates a call to it.
+		subagentsEnabled
+			? {
+					model: loopConfig.subagentModel ?? initialModel,
+					subagentPrompts: loopConfig.subagentPrompts,
+					mcpTools: loopConfig.mcpTools,
+					mcpToolIndex,
+					confirmBash: loopConfig.confirmBash,
+					mainModel: initialModel,
+					subagentModel: loopConfig.subagentModel,
+					runAgentLoop,
+				}
+			: undefined,
+	);
 	const executeTool = mcpToolIndex
 		? (name: string, args: Record<string, unknown>, toolSignal?: AbortSignal): Promise<ToolResult> => {
 				const mcpTool = mcpToolIndex.get(name);
@@ -564,6 +599,12 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 					for (const r of executedToolBatch) {
 						const toolMsg: Message = { role: "tool", tool_call_id: r.id, content: r.result.content };
 						messages.push(toolMsg);
+
+						// Propagate subagent usage to the main session, tagged so the UI
+						// can attribute it separately from the main agent's own tokens.
+						if (r.result.subagentUsage) {
+							onEvent({ type: "usage", usage: r.result.subagentUsage, subagent: true });
+						}
 
 						// Extract file paths from tool calls for glob matching
 						const tc = toolCalls.find((t) => t.id === r.id);

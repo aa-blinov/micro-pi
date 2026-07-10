@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Message } from "../src/core/llm.ts";
 import {
+	addUsage,
 	compactMessages,
 	createSession,
 	deleteSession,
@@ -14,6 +15,27 @@ import {
 	saveSession,
 	shouldCompact,
 } from "../src/core/session.ts";
+
+describe("addUsage subagent attribution", () => {
+	const mkUsage = (over: Partial<import("../src/core/llm.ts").Usage> = {}) => ({
+		promptTokens: 100,
+		completionTokens: 50,
+		totalTokens: 150,
+		...over,
+	});
+
+	it("folds subagent usage into totals AND subagentTokens, without touching context size", () => {
+		const s = createSession("gpt-4o", tmpdir());
+		addUsage(s, mkUsage(), { subagent: false });
+		expect(s.usage.subagentTokens).toBe(0);
+		expect(s.lastPromptTokens).toBe(100);
+
+		addUsage(s, mkUsage({ promptTokens: 999, totalTokens: 200 }), { subagent: true });
+		expect(s.usage.totalTokens).toBe(350); // subagent counted in grand total
+		expect(s.usage.subagentTokens).toBe(200); // and tracked separately
+		expect(s.lastPromptTokens).toBe(100); // subagent prompt did NOT change context size
+	});
+});
 
 // ============================================================================
 // estimateTokens

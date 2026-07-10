@@ -18,6 +18,9 @@ export interface SessionUsage {
 	cacheWriteTokens: number;
 	/** Cumulative input tokens that were neither cached read nor cached write (full price). */
 	uncachedTokens: number;
+	/** Cumulative total tokens attributed to subagents — a subset of totalTokens,
+	 * tracked separately so the status line can show how much delegation cost. */
+	subagentTokens: number;
 }
 
 export interface SessionState {
@@ -42,8 +45,11 @@ export interface SessionState {
 	cwd?: string;
 }
 
-/** Fold one turn's usage into the session's running totals. */
-export function addUsage(session: SessionState, usage: Usage): void {
+/** Fold one turn's usage into the session's running totals. When `opts.subagent`
+ * is set, the tokens are also accumulated into `subagentTokens` (still part of the
+ * grand total) and the context-size tracker is left untouched — a subagent's
+ * prompt size says nothing about the main session's context. */
+export function addUsage(session: SessionState, usage: Usage, opts?: { subagent?: boolean }): void {
 	session.usage.promptTokens += usage.promptTokens;
 	session.usage.completionTokens += usage.completionTokens;
 	session.usage.totalTokens += usage.totalTokens;
@@ -51,6 +57,10 @@ export function addUsage(session: SessionState, usage: Usage): void {
 	if (usage.cacheReadTokens) session.usage.cacheReadTokens += usage.cacheReadTokens;
 	if (usage.cacheWriteTokens) session.usage.cacheWriteTokens += usage.cacheWriteTokens;
 	if (usage.uncachedTokens) session.usage.uncachedTokens += usage.uncachedTokens;
+	if (opts?.subagent) {
+		session.usage.subagentTokens += usage.totalTokens;
+		return;
+	}
 	// Track the latest promptTokens as the authoritative context size.
 	session.lastPromptTokens = usage.promptTokens;
 }
@@ -410,20 +420,20 @@ export function saveSession(session: SessionState): void {
 	writeFileSync(filePath, JSON.stringify(session), "utf-8");
 }
 
-/** Sessions saved before `usage` existed don't have it on disk — default it in. */
+/** Sessions saved before `usage` existed don't have it on disk — default it in.
+ * Also backfills fields added after `usage` itself (e.g. `subagentTokens`). */
 function withUsageDefault(session: SessionState): SessionState {
-	return {
-		...session,
-		usage: session.usage ?? {
-			promptTokens: 0,
-			completionTokens: 0,
-			totalTokens: 0,
-			cost: 0,
-			cacheReadTokens: 0,
-			cacheWriteTokens: 0,
-			uncachedTokens: 0,
-		},
+	const usage = session.usage ?? {
+		promptTokens: 0,
+		completionTokens: 0,
+		totalTokens: 0,
+		cost: 0,
+		cacheReadTokens: 0,
+		cacheWriteTokens: 0,
+		uncachedTokens: 0,
+		subagentTokens: 0,
 	};
+	return { ...session, usage: { ...usage, subagentTokens: usage.subagentTokens ?? 0 } };
 }
 
 /**
@@ -522,6 +532,7 @@ export function createSession(model: string, cwd: string): SessionState {
 			cacheReadTokens: 0,
 			cacheWriteTokens: 0,
 			uncachedTokens: 0,
+			subagentTokens: 0,
 		},
 		cwd: resolve(cwd),
 	};

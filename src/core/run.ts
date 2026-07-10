@@ -23,7 +23,19 @@ export interface RunOptions {
  */
 export async function runNonInteractive(args: ParsedArgs, options: RunOptions): Promise<void> {
 	const result = await runStartup(args, noPickers);
-	const { config, session, systemPrompt, runner, mcpResult, confirmBash, permissionMode } = result;
+	const {
+		config,
+		session,
+		systemPrompt,
+		runner,
+		mcpResult,
+		confirmBash,
+		permissionMode,
+		personas,
+		persona,
+		subagentPrompts,
+		subagentModel,
+	} = result;
 
 	appendMessage(session, { role: "user", content: options.message });
 
@@ -44,6 +56,10 @@ export async function runNonInteractive(args: ParsedArgs, options: RunOptions): 
 			mcpTools: mcpResult.toolDefinitions,
 			mcpToolIndex: mcpResult.toolIndex,
 			lastPromptTokens: session.lastPromptTokens,
+			personas,
+			currentPersona: persona.name,
+			subagentPrompts,
+			subagentModel,
 			onEvent: (event: AgentEvent) => handleEvent(event, session, options.format),
 		});
 
@@ -99,8 +115,8 @@ function handleEvent(event: AgentEvent, session: SessionState, format: "default"
 			break;
 
 		case "usage":
-			addUsage(session, event.usage);
-			emit("usage", { usage: event.usage });
+			addUsage(session, event.usage, { subagent: event.subagent });
+			emit("usage", { usage: event.usage, subagent: event.subagent });
 			break;
 
 		case "end":

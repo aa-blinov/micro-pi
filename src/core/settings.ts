@@ -16,6 +16,8 @@ export type PermissionMode = "default" | "bypass";
 export interface Settings {
 	/** Last used model */
 	model?: string;
+	/** Model used for subagents (falls back to model if unset). */
+	subagentModel?: string;
 	/** Last used reasoning level */
 	reasoningLevel?: string;
 	/** Last used persona name (see personas.ts) — defaults to "coding" when unset. */

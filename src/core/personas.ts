@@ -31,6 +31,8 @@ export interface Persona {
 	source: PersonaSource;
 	/** Absolute path to the .md file this persona was loaded from. */
 	filePath: string;
+	/** Whether this persona can use the `task` tool to delegate to sub-agents. Defaults to false. */
+	subagents: boolean;
 }
 
 export const DEFAULT_PERSONA = "coding";
@@ -86,6 +88,7 @@ const FALLBACK_PERSONA: Persona = {
 	systemPrompt: [readFallbackPersonaPrompt(), readSharedErrorHandling()].filter(Boolean).join("\n\n"),
 	source: "builtin",
 	filePath: "",
+	subagents: false,
 };
 
 function builtinPersonasDir(): string {
@@ -111,6 +114,7 @@ function loadPersonaFromFile(filePath: string, source: PersonaSource): Persona |
 		systemPrompt: [body.trimEnd(), readSharedErrorHandling()].filter(Boolean).join("\n\n"),
 		source,
 		filePath,
+		subagents: frontmatter.subagents === true,
 	};
 }
 

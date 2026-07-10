@@ -27,6 +27,12 @@ export interface StdinOwner {
 let currentOwner: StdinOwner | null = null;
 let stdinSource: Readable | null = null;
 
+/** True while a child process owns the terminal (suspendAndRun is active). */
+let terminalSuspended = false;
+
+/** True while the agent is actively streaming tokens (between submit and finally). */
+let streamingActive = false;
+
 /**
  * Full terminal suspend/resume hook registered by the UI layer.
  * The callback runs while the terminal is suspended (Ink's frame cleared,
@@ -77,15 +83,19 @@ export async function suspendAndRun<T>(callback: () => Promise<T>): Promise<T> {
 	// Pause the Composer's stdin handler before Ink suspends, so that
 	// keystrokes during the child process don't leak into the Composer.
 	currentOwner?.onPause();
+	terminalSuspended = true;
 	try {
 		await suspendHook(async () => {
 			result = await callback();
 		});
 	} catch {
 		// suspendTerminal throws if already suspended (parallel bash calls).
-		// Fall back to running without terminal suspension.
+		// Fall back to running without terminal suspension — reset the flag
+		// so isTerminalSuspended() reflects the actual state (not suspended).
+		terminalSuspended = false;
 		result = await callback();
 	} finally {
+		terminalSuspended = false;
 		currentOwner?.onResume();
 	}
 	return result!;
@@ -94,6 +104,20 @@ export async function suspendAndRun<T>(callback: () => Promise<T>): Promise<T> {
 /** Whether stdin is currently paused (a child process owns it). */
 export function isPaused(): boolean {
 	return suspendHook !== null;
+}
+
+export function isTerminalSuspended(): boolean {
+	return terminalSuspended;
+}
+
+/** Mark streaming as active or inactive. Called by useAgentSession. */
+export function setStreamingActive(active: boolean): void {
+	streamingActive = active;
+}
+
+/** Whether the agent is actively streaming tokens. */
+export function isStreamingActive(): boolean {
+	return streamingActive;
 }
 
 /** Get the underlying stdin stream. */

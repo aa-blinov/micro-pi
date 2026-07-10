@@ -653,3 +653,246 @@ describe("unknown tool", () => {
 		expect(result.content).toContain("Unknown tool");
 	});
 });
+
+// ============================================================================
+// task
+// ============================================================================
+
+describe("task", () => {
+	it("returns error when taskDeps not configured", async () => {
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("task", { assignment: "do something" });
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("not available");
+	});
+
+	it("returns error for missing assignment", async () => {
+		const exec = createToolExecutor(TEST_DIR, mockConfig, undefined, {
+			model: "test",
+			subagentPrompts: [],
+			runAgentLoop: async () => {
+				throw new Error("should not be called");
+			},
+		});
+		const result = await exec("task", {});
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("Missing");
+	});
+
+	it("returns error for unknown subagent", async () => {
+		const exec = createToolExecutor(TEST_DIR, mockConfig, undefined, {
+			model: "test",
+			subagentPrompts: [
+				{
+					name: "worker",
+					label: "Worker",
+					description: "test",
+					systemPrompt: "test",
+				},
+			],
+			runAgentLoop: async () => {
+				throw new Error("should not be called");
+			},
+		});
+		const result = await exec("task", { assignment: "do something", subagent: "nonexistent" });
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("Unknown subagent");
+	});
+
+	it("child loop receives no personas — cannot delegate further", async () => {
+		let capturedConfig: Record<string, unknown> | undefined;
+		const exec = createToolExecutor(TEST_DIR, mockConfig, undefined, {
+			model: "test",
+			subagentPrompts: [
+				{
+					name: "worker",
+					label: "Worker",
+					description: "test",
+					systemPrompt: "worker prompt",
+				},
+			],
+			runAgentLoop: async (_msgs, config) => {
+				capturedConfig = config as Record<string, unknown>;
+				return [{ role: "assistant", content: "done" }];
+			},
+		});
+		await exec("task", { assignment: "test task" });
+		expect(capturedConfig?.personas).toBeUndefined();
+		expect(capturedConfig?.currentPersona).toBeUndefined();
+		expect(capturedConfig?.subagentPrompts).toBeUndefined();
+		expect(capturedConfig?.subagentModel).toBeUndefined();
+	});
+
+	it("defaults to the 'worker' subagent even when another sorts earlier", async () => {
+		let capturedConfig: Record<string, unknown> | undefined;
+		const exec = createToolExecutor(TEST_DIR, mockConfig, undefined, {
+			model: "test",
+			// "analyst" sorts before "worker"; the default must still be worker.
+			subagentPrompts: [
+				{ name: "analyst", label: "Analyst", description: "x", systemPrompt: "analyst prompt" },
+				{ name: "worker", label: "Worker", description: "x", systemPrompt: "worker prompt" },
+			],
+			runAgentLoop: async (_msgs, config) => {
+				capturedConfig = config as Record<string, unknown>;
+				return [{ role: "assistant", content: "done" }];
+			},
+		});
+		await exec("task", { assignment: "do it" }); // no persona → default
+		expect(capturedConfig?.systemPrompt).toBe("worker prompt");
+	});
+
+	it("passes the assignment only in the user message, not the system prompt", async () => {
+		let capturedConfig: Record<string, unknown> | undefined;
+		let capturedMessages: unknown;
+		const exec = createToolExecutor(TEST_DIR, mockConfig, undefined, {
+			model: "test",
+			subagentPrompts: [{ name: "worker", label: "Worker", description: "test", systemPrompt: "worker prompt" }],
+			runAgentLoop: async (msgs, config) => {
+				capturedMessages = msgs;
+				capturedConfig = config as Record<string, unknown>;
+				return [{ role: "assistant", content: "done" }];
+			},
+		});
+		await exec("task", { assignment: "unique-assignment-token" });
+		expect(capturedConfig?.systemPrompt).toBe("worker prompt");
+		expect(capturedConfig?.systemPrompt).not.toContain("unique-assignment-token");
+		expect(JSON.stringify(capturedMessages)).toContain("unique-assignment-token");
+	});
+
+	it("surfaces a non-stop end reason as an error", async () => {
+		const exec = createToolExecutor(TEST_DIR, mockConfig, undefined, {
+			model: "test",
+			subagentPrompts: [{ name: "worker", label: "Worker", description: "test", systemPrompt: "worker prompt" }],
+			runAgentLoop: async (_msgs, config) => {
+				config.onEvent?.({ type: "end", reason: "aborted" });
+				return [{ role: "assistant", content: "partial" }];
+			},
+		});
+		const result = await exec("task", { assignment: "do it" });
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("aborted");
+		expect(result.content).toContain("partial");
+	});
+
+	it("propagates provider-reported subagent cost in subagentUsage", async () => {
+		const exec = createToolExecutor(TEST_DIR, mockConfig, undefined, {
+			model: "test",
+			subagentPrompts: [{ name: "worker", label: "Worker", description: "test", systemPrompt: "worker prompt" }],
+			runAgentLoop: async (_msgs, config) => {
+				config.onEvent?.({
+					type: "usage",
+					usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, cost: 0.002 },
+				});
+				config.onEvent?.({
+					type: "usage",
+					usage: { promptTokens: 20, completionTokens: 8, totalTokens: 28, cost: 0.003 },
+				});
+				config.onEvent?.({ type: "end", reason: "stop" });
+				return [{ role: "assistant", content: "done" }];
+			},
+		});
+		const result = await exec("task", { assignment: "do it" });
+		expect(result.isError).toBeFalsy();
+		expect(result.subagentUsage?.cost).toBeCloseTo(0.005);
+	});
+
+	it("flags an empty result as an error even when the run finished", async () => {
+		const exec = createToolExecutor(TEST_DIR, mockConfig, undefined, {
+			model: "test",
+			subagentPrompts: [{ name: "worker", label: "Worker", description: "test", systemPrompt: "worker prompt" }],
+			runAgentLoop: async (_msgs, config) => {
+				config.onEvent?.({ type: "end", reason: "stop" });
+				return [{ role: "assistant", content: "   " }];
+			},
+		});
+		const result = await exec("task", { assignment: "do it" });
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("no output");
+	});
+
+	it("caps concurrent subagents at 10", async () => {
+		let active = 0;
+		let peak = 0;
+		let release!: () => void;
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const exec = createToolExecutor(TEST_DIR, mockConfig, undefined, {
+			model: "test",
+			subagentPrompts: [{ name: "worker", label: "Worker", description: "test", systemPrompt: "worker prompt" }],
+			runAgentLoop: async () => {
+				active++;
+				peak = Math.max(peak, active);
+				await gate;
+				active--;
+				return [{ role: "assistant", content: "done" }];
+			},
+		});
+		const runs = Array.from({ length: 25 }, () => exec("task", { assignment: "work" }));
+		// Let the semaphore admit its first wave before releasing the gate.
+		await new Promise((r) => setTimeout(r, 20));
+		expect(peak).toBe(10);
+		release();
+		await Promise.all(runs);
+		expect(peak).toBe(10);
+	});
+
+	it("cancels queued subagents immediately when the signal aborts (no slot wait)", async () => {
+		const ac = new AbortController();
+		let started = 0;
+		let release!: () => void;
+		const gate = new Promise<void>((r) => {
+			release = r;
+		});
+		const exec = createToolExecutor(TEST_DIR, mockConfig, undefined, {
+			model: "test",
+			subagentPrompts: [{ name: "worker", label: "Worker", description: "x", systemPrompt: "worker prompt" }],
+			runAgentLoop: async () => {
+				started++;
+				await gate; // the 10 admitted runs park here, holding every slot
+				return [{ role: "assistant", content: "done" }];
+			},
+		});
+		// 10 fill the cap and block; 3 more queue behind the semaphore.
+		const runs = Array.from({ length: 13 }, () => exec("task", { assignment: "work" }, ac.signal));
+		await new Promise((r) => setTimeout(r, 20));
+		expect(started).toBe(10); // only the cap started; 3 are queued
+
+		ac.abort();
+		const results = await Promise.all(runs.slice(10)); // the 3 queued ones
+		// They resolve right away as aborted errors, without waiting for a slot.
+		for (const r of results) {
+			expect(r.isError).toBe(true);
+			expect(r.content).toContain("aborted");
+		}
+		expect(started).toBe(10); // none of the queued runs ever entered the loop
+
+		release();
+		await Promise.all(runs.slice(0, 10));
+	});
+
+	it("serializes confirmBash across concurrent subagents", async () => {
+		let confirmActive = 0;
+		let confirmPeak = 0;
+		const confirm = async (): Promise<boolean> => {
+			confirmActive++;
+			confirmPeak = Math.max(confirmPeak, confirmActive);
+			await new Promise((r) => setTimeout(r, 10));
+			confirmActive--;
+			return true;
+		};
+		const exec = createToolExecutor(TEST_DIR, mockConfig, confirm, {
+			model: "test",
+			subagentPrompts: [{ name: "worker", label: "Worker", description: "test", systemPrompt: "worker prompt" }],
+			confirmBash: confirm,
+			runAgentLoop: async (_msgs, config) => {
+				// The child invokes the (wrapped) confirmBash it was handed.
+				await config.confirmBash?.("rm -rf x", "dangerous");
+				return [{ role: "assistant", content: "done" }];
+			},
+		});
+		const runs = Array.from({ length: 5 }, () => exec("task", { assignment: "work" }));
+		await Promise.all(runs);
+		expect(confirmPeak).toBe(1);
+	});
+});
