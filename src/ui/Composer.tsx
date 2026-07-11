@@ -165,14 +165,21 @@ export function Composer({
 		return m;
 	}, [pendingPastes]);
 
-	// Scroll the PALETTE_ROWS-tall window to keep safeIdx in view — a plain
-	// `slice(0, PALETTE_ROWS)` only ever showed the first page, so pressing
-	// Down past row 8 moved the selection off-screen with no visual sign of it.
+	// Palette window height, shrunk on short terminals: the palette box, its
+	// footer, the composer frame, and the status bar stack up to ~9 rows of
+	// chrome — a fixed 8-row window overflowed the viewport there, hitting
+	// Ink's taller-than-screen redraw corruption. Constant for a given
+	// terminal size, so the box doesn't jump while typing filters the list.
+	const paletteRows = Math.max(3, Math.min(PALETTE_ROWS, (process.stdout.rows || 24) - 9));
+
+	// Scroll the paletteRows-tall window to keep safeIdx in view — a plain
+	// `slice(0, paletteRows)` only ever showed the first page, so pressing
+	// Down past the last visible row moved the selection off-screen with no
+	// visual sign of it.
 	if (paletteOpen) {
-		const maxOffset = Math.max(0, filteredCmds.length - PALETTE_ROWS);
+		const maxOffset = Math.max(0, filteredCmds.length - paletteRows);
 		if (safeIdx < paletteScrollRef.current) paletteScrollRef.current = safeIdx;
-		else if (safeIdx >= paletteScrollRef.current + PALETTE_ROWS)
-			paletteScrollRef.current = safeIdx - PALETTE_ROWS + 1;
+		else if (safeIdx >= paletteScrollRef.current + paletteRows) paletteScrollRef.current = safeIdx - paletteRows + 1;
 		paletteScrollRef.current = Math.min(paletteScrollRef.current, maxOffset);
 	} else {
 		paletteScrollRef.current = 0;
@@ -523,11 +530,11 @@ export function Composer({
 			{imageNotice && <Text color={theme().success}>{imageNotice}</Text>}
 			{paletteOpen && filteredCmds.length > 0 && (
 				<Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
-					{/* Always PALETTE_ROWS slots, padded with blank lines, and each row
+					{/* Always paletteRows slots, padded with blank lines, and each row
 					    force-truncated to one line: the box's height must stay constant
 					    as the filter narrows while typing, or the input frame below it
 					    jumps up and down every keystroke. */}
-					{Array.from({ length: PALETTE_ROWS }, (_, i) => {
+					{Array.from({ length: paletteRows }, (_, i) => {
 						const c = filteredCmds[paletteScroll + i];
 						// biome-ignore lint/suspicious/noArrayIndexKey: fixed-size slot grid, not a reorderable list
 						if (!c) return <Text key={`empty-${i}`}> </Text>;
@@ -541,7 +548,7 @@ export function Composer({
 					})}
 					<Text color={theme().muted}>
 						↑↓ · Tab/Enter · Esc
-						{filteredCmds.length > PALETTE_ROWS ? ` · ${safeIdx + 1}/${filteredCmds.length}` : ""}
+						{filteredCmds.length > paletteRows ? ` · ${safeIdx + 1}/${filteredCmds.length}` : ""}
 					</Text>
 				</Box>
 			)}

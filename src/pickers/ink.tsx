@@ -3,11 +3,23 @@ import { type JSX, useRef, useState } from "react";
 import { theme } from "../ui/themes/index.ts";
 import type { Pickers, PickOption, PickOptions } from "./types.ts";
 
-// Max option rows rendered at once. Without a window a long list (models,
-// sessions, themes) grows the live region past the terminal height, where
+// Cap on option rows rendered at once. Without a window a long list (models,
+// sessions, personas) grows the live region past the terminal height, where
 // Ink's log-update erase math breaks and every redraw stacks a duplicate
 // frame — the same failure mode ChatLog's clampStreamingBlocks guards against.
-const PICKER_ROWS = 10;
+const PICKER_MAX_ROWS = 10;
+
+/**
+ * Option rows that fit the current terminal. The modal's own chrome (padding,
+ * title, optional error block, selected-row description, footer) plus the
+ * composer and status bar still rendered below the modal consume ~13 rows —
+ * a fixed 10-row window fit a default 24-row terminal but still overflowed
+ * shorter ones, resurrecting the duplicate-frame corruption the window
+ * exists to prevent. Never fewer than 3 rows so the picker stays usable.
+ */
+export function pickerViewportRows(terminalRows: number): number {
+	return Math.max(3, Math.min(PICKER_MAX_ROWS, terminalRows - 13));
+}
 
 export function ModalPicker<T>(props: {
 	options: PickOption<T>[];
@@ -38,14 +50,16 @@ export function ModalPicker<T>(props: {
 		}
 	});
 	// Scroll the window to keep the selection visible (same pattern as the
-	// composer's command palette).
+	// composer's command palette). Rows are recomputed per render, so a
+	// terminal resize (which repaints the whole tree) resizes the window too.
+	const rows = pickerViewportRows(process.stdout.rows || 24);
 	const scrollRef = useRef(0);
-	const maxScroll = Math.max(0, props.options.length - PICKER_ROWS);
+	const maxScroll = Math.max(0, props.options.length - rows);
 	if (scrollRef.current > maxScroll) scrollRef.current = maxScroll;
 	if (idx < scrollRef.current) scrollRef.current = idx;
-	else if (idx >= scrollRef.current + PICKER_ROWS) scrollRef.current = idx - PICKER_ROWS + 1;
+	else if (idx >= scrollRef.current + rows) scrollRef.current = idx - rows + 1;
 	const scroll = scrollRef.current;
-	const visible = props.options.slice(scroll, scroll + PICKER_ROWS);
+	const visible = props.options.slice(scroll, scroll + rows);
 	const title = props.opts?.title;
 	const error = props.opts?.error;
 	return (
@@ -65,22 +79,30 @@ export function ModalPicker<T>(props: {
 				const selected = i === idx;
 				return (
 					// Keyed by absolute index: options are static for the modal's
-					// lifetime, and labels can repeat.
+					// lifetime, and labels can repeat. Rows are hard-truncated to one
+					// visual line each — pickerViewportRows budgets by option count,
+					// so a long label wrapping to two terminal lines would silently
+					// blow that budget on narrow terminals.
 					<Box key={i} flexDirection="column">
-						<Text>
+						<Text wrap="truncate">
 							<Text color={selected ? theme().accent : theme().muted}>{selected ? ">" : " "}</Text>{" "}
 							<Text color={selected ? theme().accent : "white"} bold={selected}>
 								{o.label}
 							</Text>
 						</Text>
-						{selected && o.description && <Text color={theme().muted}> {o.description}</Text>}
+						{selected && o.description && (
+							<Text color={theme().muted} wrap="truncate">
+								{" "}
+								{o.description}
+							</Text>
+						)}
 					</Box>
 				);
 			})}
 			<Box marginTop={1}>
 				<Text color={theme().muted}>
 					up/down select · Enter confirm · Esc cancel
-					{props.options.length > PICKER_ROWS ? ` · ${idx + 1}/${props.options.length}` : ""}
+					{props.options.length > rows ? ` · ${idx + 1}/${props.options.length}` : ""}
 				</Text>
 			</Box>
 		</Box>
