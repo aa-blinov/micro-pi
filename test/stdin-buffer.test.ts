@@ -100,3 +100,59 @@ describe("StdinBuffer — bracketed paste timeout", () => {
 		expect(h.pastes).toEqual([]);
 	});
 });
+
+describe("bare Esc keypress (no Kitty protocol)", () => {
+	it("flushes a lone \\x1b after the timeout instead of waiting for the next key", async () => {
+		const buf = new StdinBuffer({ timeout: 5 });
+		const seqs: string[] = [];
+		buf.on("data", (s: string) => seqs.push(s));
+		buf.process("\x1b");
+		expect(seqs).toEqual([]); // not immediate — could still be a sequence prefix
+		await new Promise((r) => setTimeout(r, 20));
+		expect(seqs).toEqual(["\x1b"]);
+		buf.destroy();
+	});
+
+	it("still holds a partial CSI prefix for the next chunk", async () => {
+		const buf = new StdinBuffer({ timeout: 5 });
+		const seqs: string[] = [];
+		const pastes: string[] = [];
+		buf.on("data", (s: string) => seqs.push(s));
+		buf.on("paste", (s: string) => pastes.push(s));
+		buf.process("\x1b[20"); // first half of \x1b[200~
+		await new Promise((r) => setTimeout(r, 20));
+		expect(seqs).toEqual([]); // not flushed as garbage keys
+		buf.process("0~hi\x1b[201~");
+		expect(pastes).toEqual(["hi"]);
+		buf.destroy();
+	});
+});
+
+describe("StdinBuffer — large single-line plain chunk", () => {
+	it("treats a long no-newline batch as a paste, not typing", async () => {
+		const h = harness();
+		const long = "a".repeat(80); // one pty read of a single-line paste
+		h.process(long);
+		await h.flushTimers();
+		expect(h.data).toEqual([]);
+		expect(h.pastes).toEqual([long]);
+	});
+
+	it("keeps short no-newline batches as typed characters", async () => {
+		const h = harness();
+		h.process("hello"); // IME commit / fast typing scale
+		await h.flushTimers();
+		expect(h.pastes).toEqual([]);
+		expect(h.data).toEqual(["h", "e", "l", "l", "o"]);
+	});
+
+	it("coalesces a long first line with the multi-line remainder", async () => {
+		const h = harness();
+		const first = "x".repeat(100); // first chunk: long line, no newline yet
+		h.process(first);
+		h.process("\nline2\nline3"); // remainder arrives within the window
+		await h.flushTimers();
+		expect(h.data).toEqual([]);
+		expect(h.pastes).toEqual([`${first}\nline2\nline3`]);
+	});
+});

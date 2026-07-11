@@ -1,7 +1,13 @@
 import { Box, render, Text, useInput } from "ink";
-import { type JSX, useState } from "react";
+import { type JSX, useRef, useState } from "react";
 import { theme } from "../ui/themes/index.ts";
 import type { Pickers, PickOption, PickOptions } from "./types.ts";
+
+// Max option rows rendered at once. Without a window a long list (models,
+// sessions, themes) grows the live region past the terminal height, where
+// Ink's log-update erase math breaks and every redraw stacks a duplicate
+// frame — the same failure mode ChatLog's clampStreamingBlocks guards against.
+const PICKER_ROWS = 10;
 
 export function ModalPicker<T>(props: {
 	options: PickOption<T>[];
@@ -9,7 +15,11 @@ export function ModalPicker<T>(props: {
 	onSelect: (value: T) => void;
 	onCancel: () => void;
 }): JSX.Element {
-	const [idx, setIdx] = useState(props.opts?.defaultIndex ?? 0);
+	// defaultIndex may come from a findIndex miss (-1) — clamp so Enter can't
+	// dereference options[-1].
+	const [idx, setIdx] = useState(() =>
+		Math.min(Math.max(0, props.opts?.defaultIndex ?? 0), Math.max(0, props.options.length - 1)),
+	);
 	useInput((input, key) => {
 		if (key.upArrow) {
 			setIdx((i) => (i - 1 + props.options.length) % props.options.length);
@@ -27,6 +37,15 @@ export function ModalPicker<T>(props: {
 			props.onCancel();
 		}
 	});
+	// Scroll the window to keep the selection visible (same pattern as the
+	// composer's command palette).
+	const scrollRef = useRef(0);
+	const maxScroll = Math.max(0, props.options.length - PICKER_ROWS);
+	if (scrollRef.current > maxScroll) scrollRef.current = maxScroll;
+	if (idx < scrollRef.current) scrollRef.current = idx;
+	else if (idx >= scrollRef.current + PICKER_ROWS) scrollRef.current = idx - PICKER_ROWS + 1;
+	const scroll = scrollRef.current;
+	const visible = props.options.slice(scroll, scroll + PICKER_ROWS);
 	const title = props.opts?.title;
 	const error = props.opts?.error;
 	return (
@@ -41,10 +60,13 @@ export function ModalPicker<T>(props: {
 					{title}
 				</Text>
 			)}
-			{props.options.map((o, i) => {
+			{visible.map((o, vi) => {
+				const i = scroll + vi;
 				const selected = i === idx;
 				return (
-					<Box key={o.label} flexDirection="column">
+					// Keyed by absolute index: options are static for the modal's
+					// lifetime, and labels can repeat.
+					<Box key={i} flexDirection="column">
 						<Text>
 							<Text color={selected ? theme().accent : theme().muted}>{selected ? ">" : " "}</Text>{" "}
 							<Text color={selected ? theme().accent : "white"} bold={selected}>
@@ -56,7 +78,10 @@ export function ModalPicker<T>(props: {
 				);
 			})}
 			<Box marginTop={1}>
-				<Text color={theme().muted}>up/down select · Enter confirm · Esc cancel</Text>
+				<Text color={theme().muted}>
+					up/down select · Enter confirm · Esc cancel
+					{props.options.length > PICKER_ROWS ? ` · ${idx + 1}/${props.options.length}` : ""}
+				</Text>
 			</Box>
 		</Box>
 	);

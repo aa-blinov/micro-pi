@@ -109,8 +109,14 @@ export function App(props: AppProps): JSX.Element {
 	// detect on its own.
 	const [_themeVer, setThemeVer] = useState(0);
 	const onThemeChange = useCallback(() => {
-		setThemeVer((v) => v + 1);
-		void onRepaintBanner?.();
+		// Order matters: onRepaintBanner clears the screen (+ scrollback) and
+		// reprints the banner; only then bump the version so the <Static> key
+		// change replays the recolored history below the fresh banner. Bumping
+		// first would append a second copy of the transcript under the old one.
+		void (async () => {
+			await onRepaintBanner?.();
+			setThemeVer((v) => v + 1);
+		})();
 	}, [onRepaintBanner]);
 
 	const confirmBash = useMemo(() => makeConfirmBash(pickers, permissionMode), [pickers, permissionMode]);

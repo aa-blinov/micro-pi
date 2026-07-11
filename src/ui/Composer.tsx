@@ -70,6 +70,22 @@ const BRACKETED_PASTE_ON = "\x1b[?2004h";
 const BRACKETED_PASTE_OFF = "\x1b[?2004l";
 const PALETTE_ROWS = 8;
 
+// A single-line paste this long collapses to a chip; anything shorter inserts
+// verbatim. Multi-line pastes always chip — the chip exists to keep the
+// composer compact, and one long-ish line fits fine.
+const SINGLE_LINE_CHIP_CHARS = 300;
+
+// One physical paste can arrive as several "paste" events: a terminal that
+// doesn't wrap pastes in bracketed markers delivers pty-sized chunks, and a
+// gap above StdinBuffer's 30 ms coalesce window splits them into separate
+// bursts; tmux/terminal quirks can likewise split one clipboard write into
+// several bracketed blocks. Each event used to mint its own chip — one paste
+// showed up as [Pasted 3 lines][Pasted 5 lines][…]. Events landing within
+// this window right behind the previous chip are merged into it instead.
+// Kept well below a human's repeat-paste cadence so two deliberate Cmd+V
+// presses still produce two chips.
+const PASTE_MERGE_MS = 250;
+
 export function Composer({
 	onSubmit,
 	canSubmit,
@@ -112,6 +128,19 @@ export function Composer({
 	const lockedRef = useRef(locked);
 	lockedRef.current = locked;
 	const paletteScrollRef = useRef(0);
+	const composerScrollRef = useRef(0);
+	// Notice timers, kept in refs so a newer notice cancels the stale timer
+	// that would otherwise clear it early, and so unmount doesn't leave a
+	// timer calling setState on a dead component.
+	const exitHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const imageNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	useEffect(
+		() => () => {
+			if (exitHintTimerRef.current) clearTimeout(exitHintTimerRef.current);
+			if (imageNoticeTimerRef.current) clearTimeout(imageNoticeTimerRef.current);
+		},
+		[],
+	);
 
 	const buf = bufRef.current;
 	const val = buf.value;
@@ -181,27 +210,38 @@ export function Composer({
 		}
 		lastCtrlCRef.current = now;
 		setExitHint(true);
-		setTimeout(() => setExitHint(false), 2000);
+		if (exitHintTimerRef.current) clearTimeout(exitHintTimerRef.current);
+		exitHintTimerRef.current = setTimeout(() => setExitHint(false), 2000);
+	};
+
+	// duration 0 leaves the notice up until replaced — used for the saved-path
+	// confirmation, which stays relevant for as long as the path sits in the
+	// composer. Clearing the previous timer first keeps a rapid second Ctrl+G
+	// from having its message wiped by the first press's stale timeout.
+	const showImageNotice = (text: string, durationMs: number) => {
+		if (imageNoticeTimerRef.current) {
+			clearTimeout(imageNoticeTimerRef.current);
+			imageNoticeTimerRef.current = null;
+		}
+		setImageNotice(text);
+		if (durationMs > 0) {
+			imageNoticeTimerRef.current = setTimeout(() => setImageNotice(null), durationMs);
+		}
 	};
 
 	const handleAttachImage = () => {
 		const reader = onPasteImageRef.current;
 		if (!reader) {
-			setImageNotice("[Image paste not available]");
-			setTimeout(() => setImageNotice(null), 3000);
+			showImageNotice("[Image paste not available]", 3000);
 			return;
 		}
-		setImageNotice("[Reading clipboard...]");
+		showImageNotice("[Reading clipboard...]", 0);
 		void reader().then((filePath) => {
 			if (filePath) {
 				bufRef.current.insert(filePath);
-				// Left showing (not auto-cleared like the other notices below) — it's
-				// the only visible confirmation of which file got attached, and it
-				// stays relevant for as long as that path sits in the composer.
-				setImageNotice(`[Image saved: ${filePath}]`);
+				showImageNotice(`[Image saved: ${filePath}]`, 0);
 			} else {
-				setImageNotice("[No image in clipboard — copy a screenshot or image file first]");
-				setTimeout(() => setImageNotice(null), 4000);
+				showImageNotice("[No image in clipboard — copy a screenshot or image file first]", 4000);
 			}
 			setVersion((v) => v + 1);
 		});
@@ -236,14 +276,21 @@ export function Composer({
 			return;
 		}
 
-		if (paletteOpen) {
+		// Palette key handling only while it has matches. With zero matches the
+		// palette box isn't rendered, so intercepting keys there produced a
+		// silent dead-end: Enter/Tab hit selectCommand's empty-list early
+		// return and arrows spun an empty list — "/typo" could be neither
+		// submitted nor escaped. With no matches, keys fall through to normal
+		// editing and Enter submits the text as-is (handleInput already routes
+		// unknown slash input to the agent — it could be a bare file path).
+		if (paletteOpen && filteredCmds.length > 0) {
 			if (event.type === "binding") {
 				if (event.binding === "editor.cursorUp") {
-					setPaletteIdx((i) => (i - 1 + filteredCmds.length) % Math.max(1, filteredCmds.length));
+					setPaletteIdx((i) => (i - 1 + filteredCmds.length) % filteredCmds.length);
 					return;
 				}
 				if (event.binding === "editor.cursorDown") {
-					setPaletteIdx((i) => (i + 1) % Math.max(1, filteredCmds.length));
+					setPaletteIdx((i) => (i + 1) % filteredCmds.length);
 					return;
 				}
 				if (event.binding === "input.submit") {
@@ -255,6 +302,12 @@ export function Composer({
 					return;
 				}
 				if (event.binding === "input.escape") {
+					// Dismiss the palette. It's derived from the buffer text, so
+					// clearing the buffer is what closes it — resetting only the
+					// selection (the old behavior) left Esc looking broken.
+					b.clear();
+					setPendingPastes([]);
+					chipCounterRef.current = 0;
 					setPaletteIdx(0);
 					return;
 				}
@@ -354,24 +407,49 @@ export function Composer({
 		onCont(); // Enable on initial mount
 		process.on("SIGCONT", onCont);
 
+		// Last chip created by a paste event — used to merge a follow-up event
+		// belonging to the same physical paste (see PASTE_MERGE_MS).
+		let lastChip: { char: string; at: number } | null = null;
+
 		const handlePasteContent = (raw: string) => {
 			// Normalize line endings (like opencode)
 			const text = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 			if (!text) return;
+
+			// Continuation of the paste that just minted a chip? Merge into it —
+			// but only if the cursor still sits right behind that chip, so a
+			// paste at a different spot can never splice into the wrong one.
+			const b = bufRef.current;
+			if (lastChip && Date.now() - lastChip.at < PASTE_MERGE_MS && b.value[b.cursorPos - 1] === lastChip.char) {
+				const char = lastChip.char;
+				lastChip.at = Date.now();
+				setPendingPastes((prev) =>
+					prev.map((p) => {
+						if (p.char !== char) return p;
+						const merged = p.text + text;
+						return { ...p, text: merged, label: pasteLabel(merged.split("\n").length, merged.length) };
+					}),
+				);
+				setVersion((v) => v + 1);
+				return;
+			}
+
 			const lineCount = text.split("\n").length;
 			const totalChars = text.length;
 			// Multi-line or long single-line pastes collapse to a single PUA
 			// chip character in the buffer (atomic, one row) and remember the
 			// real text for doSubmit to swap back. Short pastes insert verbatim.
-			if (lineCount > 1 || totalChars > 100) {
+			if (lineCount > 1 || totalChars > SINGLE_LINE_CHIP_CHARS) {
 				const index = chipCounterRef.current;
 				chipCounterRef.current += 1;
 				const char = chipCharFor(index);
 				const label = pasteLabel(lineCount, totalChars);
 				setPendingPastes((p) => [...p, { char, label, text }]);
-				bufRef.current.insert(char);
+				b.insert(char);
+				lastChip = { char, at: Date.now() };
 			} else {
-				bufRef.current.insert(text);
+				b.insert(text);
+				lastChip = null;
 			}
 			setVersion((v) => v + 1);
 		};
@@ -427,8 +505,18 @@ export function Composer({
 	}, [setRawMode, stdin, isRawModeSupported]);
 
 	const { lines, cursorLine, cursorCol } = buf.getLayout();
-	const visibleLines = lines.length > 5 ? lines.slice(-5) : lines;
-	const offset = Math.max(0, lines.length - visibleLines.length);
+	// Window follows the cursor (same pattern as the palette's scroll): a
+	// plain slice(-5) pinned the view to the last lines, so moving the cursor
+	// up past the window edge meant editing blind — the cursor row simply
+	// wasn't rendered.
+	const COMPOSER_ROWS = 5;
+	const maxScroll = Math.max(0, lines.length - COMPOSER_ROWS);
+	if (composerScrollRef.current > maxScroll) composerScrollRef.current = maxScroll;
+	if (cursorLine < composerScrollRef.current) composerScrollRef.current = cursorLine;
+	else if (cursorLine >= composerScrollRef.current + COMPOSER_ROWS)
+		composerScrollRef.current = cursorLine - COMPOSER_ROWS + 1;
+	const offset = composerScrollRef.current;
+	const visibleLines = lines.slice(offset, offset + COMPOSER_ROWS);
 
 	return (
 		<Box flexDirection="column">
@@ -468,12 +556,27 @@ export function Composer({
 				borderColor={locked ? theme().muted : running ? theme().warning : theme().success}
 				paddingX={1}
 			>
+				{/* Off-screen line counters: without them a scrolled window is
+				    indistinguishable from the whole message, so it wasn't clear
+				    there was anything to arrow-scroll to. */}
+				{offset > 0 && (
+					<Text color={theme().muted} dimColor>
+						{"  "}↑ {offset} more {offset === 1 ? "line" : "lines"}
+					</Text>
+				)}
 				{visibleLines.map((line, i) => {
 					const realLine = i + offset;
 					const isCursorLine = realLine === cursorLine;
 					const beforeCol = isCursorLine ? line.slice(0, cursorCol) : line;
-					const atCol = isCursorLine ? line.slice(cursorCol, cursorCol + 1) : "";
-					const afterCol = isCursorLine ? line.slice(cursorCol + (atCol ? 1 : 0)) : "";
+					// Take the full code point under the cursor — slicing a single
+					// UTF-16 unit would split an emoji's surrogate pair and render
+					// mojibake on both sides of the cursor.
+					let atCol = "";
+					if (isCursorLine && cursorCol < line.length) {
+						const cp = line.codePointAt(cursorCol) ?? 0;
+						atCol = line.slice(cursorCol, cursorCol + (cp > 0xffff ? 2 : 1));
+					}
+					const afterCol = isCursorLine ? line.slice(cursorCol + atCol.length) : "";
 					// If the cursor cell is a chip character, show the whole chip
 					// label in inverse (the chip is one buffer column, so the cursor
 					// can rest on it; backspace/delete then act on the whole chip).
@@ -498,6 +601,12 @@ export function Composer({
 						</Text>
 					);
 				})}
+				{offset + visibleLines.length < lines.length && (
+					<Text color={theme().muted} dimColor>
+						{"  "}↓ {lines.length - offset - visibleLines.length} more{" "}
+						{lines.length - offset - visibleLines.length === 1 ? "line" : "lines"}
+					</Text>
+				)}
 				{lines.length === 0 && (
 					<Text>
 						<Text color={theme().accent} bold>

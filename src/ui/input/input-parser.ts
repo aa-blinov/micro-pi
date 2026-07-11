@@ -14,8 +14,15 @@ import { StdinBuffer } from "./stdin-buffer.ts";
 export type InputEvent = { type: "binding"; binding: Keybinding; raw: string } | { type: "char"; text: string };
 
 const BINDING_ORDER: Keybinding[] = [
-	"input.submit",
+	// newLine before submit: the "enter" matcher also claims a raw \n on
+	// non-Kitty terminals, but there \n is Ctrl+J — the documented newline
+	// fallback for terminals where Shift+Enter is indistinguishable from
+	// Enter. With submit first, Ctrl+J submitted the message instead. The
+	// reverse ordering is safe: none of newLine's keys (shift+enter, ctrl+j,
+	// alt+enter) ever match a plain \r / kp-Enter / unmodified CSI-u Enter,
+	// so submit still wins for every actual Enter press.
 	"input.newLine",
+	"input.submit",
 	"input.abort",
 	"input.escape",
 	"input.attachImage",

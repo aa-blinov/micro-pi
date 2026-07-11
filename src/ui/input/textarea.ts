@@ -30,23 +30,62 @@ export class TextBuffer {
 		this.insert("\n");
 	}
 
+	// The buffer indexes UTF-16 code units, but the cursor must only ever rest
+	// on code-point boundaries: stepping or deleting a single unit inside an
+	// astral character (emoji, some CJK extensions) leaves a lone surrogate —
+	// mojibake in the render and in the submitted text.
+
+	/** Position one code point left of `pos` (skips over a surrogate pair). */
+	private prevBoundary(pos: number): number {
+		if (pos <= 0) return 0;
+		const low = this.text.charCodeAt(pos - 1);
+		if (low >= 0xdc00 && low <= 0xdfff && pos >= 2) {
+			const high = this.text.charCodeAt(pos - 2);
+			if (high >= 0xd800 && high <= 0xdbff) return pos - 2;
+		}
+		return pos - 1;
+	}
+
+	/** Position one code point right of `pos` (skips over a surrogate pair). */
+	private nextBoundary(pos: number): number {
+		if (pos >= this.text.length) return this.text.length;
+		const high = this.text.charCodeAt(pos);
+		if (high >= 0xd800 && high <= 0xdbff && pos + 1 < this.text.length) {
+			const low = this.text.charCodeAt(pos + 1);
+			if (low >= 0xdc00 && low <= 0xdfff) return pos + 2;
+		}
+		return pos + 1;
+	}
+
+	/** If `pos` sits between the halves of a surrogate pair, snap to its start. */
+	private snapBoundary(pos: number): number {
+		if (pos <= 0 || pos >= this.text.length) return pos;
+		const code = this.text.charCodeAt(pos);
+		if (code >= 0xdc00 && code <= 0xdfff) {
+			const high = this.text.charCodeAt(pos - 1);
+			if (high >= 0xd800 && high <= 0xdbff) return pos - 1;
+		}
+		return pos;
+	}
+
 	backspace(): void {
 		if (this.cursor === 0) return;
-		this.text = this.text.slice(0, this.cursor - 1) + this.text.slice(this.cursor);
-		this.cursor--;
+		const target = this.prevBoundary(this.cursor);
+		this.text = this.text.slice(0, target) + this.text.slice(this.cursor);
+		this.cursor = target;
 	}
 
 	deleteForward(): void {
 		if (this.cursor >= this.text.length) return;
-		this.text = this.text.slice(0, this.cursor) + this.text.slice(this.cursor + 1);
+		this.text = this.text.slice(0, this.cursor) + this.text.slice(this.nextBoundary(this.cursor));
 	}
 
 	moveLeft(): void {
-		this.cursor = Math.max(0, this.cursor - 1);
+		this.cursor = this.prevBoundary(this.cursor);
 	}
 
 	moveRight(): void {
-		this.cursor = Math.min(this.text.length, this.cursor + 1);
+		this.cursor = this.nextBoundary(this.cursor);
 	}
 
 	moveUp(): void {
@@ -56,7 +95,7 @@ export class TextBuffer {
 		const prevLineStart = prevNewline === -1 ? 0 : prevNewline + 1;
 		const prevLineEnd = this.text.indexOf("\n", prevLineStart);
 		const prevLineLength = (prevLineEnd === -1 ? this.text.length : prevLineEnd) - prevLineStart;
-		this.cursor = prevLineStart + Math.min(col, prevLineLength);
+		this.cursor = this.snapBoundary(prevLineStart + Math.min(col, prevLineLength));
 	}
 
 	moveDown(): void {
@@ -70,7 +109,7 @@ export class TextBuffer {
 		const nextLineStart = nextNewline + 1;
 		const nextLineEnd = this.text.indexOf("\n", nextLineStart);
 		const nextLineLength = (nextLineEnd === -1 ? this.text.length : nextLineEnd) - nextLineStart;
-		this.cursor = nextLineStart + Math.min(col, nextLineLength);
+		this.cursor = this.snapBoundary(nextLineStart + Math.min(col, nextLineLength));
 	}
 
 	moveLineStart(): void {

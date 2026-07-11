@@ -59,4 +59,30 @@ describe("clampStreamingBlocks", () => {
 		const out = clampStreamingBlocks(blocks, 5, 80); // budget clamps to min 4
 		expect(out).toHaveLength(1);
 	});
+
+	it("reports each block's index in the input array", () => {
+		const blocks = [text("thinking", "a"), tool("t1"), text("content", "b")];
+		const out = clampStreamingBlocks(blocks, 24, 80);
+		expect(out.map((e) => e.index)).toEqual([0, 1, 2]);
+	});
+
+	it("keeps input indices when older blocks are dropped", () => {
+		const tall = Array.from({ length: 50 }, (_, i) => `t${i}`).join("\n");
+		const blocks = [text("thinking", tall), tool("t1"), text("content", tall)];
+		const out = clampStreamingBlocks(blocks, 24, 80);
+		// whatever survives, its index must point back into `blocks`
+		for (const e of out) {
+			expect(blocks[e.index]!.kind).toBe(e.block.kind);
+		}
+		expect(out.at(-1)!.index).toBe(2);
+	});
+
+	it("counts wide (CJK) characters as two columns when wrapping", () => {
+		// 30 CJK chars = 60 display columns → 2 rows at 40 cols, ~16 such lines
+		// exceed the 12-row budget even though each line is only 30 code units.
+		const wideLine = "あ".repeat(30);
+		const blocks = [text("content", Array.from({ length: 16 }, () => wideLine).join("\n"))];
+		const out = clampStreamingBlocks(blocks, 20, 40); // budget 12
+		expect(out[0]!.truncated).toBe(true);
+	});
 });

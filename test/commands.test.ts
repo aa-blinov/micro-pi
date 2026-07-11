@@ -321,3 +321,11 @@ describe("handleInput", () => {
 		expect(calls.setPermissionMode).toEqual([["default"]]);
 	});
 });
+
+describe("SLASH_COMMANDS", () => {
+	it("is sorted alphabetically by name (palette renders it verbatim)", async () => {
+		const { SLASH_COMMANDS } = await import("../src/ui/commands.ts");
+		const names = SLASH_COMMANDS.map((c) => c.name);
+		expect(names).toEqual([...names].sort());
+	});
+});

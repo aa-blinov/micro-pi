@@ -111,8 +111,6 @@ export interface UseAgentSession {
 		/** Output tokens/sec for this turn — undefined if nothing ever streamed. */
 		tokensPerSecond?: number;
 	} | null;
-	/** Non-fatal warnings (e.g. vision fallback) — persist until next submit. */
-	warnings: string[];
 	/**
 	 * Steer/follow-up messages queued but not yet injected into the running
 	 * turn — stays populated for as long as the message is actually pending
@@ -276,9 +274,6 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 	// value when the turn ends, resets on the next submit.
 	const [elapsedMs, setElapsedMs] = useState(0);
 	const turnStartRef = useRef(0);
-	// Warnings shown in the chat history (e.g. "vision not supported").
-	// Persist until the next submit, always appear before the agent's response.
-	const [warnings, setWarnings] = useState<string[]>([]);
 	// Mirrors runner.steeringQueue/followUpQueue's actual contents so the UI
 	// can show what's pending — the queues themselves are plain mutable
 	// classes with no reactivity of their own.
@@ -399,27 +394,18 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 		updateStreaming(() => ({ blocks: [] }), true);
 	}, [updateStreaming]);
 
+	// Rebuild-from-session must never run mid-turn: <Static> permanently
+	// commits items by index and never revisits them, so replacing the
+	// incrementally-promoted messages array with a (differently-sized) rebuild
+	// desyncs the array from what's already printed. Deps are [session] only —
+	// session's identity is stable for the App's lifetime, so the mount effect
+	// below fires exactly once; every other call site (compaction, /clear,
+	// session switch) invokes refresh() explicitly at a turn boundary.
 	const refresh = useCallback(() => {
-		const msgs = buildDisplayMessages(session.messages);
-		// Insert warnings before the last assistant message so they appear
-		// chronologically: user → warning → agent response.
-		if (warnings.length > 0) {
-			let lastAssistant = -1;
-			for (let i = msgs.length - 1; i >= 0; i--) {
-				if (msgs[i]!.role === "assistant") {
-					lastAssistant = i;
-					break;
-				}
-			}
-			const insertAt = lastAssistant >= 0 ? lastAssistant : msgs.length;
-			for (let i = warnings.length - 1; i >= 0; i--) {
-				msgs.splice(insertAt, 0, { role: "warning", content: warnings[i]! });
-			}
-		}
-		setMessages(msgs);
+		setMessages(buildDisplayMessages(session.messages));
 		setUsage({ ...session.usage });
 		setLastTurnUsage(null);
-	}, [session, warnings]);
+	}, [session]);
 
 	const submit = useCallback(
 		async (text: string, images?: PendingImage[]) => {
@@ -431,7 +417,6 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 			setRetry(null);
 			setLastTurnUsage(null);
 			setElapsedMs(0);
-			setWarnings([]);
 
 			const userContent =
 				images && images.length > 0
@@ -507,7 +492,14 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 					subagentPrompts,
 					subagentModel,
 					disabledTools,
-					onWarning: (message: string) => setWarnings((w) => [...w, message]),
+					// Append straight into the display history: warnings fire mid-run
+					// (e.g. vision fallback, before the response streams), so an
+					// append lands chronologically right — after the user message and
+					// any already-settled blocks, above the live streaming region.
+					// The old warnings-state + rebuild-on-refresh approach inserted
+					// them below <Static>'s already-rendered index, where they were
+					// never printed at all.
+					onWarning: (message: string) => setMessages((msgs) => [...msgs, { role: "warning", content: message }]),
 					onEvent: (event: AgentEvent) => {
 						switch (event.type) {
 							case "thinking":
@@ -774,7 +766,6 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 		retry,
 		usage,
 		lastTurnUsage,
-		warnings,
 		pendingSteers,
 		pendingQueue,
 		submit,

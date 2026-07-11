@@ -88,12 +88,16 @@ export async function runTui(args: ParsedArgs): Promise<void> {
 	};
 
 	// Repaint the banner with the current theme's gradient. Uses suspendAndRun
-	// to temporarily pause Ink so raw stdout writes don't fight its managed frame.
-	const bannerLines = CAST_BANNER.split("\n").length + 2; // +2 for version + blank
+	// to temporarily pause Ink so raw stdout writes don't fight its managed
+	// frame. Clears the whole screen (+ scrollback) first: the banner scrolled
+	// into scrollback as soon as the conversation grew, so a relative
+	// cursor-up from the frame bottom would land mid-transcript and clobber
+	// whatever was there instead of the banner. App.onThemeChange replays the
+	// full history below the fresh banner afterwards (see its Static key
+	// bump), so nothing on screen is actually lost.
 	const onRepaintBanner = async () => {
 		await suspendAndRun(async () => {
-			// Move cursor up past the banner lines and clear them
-			process.stdout.write(`\x1b[${bannerLines}A\x1b[J`);
+			process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
 			process.stdout.write(`${gradientBanner(CAST_BANNER, args.version)}\n`);
 		});
 	};
@@ -107,6 +111,12 @@ export async function runTui(args: ParsedArgs): Promise<void> {
 			onQuit={onQuit}
 			onRepaintBanner={onRepaintBanner}
 		/>,
+		// Ctrl+C is handled by the Composer (double-press confirmation, see
+		// handleExitRequest). Ink's default exitOnCtrlC would race it: on
+		// terminals without the Kitty protocol Ctrl+C arrives as raw \x03,
+		// which Ink's own input handler turns into an instant unmount before
+		// the composer's confirmation ever shows.
+		{ exitOnCtrlC: false },
 	);
 
 	// Ink's suspendTerminal (needed by execBash to hand the terminal to child

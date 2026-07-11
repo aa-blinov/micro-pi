@@ -45,3 +45,38 @@ describe("InputParser — sequence classification", () => {
 		expect(events).toEqual([]);
 	});
 });
+
+describe("InputParser — newline vs submit", () => {
+	it("maps Enter (\\r) to input.submit", () => {
+		const { events, feed } = makeParser();
+		feed("\r");
+		expect(events).toEqual([{ type: "binding", binding: "input.submit", raw: "\r" }]);
+	});
+
+	it("maps Kitty Shift+Enter (CSI 13;2u) to input.newLine", () => {
+		const { events, feed } = makeParser();
+		feed("\x1b[13;2u");
+		expect(events).toEqual([{ type: "binding", binding: "input.newLine", raw: "\x1b[13;2u" }]);
+	});
+
+	it("maps modifyOtherKeys Shift+Enter to input.newLine", () => {
+		const { events, feed } = makeParser();
+		feed("\x1b[27;2;13~");
+		expect(events).toEqual([{ type: "binding", binding: "input.newLine", raw: "\x1b[27;2;13~" }]);
+	});
+
+	it("maps legacy Alt+Enter (\\x1b\\r) to input.newLine", () => {
+		const { events, feed } = makeParser();
+		feed("\x1b\r");
+		expect(events).toEqual([{ type: "binding", binding: "input.newLine", raw: "\x1b\r" }]);
+	});
+
+	it("maps legacy Ctrl+J (\\n) to input.newLine, not submit", () => {
+		// On terminals without the Kitty protocol Shift+Enter is
+		// indistinguishable from Enter, so Ctrl+J is the documented newline
+		// fallback — it must not be shadowed by the "enter" matcher's \n arm.
+		const { events, feed } = makeParser();
+		feed("\n");
+		expect(events).toEqual([{ type: "binding", binding: "input.newLine", raw: "\n" }]);
+	});
+});

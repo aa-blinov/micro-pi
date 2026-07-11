@@ -41,76 +41,100 @@ export function lineChurn(oldText: string, newText: string): { added: number; re
 	return { removed: m - lcs, added: n - lcs };
 }
 
+type ToolSummaryModel =
+	| { kind: "edit"; path: string; added: number; removed: number }
+	| { kind: "read"; path: string; range: string }
+	| { kind: "write"; path: string; lines: number }
+	| { kind: "generic"; text: string };
+
 /**
- * One-line summary for a tool call. edit/write get a readable file + change
+ * Data half of the tool-call summary. edit/write get a readable file + change
  * summary instead of a truncated JSON blob; every other tool keeps the generic
  * `key=value` args. Args stream in as partial JSON, so anything that fails to
  * parse (or doesn't match the expected shape) falls back to the raw/generic
  * form — the rich view only kicks in once the call is complete.
  */
-function ToolSummary({ name, args }: { name: string; args: string }): JSX.Element {
-	return useMemo(() => {
-		let parsed: Record<string, unknown> | null = null;
-		try {
-			parsed = JSON.parse(args) as Record<string, unknown>;
-		} catch {
-			parsed = null;
-		}
+function parseToolSummary(name: string, args: string): ToolSummaryModel {
+	let parsed: Record<string, unknown> | null = null;
+	try {
+		parsed = JSON.parse(args) as Record<string, unknown>;
+	} catch {
+		parsed = null;
+	}
 
-		if (parsed && name === "edit" && typeof parsed.path === "string" && Array.isArray(parsed.edits)) {
-			let added = 0;
-			let removed = 0;
-			for (const e of parsed.edits) {
-				if (e && typeof e === "object" && typeof (e as { oldText?: unknown }).oldText === "string") {
-					const churn = lineChurn(
-						(e as { oldText: string }).oldText,
-						String((e as { newText?: unknown }).newText ?? ""),
-					);
-					added += churn.added;
-					removed += churn.removed;
-				}
+	if (parsed && name === "edit" && typeof parsed.path === "string" && Array.isArray(parsed.edits)) {
+		let added = 0;
+		let removed = 0;
+		for (const e of parsed.edits) {
+			if (e && typeof e === "object" && typeof (e as { oldText?: unknown }).oldText === "string") {
+				const churn = lineChurn(
+					(e as { oldText: string }).oldText,
+					String((e as { newText?: unknown }).newText ?? ""),
+				);
+				added += churn.added;
+				removed += churn.removed;
 			}
-			return (
-				<Text wrap="truncate">
-					<Text color={theme().muted}>{parsed.path} · </Text>
-					<Text color={theme().success}>+{added}</Text>
-					<Text color={theme().muted}> </Text>
-					<Text color={theme().error}>-{removed}</Text>
-				</Text>
-			);
 		}
+		return { kind: "edit", path: parsed.path, added, removed };
+	}
 
-		if (parsed && name === "read" && typeof parsed.path === "string") {
-			const offset = typeof parsed.offset === "number" ? parsed.offset : 0;
-			const limit = typeof parsed.limit === "number" ? parsed.limit : undefined;
-			const range = limit ? `${offset + 1}-${offset + limit}` : "all";
-			return (
-				<Text color={theme().muted} wrap="truncate">
-					{parsed.path} · lines {range}
-				</Text>
-			);
-		}
+	if (parsed && name === "read" && typeof parsed.path === "string") {
+		const offset = typeof parsed.offset === "number" ? parsed.offset : 0;
+		const limit = typeof parsed.limit === "number" ? parsed.limit : undefined;
+		const range = limit ? `${offset + 1}-${offset + limit}` : "all";
+		return { kind: "read", path: parsed.path, range };
+	}
 
-		if (parsed && name === "write" && typeof parsed.path === "string") {
-			const lines = typeof parsed.content === "string" ? parsed.content.split("\n").length : 0;
-			return (
-				<Text color={theme().muted} wrap="truncate">
-					{parsed.path} · {lines} {lines === 1 ? "line" : "lines"}
-				</Text>
-			);
-		}
+	if (parsed && name === "write" && typeof parsed.path === "string") {
+		const lines = typeof parsed.content === "string" ? parsed.content.split("\n").length : 0;
+		return { kind: "write", path: parsed.path, lines };
+	}
 
-		const generic = parsed
-			? Object.entries(parsed)
-					.map(([k, v]) => `${k}=${JSON.stringify(v)}`)
-					.join(", ")
-			: args.slice(0, 200);
+	const generic = parsed
+		? Object.entries(parsed)
+				.map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+				.join(", ")
+		: args.slice(0, 200);
+	return { kind: "generic", text: generic };
+}
+
+/**
+ * One-line summary for a tool call. Only the parse is memoized — the JSX is
+ * rebuilt every render so theme() colors stay live: memoizing the whole
+ * element on [name, args] kept the previous theme's colors on still-visible
+ * rows after a /theme switch.
+ */
+function ToolSummary({ name, args }: { name: string; args: string }): JSX.Element {
+	const model = useMemo(() => parseToolSummary(name, args), [name, args]);
+	if (model.kind === "edit") {
 		return (
-			<Text color={theme().muted} wrap="truncate">
-				{generic}
+			<Text wrap="truncate">
+				<Text color={theme().muted}>{model.path} · </Text>
+				<Text color={theme().success}>+{model.added}</Text>
+				<Text color={theme().muted}> </Text>
+				<Text color={theme().error}>-{model.removed}</Text>
 			</Text>
 		);
-	}, [name, args]);
+	}
+	if (model.kind === "read") {
+		return (
+			<Text color={theme().muted} wrap="truncate">
+				{model.path} · lines {model.range}
+			</Text>
+		);
+	}
+	if (model.kind === "write") {
+		return (
+			<Text color={theme().muted} wrap="truncate">
+				{model.path} · {model.lines} {model.lines === 1 ? "line" : "lines"}
+			</Text>
+		);
+	}
+	return (
+		<Text color={theme().muted} wrap="truncate">
+			{model.text}
+		</Text>
+	);
 }
 
 function ToolCallView({ call }: { call: ToolCallEntry }): JSX.Element {
@@ -197,6 +221,31 @@ function BlockView({ block, truncated }: { block: StreamBlock; truncated?: boole
 }
 
 /**
+ * Approximate terminal column width of one logical line: CJK and emoji code
+ * points occupy two cells. Counting UTF-16 units instead (the old behavior)
+ * undercounted wrapped rows for CJK/emoji-heavy streams, which let the live
+ * region overrun the viewport — the exact frame-stacking failure the clamp
+ * exists to prevent.
+ */
+function displayWidth(line: string): number {
+	let w = 0;
+	for (const ch of line) {
+		const cp = ch.codePointAt(0) ?? 0;
+		const wide =
+			(cp >= 0x1100 && cp <= 0x115f) || // Hangul Jamo
+			(cp >= 0x2e80 && cp <= 0xa4cf) || // CJK radicals … Yi
+			(cp >= 0xac00 && cp <= 0xd7a3) || // Hangul syllables
+			(cp >= 0xf900 && cp <= 0xfaff) || // CJK compatibility ideographs
+			(cp >= 0xfe30 && cp <= 0xfe4f) || // CJK compatibility forms
+			(cp >= 0xff00 && cp <= 0xff60) || // fullwidth forms
+			(cp >= 0xffe0 && cp <= 0xffe6) ||
+			cp >= 0x1f300; // emoji & symbols (approximation)
+		w += wide ? 2 : 1;
+	}
+	return w;
+}
+
+/**
  * Clamp the live streaming blocks to fit the terminal viewport, keeping the
  * tail. Ink's log-update redraws the live region by moving the cursor up N
  * rows and erasing — but the cursor can't move above the top of the screen,
@@ -207,12 +256,16 @@ function BlockView({ block, truncated }: { block: StreamBlock; truncated?: boole
  * viewport on its own; here we render only its last lines that fit. The full
  * text still lands in history when the block settles — only the live preview
  * is clipped.
+ *
+ * Each entry carries the block's index in the *input* array so React keys
+ * stay aligned with the unclamped list — keying by position in the clamped
+ * output shifted identities whenever older blocks dropped out of the window.
  */
 export function clampStreamingBlocks(
 	blocks: StreamBlock[],
 	rows: number,
 	columns: number,
-): Array<{ block: StreamBlock; truncated: boolean }> {
+): Array<{ block: StreamBlock; truncated: boolean; index: number }> {
 	// Rows reserved for everything below the streaming area: composer frame
 	// (3), status bar (1), notices/steer/queue lines and a safety margin.
 	const budget = Math.max(4, rows - 8);
@@ -222,26 +275,26 @@ export function clampStreamingBlocks(
 		let total = 0;
 		const lines = text.split("\n");
 		for (let i = 0; i < lines.length; i++) {
-			const len = lines[i]!.length + (i === 0 ? prefixLen : 0);
+			const len = displayWidth(lines[i]!) + (i === 0 ? prefixLen : 0);
 			total += Math.max(1, Math.ceil(len / cols));
 		}
 		return total;
 	};
 
-	const out: Array<{ block: StreamBlock; truncated: boolean }> = [];
+	const out: Array<{ block: StreamBlock; truncated: boolean; index: number }> = [];
 	let used = 0;
 	for (let i = blocks.length - 1; i >= 0; i--) {
 		const block = blocks[i]!;
 		if (used >= budget) break;
 		if (block.kind === "tool") {
-			out.unshift({ block, truncated: false });
+			out.unshift({ block, truncated: false, index: i });
 			used += 1;
 			continue;
 		}
 		const prefixLen = block.kind === "thinking" ? "[reasoning] ".length : "[agent] ".length;
 		const need = wrappedRows(block.text, prefixLen);
 		if (used + need <= budget) {
-			out.unshift({ block, truncated: false });
+			out.unshift({ block, truncated: false, index: i });
 			used += need;
 			continue;
 		}
@@ -252,13 +305,15 @@ export function clampStreamingBlocks(
 		let tailRows = 0;
 		for (let j = lines.length - 1; j >= 0 && tailRows < remaining; j--) {
 			kept.unshift(lines[j]!);
-			tailRows += Math.max(1, Math.ceil(lines[j]!.length / cols));
+			tailRows += Math.max(1, Math.ceil(displayWidth(lines[j]!) / cols));
 		}
 		// A single wrapped line longer than the budget: hard-cut by characters.
+		// maxChars is measured in cells, so with wide chars this cuts slightly
+		// more than strictly necessary — erring short is the safe direction.
 		let text = kept.join("\n");
 		const maxChars = remaining * cols;
 		if (kept.length === 1 && text.length > maxChars) text = text.slice(-maxChars);
-		out.unshift({ block: { ...block, text }, truncated: true });
+		out.unshift({ block: { ...block, text }, truncated: true, index: i });
 		used = budget;
 		break;
 	}
@@ -335,9 +390,9 @@ export function ChatLog({ messages, streaming, error, retry, repaintKey }: ChatL
 			streamingParts.push(<Spinner key="wait" />);
 		}
 		const clamped = clampStreamingBlocks(streaming.blocks, process.stdout.rows || 24, process.stdout.columns || 80);
-		clamped.forEach(({ block, truncated }, i) => {
-			streamingParts.push(<BlockView key={blockKey(block, i)} block={block} truncated={truncated} />);
-		});
+		for (const { block, truncated, index } of clamped) {
+			streamingParts.push(<BlockView key={blockKey(block, index)} block={block} truncated={truncated} />);
+		}
 		liveParts.push(
 			<Box key="streaming" flexDirection="column">
 				{streamingParts}

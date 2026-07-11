@@ -146,6 +146,15 @@ export type StdinBufferEventMap = {
 // write() hitting the pty, short enough that it's not felt as input lag.
 const PLAIN_PASTE_COALESCE_MS = 30;
 
+// A plain (unwrapped) chunk at least this long in a single batch is treated
+// as a paste even without an interior newline. Keystrokes arrive one or two
+// code units per read and IME commits stay well under this, but a paste's
+// first pty chunk can easily be a single long line — without this rule that
+// chunk was emitted as individual "typed" characters and only the remainder
+// of the paste (once a newline appeared) became a paste event, so one paste
+// landed half as literal text, half as a chip.
+const PLAIN_PASTE_MIN_BURST_CHARS = 64;
+
 // Safety timeout for bracketed paste mode: if the terminal sent the
 // paste-start marker (\x1b[200~) but the end marker (\x1b[201~) never
 // arrives (terminal bug, tmux/screen interference, interrupted paste),
@@ -265,7 +274,8 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		const norm = joined.replace(/\r/g, "\n");
 		const nlIndex = norm.indexOf("\n");
 		const hasInteriorNewline = nlIndex >= 0 && nlIndex < norm.length - 1;
-		const startsNewBurst = this.pendingPlainPaste === null && hasInteriorNewline;
+		const startsNewBurst =
+			this.pendingPlainPaste === null && (hasInteriorNewline || joined.length >= PLAIN_PASTE_MIN_BURST_CHARS);
 		// Once a burst is in progress, any plain chunk continues it: the last
 		// line of a real paste often arrives alone, with or without a trailing
 		// newline, in its own chunk.
@@ -285,12 +295,19 @@ export class StdinBuffer extends EventEmitter<StdinBufferEventMap> {
 		for (const seq of result.sequences) this.emitDataSequence(seq);
 
 		if (this.buffer.length > 0) {
-			// Don't set a flush timeout when the buffer starts with ESC —
-			// it could be a partial escape sequence (e.g. \x1b[20 waiting
-			// for 0~ to complete the paste-start marker \x1b[200~). Flushing
-			// it after 10ms would turn the partial marker into garbage
-			// keystrokes. Wait for the next stdin data event instead.
-			if (!this.buffer.startsWith(ESC)) {
+			// Don't set a flush timeout when the buffer is a partial escape
+			// sequence (e.g. \x1b[20 waiting for 0~ to complete the paste-start
+			// marker \x1b[200~) — flushing it after 10ms would turn the partial
+			// marker into garbage keystrokes; wait for the next stdin data event
+			// instead. A *bare* ESC is the exception: on terminals without the
+			// Kitty protocol the Esc key arrives as a lone \x1b byte, and any
+			// continuation bytes of a real sequence land in the same pty write
+			// (or within a millisecond) — so if nothing followed within the
+			// timeout it was the Esc key. Without this flush, Esc sat buffered
+			// until the *next* keypress, did nothing on its own (no abort, no
+			// clear), and then merged with that keypress into an unrecognized
+			// \x1b<byte> sequence that swallowed both.
+			if (!this.buffer.startsWith(ESC) || this.buffer === ESC) {
 				this.timeout = setTimeout(() => {
 					const flushed = this.flush();
 					for (const seq of flushed) this.emitDataSequence(seq);

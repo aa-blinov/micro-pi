@@ -26,8 +26,13 @@ import { isStreamingActive, isTerminalSuspended } from "../core/stdin-manager.ts
  *       to query the real cursor row. After Ink draws, the cursor sits at
  *       the bottom of the viewport (row == terminal height). If the user
  *       scrolled up, the cursor drops below the visible area and DECXCPR
- *       reports row > height. stdin is paused during the query so Ink can't
- *       consume the response. A 500 ms interval keeps the flag fresh.
+ *       reports row > height. The response also reaches the other stdin
+ *       consumers (Ink's own parser maps a CSI-R final to a bare f3 key,
+ *       the composer's parser drops unmatched CSI sequences), so it needs
+ *       no exclusive claim on stdin — pausing the stream wouldn't work
+ *       anyway while Ink holds a 'readable' listener, which makes
+ *       stdin.pause() a documented no-op. A 500 ms interval keeps the
+ *       flag fresh.
  *
  *    Either signal triggers the guard: cursor/erase writes are swallowed
  *    until the user scrolls back to the bottom.
@@ -151,31 +156,44 @@ export function useTerminalResync(onResync: () => void): void {
 		const DECXCPR_RE = /\x1b\[(\d+);(\d+)R/;
 		const QUERY = "\x1b[6n";
 		const POLL_MS = 500;
-		const TIMEOUT_MS = 600;
+		// Must stay strictly below POLL_MS: the "terminal didn't answer"
+		// fallback has to fire before the next poll tick. An earlier version
+		// had it the other way around (600 > 500) and unconditionally cleared
+		// the previous timeout at the top of each poll — on a terminal that
+		// never answers \x1b[6n the fallback therefore never ran: cleanup was
+		// skipped forever, a new stdin listener leaked every 500 ms, and a
+		// scrollUpStale flag set during streaming was never cleared, blocking
+		// every deferred resize-resync from that point on.
+		const TIMEOUT_MS = 400;
 
 		let decxprActive = false;
-		let queryTimeout: ReturnType<typeof setTimeout> | null = null;
+		// Cancels the in-flight query (detaches its stdin listener + timeout);
+		// null when none is active. Called by the effect cleanup so an unmount
+		// mid-query doesn't leave a dangling listener.
+		let cancelActiveQuery: (() => void) | null = null;
 
 		function startQuery() {
 			if (!process.stdin.isTTY) return;
 			if (isTerminalSuspended()) return;
-			// Skip during streaming — pausing stdin disrupts Ink's keystroke
-			// handling and the live region is managed by Ink, not the user.
+			// Skip during streaming — the live region is managed by Ink, not
+			// the user, so the answer would be meaningless anyway.
 			if (isStreamingActive()) return;
-			if (queryTimeout) clearTimeout(queryTimeout);
-			// Pause stdin so Ink can't consume the DECXCPR response.
-			process.stdin.pause();
+			// Previous query still unanswered (its own timeout will clean it
+			// up before the next tick) — don't stack listeners.
+			if (decxprActive) return;
 			decxprActive = true;
 
 			let buf = "";
 			let active = true;
+			let queryTimeout: ReturnType<typeof setTimeout> | null = null;
 
 			function cleanup(scrolled: boolean) {
 				if (!active) return;
 				active = false;
 				decxprActive = false;
+				cancelActiveQuery = null;
+				if (queryTimeout) clearTimeout(queryTimeout);
 				process.stdin.off("data", onStdin);
-				process.stdin.resume();
 				scrollUp = scrolled;
 				// This poll only runs outside streaming/suspension, so its answer
 				// is fresh — deferred resyncs may trust the flag again.
@@ -194,6 +212,7 @@ export function useTerminalResync(onResync: () => void): void {
 			}
 
 			process.stdin.on("data", onStdin);
+			cancelActiveQuery = () => cleanup(false);
 			origWrite(QUERY);
 
 			queryTimeout = setTimeout(() => {
@@ -214,7 +233,7 @@ export function useTerminalResync(onResync: () => void): void {
 			if (resizeTimer) clearTimeout(resizeTimer);
 			clearInterval(pollInterval);
 			clearInterval(rawModeCheck);
-			if (queryTimeout) clearTimeout(queryTimeout);
+			cancelActiveQuery?.();
 			restore();
 			process.off("exit", restore);
 		};
