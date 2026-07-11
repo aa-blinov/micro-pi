@@ -2,7 +2,7 @@ import { Box, Text, useApp } from "ink";
 import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppConfig } from "../core/config.ts";
 import { formatContextFilesForPrompt, resolveNestedContextFiles } from "../core/context-files.ts";
-import { createPlanState } from "../core/plan.ts";
+import { createPlanState, readActivePlan } from "../core/plan.ts";
 import { buildSystemPrompt, makeConfirmBash } from "../core/project.ts";
 import {
 	formatRulesForTurn,
@@ -279,6 +279,9 @@ export function App(props: AppProps): JSX.Element {
 		planSignalRef.current = null;
 		if (kind === "done" && planMode) {
 			void (async () => {
+				// Full path in the title: terminals make it clickable, so the user
+				// can open the plan in their editor straight from the dialog.
+				const planPath = readActivePlan(planState).path;
 				const choice = await pickers.pickOption(
 					[
 						{ value: "implement", label: "Approve — switch to build and implement now" },
@@ -290,7 +293,7 @@ export function App(props: AppProps): JSX.Element {
 						{ value: "build", label: "Approve — switch to build, I'll start myself" },
 						{ value: "refine", label: "Keep planning — I'll give feedback" },
 					],
-					{ title: "Plan ready. What next?" },
+					{ title: planPath ? `Plan ready: ${planPath}` : "Plan ready. What next?" },
 				);
 				if (choice === "implement" || choice === "fresh") {
 					// Fresh start is safe BECAUSE of the mirror block: the plan is

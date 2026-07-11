@@ -3,6 +3,7 @@ import type { AppConfig } from "../core/config.ts";
 import { describeTurnError, isRetryableStreamError } from "../core/llm.ts";
 import { type AgentEvent, runAgentLoop } from "../core/loop.ts";
 import type { McpSetupResult } from "../core/mcp.ts";
+import { readActivePlan } from "../core/plan.ts";
 import type { AgentRunner } from "../core/runner.ts";
 import { addUsage, appendMessage, type SessionState, type SessionUsage, saveSession } from "../core/session.ts";
 import type { PermissionMode } from "../core/settings.ts";
@@ -577,11 +578,14 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 								if (!event.result.isError) {
 									const endedTool = toolNamesByIdRef.current.get(event.id);
 									if (endedTool === "plan_done") {
+										// Full path in the transcript so the user can cmd-click it
+										// open in their editor — the plan is theirs to review.
+										const planPath = planState ? readActivePlan(planState).path : undefined;
 										setMessages((msgs) => [
 											...msgs,
 											{
 												role: "warning",
-												content: "[Plan ready — approval dialog opens when the turn ends]",
+												content: `[Plan ready${planPath ? `: ${planPath}` : ""} — approval dialog opens when the turn ends]`,
 											},
 										]);
 										onPlanSignal?.("done");
