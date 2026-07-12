@@ -736,7 +736,8 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 			u.cacheReadTokens > 0 && u.promptTokens > 0
 				? ` | ${Math.round((u.cacheReadTokens / u.promptTokens) * 100)}% cache hit`
 				: "";
-		showNotice(`[Usage: ${fmtK(u.promptTokens)} in / ${fmtK(u.completionTokens)} out${costStr}${cacheStr}]`);
+		const subStr = u.subagentTokens > 0 ? ` | ${fmtK(u.subagentTokens)} sub` : "";
+		showNotice(`[Usage: ${fmtK(u.promptTokens)} in / ${fmtK(u.completionTokens)} out${costStr}${cacheStr}${subStr}]`);
 		return;
 	}
 
