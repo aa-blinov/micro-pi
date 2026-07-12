@@ -333,6 +333,39 @@ describe("handleInput", () => {
 		expect(calls.showNotice).toBeUndefined();
 	});
 
+	it("/usage shows token counts and cost", async () => {
+		const { deps, calls } = createFakeDeps();
+		await handleInput("/usage", undefined, deps);
+		const notice = noticeText(calls);
+		expect(notice).toContain("100 in");
+		expect(notice).toContain("50 out");
+		expect(notice).toContain("$0.00");
+	});
+
+	it("/usage shows subagent tokens when present", async () => {
+		const { deps, calls } = createFakeDeps();
+		(deps.session.usage as any).subagentTokens = 3500;
+		await handleInput("/usage", undefined, deps);
+		const notice = noticeText(calls);
+		expect(notice).toContain("3.5k sub");
+	});
+
+	it("/usage shows cache hit percentage", async () => {
+		const { deps, calls } = createFakeDeps();
+		(deps.session.usage as any).cacheReadTokens = 80;
+		(deps.session.usage as any).promptTokens = 100;
+		await handleInput("/usage", undefined, deps);
+		const notice = noticeText(calls);
+		expect(notice).toContain("80% cache hit");
+	});
+
+	it("/usage reports no usage when totalTokens is 0", async () => {
+		const { deps, calls } = createFakeDeps();
+		deps.session.usage.totalTokens = 0;
+		await handleInput("/usage", undefined, deps);
+		expect(noticeText(calls)).toContain("No usage");
+	});
+
 	it("/permissions bypass with default current prompts confirmation (declined)", async () => {
 		const { deps, calls } = createFakeDeps();
 		await handleInput("/permissions bypass", undefined, deps);
