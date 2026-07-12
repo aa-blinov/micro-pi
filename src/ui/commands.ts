@@ -50,6 +50,7 @@ export const SLASH_COMMANDS: Array<{ name: string; description: string; takesArg
 	{ name: "/clear", description: "Clear context (and save)" },
 	{ name: "/compact", description: "Compact context now" },
 	{ name: "/copy", description: "Copy last assistant response" },
+	{ name: "/exit", description: "Save and exit (alias for /quit)" },
 	{ name: "/help", description: "Show this command list" },
 	{ name: "/keys", description: "List all keybindings" },
 	{ name: "/mcp", description: "List connected MCP servers" },
@@ -75,6 +76,7 @@ export const SLASH_COMMANDS: Array<{ name: string; description: string; takesArg
 	{ name: "/steer", description: "Inject a message while running", takesArgs: true },
 	{ name: "/subagent-model", description: "Show or change subagent model" },
 	{ name: "/theme", description: "Change color theme" },
+	{ name: "/usage", description: "Show session token and cost usage" },
 	{ name: "/web", description: "Toggle web tools (web_search, web_fetch)" },
 ];
 
@@ -722,6 +724,22 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 		return;
 	}
 
+	if (input === "/usage") {
+		const u = session.usage;
+		if (!u || u.totalTokens === 0) {
+			showNotice("[No usage yet this session]");
+			return;
+		}
+		const fmtK = (n: number) => (n < 1000 ? String(n) : `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`);
+		const costStr = u.cost > 0 ? ` | $${u.cost.toFixed(2)}` : "";
+		const cacheStr =
+			u.cacheReadTokens > 0 && u.promptTokens > 0
+				? ` | ${Math.round((u.cacheReadTokens / u.promptTokens) * 100)}% cache hit`
+				: "";
+		showNotice(`[Usage: ${fmtK(u.promptTokens)} in / ${fmtK(u.completionTokens)} out${costStr}${cacheStr}]`);
+		return;
+	}
+
 	if (input === "/sessions") {
 		const chosen = await selectSession(deps.pickers);
 		if (!chosen) {
@@ -896,6 +914,7 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 				"  /permissions        Change bash confirmation mode\n" +
 				"  /web                Toggle web tools (web_search, web_fetch)\n" +
 				"  /theme              Change color theme\n" +
+				"  /usage              Show session token/cost usage\n" +
 				"  /sessions           List/switch sessions\n" +
 				"  /rules              List loaded rules\n" +
 				"  /repo               Show cwd and git branch\n" +
