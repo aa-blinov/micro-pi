@@ -243,6 +243,7 @@ npm run check           # Type check + lint (tsc + biome)
 npm test                # Unit tests (vitest)
 npm run build           # Bundle into dist/index.js (esbuild)
 npm run format          # Auto-format (biome)
+npm run e2e:plan        # Plan-mode e2e smoke via tmux (real provider, costs tokens)
 ```
 
 ## License

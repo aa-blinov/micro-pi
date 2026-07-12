@@ -47,7 +47,7 @@ The full lifecycle: `plan_done` signals the plan is ready → when the turn ends
 1. **Approve — switch to build and implement now**: mode flips to build and a synthetic user message auto-starts the implementation. The auto-submit is deferred until the render that applied the mode flip, so the run picks up the fresh tool set (not the pre-flip closures).
 2. **Approve — clear context, then implement**: same, but the planning conversation is dropped first. Safe because of the mirror block — the plan is re-read from disk into the system prompt, so the exploration chatter goes without losing the decisions. The right choice after a long planning session.
 3. **Approve — switch to build, I'll start myself**: mode flips, the user types the starting message (the natural place for "go, but change step 3").
-4. **Keep planning — I'll give feedback**: nothing changes; the user describes what to refine.
+4. **Keep planning — I'll give feedback**: opens a text input for the feedback and auto-submits it as the next planning turn ("Refine the plan: …"); cancelling the input just stays in plan mode.
 
 Dialogs open only when the run settles, never mid-run — the mode always flips between runs, so tool sets stay consistent. Signals that arrive after the user already toggled the mode manually are dropped.
 
@@ -186,6 +186,7 @@ Write or replace a named plan.
 
 Behavior:
 - The model supplies the name; it is slugified (lowercase kebab-case, path-traversal safe: `../evil` → `evil`), empty-after-slug names are rejected
+- Content is capped at 32k chars (MAX_PLAN_CHARS) — the plan rides in every build-mode request, so an unbounded plan inflates the whole session; plan_edit enforces the same cap on growth
 - Creates `~/.cast/plans/<session-id>/` directory if missing
 - Writes to `~/.cast/plans/<session-id>/<name>.md`
 - Atomic write (temp + rename, same pattern as sessions)
@@ -333,7 +334,7 @@ Mark a checklist item in the approved plan as done. Available in build mode — 
 ```
 
 Behavior:
-- Finds an unchecked `- [ ]` line by item text (same matching contract as plan_edit: case-insensitive, exact wins over substring, ambiguity → error listing candidates)
+- Finds an unchecked `- [ ]` line by item text (same matching contract as plan_edit: case-insensitive, exact wins over substring; ambiguity → error listing numbered candidates, resolvable with the optional 1-based `index` parameter)
 - Fence-aware, like the section parser and the checklist counter: a checkbox-like line inside a code example is content, never a candidate — matching it would corrupt the example (and a fenced `- [ ]` would keep the plan "unfinished" forever in the done-variant check)
 - Targets the active plan by default; `plan` selects another session plan explicitly (unknown name → error listing plans). Targeting never changes which plan is active
 - Flips it to `- [x]` and writes the file; already-checked items are never candidates

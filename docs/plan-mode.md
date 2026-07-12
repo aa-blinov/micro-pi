@@ -12,19 +12,23 @@ config:
     nodePlacementStrategy: NETWORK_SIMPLEX
 ---
 flowchart LR
-  A["/plan"] --> B[Explore codebase]
+  A["/plan or plan_enter"] --> B[Explore codebase]
   B --> C[Write plan]
   C --> D["plan_done"]
-  D --> E["/build"]
-  E --> F[Implement plan]
-  F --> G["plan_check steps"]
+  D --> E{Approval dialog}
+  E -->|Implement now| F[Implement plan]
+  E -->|Clear context + implement| F
+  E -->|"I'll start myself"| G["/build → your message"]
+  E -->|Refine| B
+  G --> F
+  F --> H["plan_check steps"]
 ```
 
 1. **Enter plan mode** — type `/plan` or the agent suggests it via `plan_enter`
 2. **Explore** — the agent reads files, runs read-only shell commands, and analyzes the codebase
 3. **Write plan** — the agent produces a structured markdown plan with a checklist
 4. **Review** — the agent signals completion with `plan_done`; the full plan file path is shown (cmd-click to open it in your editor)
-5. **Approve** — when the turn ends, an approval dialog opens: implement now, clear context and implement (the plan survives in the system prompt, the exploration chatter doesn't), approve and start yourself, or keep refining. `/build` remains as the manual gesture
+5. **Approve** — when the turn ends, an approval dialog opens: implement now, clear context and implement (the plan survives in the system prompt, the exploration chatter doesn't), approve and start yourself, or refine — the refine option asks what should change and sends the feedback straight back to planning. `/build` remains as the manual gesture
 6. **Implement** — the agent works through the plan, checking off steps with `plan_check`
 
 Declining the agent's own `plan_enter` suggestion is safe: the session auto-continues in build mode.

@@ -285,6 +285,15 @@ describe("plan", () => {
 
 			expect(listPlanNames(state.plansDir)).toEqual(["backend", "frontend"]);
 		});
+
+		it("rejects a plan over the size cap — it rides in every build-mode request", () => {
+			const state = testState("write-cap");
+			const huge = `# Plan\n\n## Steps\n${"- [ ] step\n".repeat(4000)}`;
+			const result = execPlanWrite({ name: "huge", content: huge }, state);
+			expect(result.isError).toBe(true);
+			expect(result.content).toContain("limit is");
+			expect(listPlanNames(state.plansDir)).toEqual([]);
+		});
 	});
 
 	describe("execPlanEdit", () => {
@@ -385,6 +394,17 @@ describe("plan", () => {
 			const file = readActivePlan(state);
 			expect(file.content).toContain("# comment in code");
 			expect(file.content).toContain("## Verification\nNew checks");
+		});
+
+		it("rejects an edit that would grow the plan past the size cap", () => {
+			const state = testState("edit-cap");
+			execPlanWrite({ name: "main", content: "# Plan\n\n## Steps\n- [ ] x" }, state);
+
+			const result = execPlanEdit({ heading: "Steps", content: "y".repeat(40_000) }, state);
+			expect(result.isError).toBe(true);
+			expect(result.content).toContain("limit is");
+			// The oversized edit must not have landed.
+			expect(readActivePlan(state).content).toContain("- [ ] x");
 		});
 	});
 
@@ -503,7 +523,29 @@ describe("plan", () => {
 			const result = execPlanCheck({ item: "fix" }, state);
 			expect(result.isError).toBe(true);
 			const parsed = JSON.parse(result.content);
-			expect(parsed.matchingItems).toEqual(["fix loop.ts", "fix tools.ts"]);
+			expect(parsed.matchingItems).toEqual(["1. fix loop.ts", "2. fix tools.ts"]);
+		});
+
+		it("resolves ambiguity with a 1-based index", () => {
+			const state = testState("check-idx");
+			execPlanWrite({ name: "main", content: "# Plan\n\n## Steps\n- [ ] fix loop.ts\n- [ ] fix tools.ts" }, state);
+
+			const parsed = JSON.parse(execPlanCheck({ item: "fix", index: 2 }, state).content);
+			expect(parsed.success).toBe(true);
+			expect(parsed.item).toBe("fix tools.ts");
+
+			const file = readActivePlan(state);
+			expect(file.content).toContain("- [ ] fix loop.ts");
+			expect(file.content).toContain("- [x] fix tools.ts");
+		});
+
+		it("rejects an out-of-range index with the numbered candidates", () => {
+			const state = testState("check-idx-oob");
+			execPlanWrite({ name: "main", content: "# Plan\n\n## Steps\n- [ ] fix loop.ts\n- [ ] fix tools.ts" }, state);
+
+			const result = execPlanCheck({ item: "fix", index: 5 }, state);
+			expect(result.isError).toBe(true);
+			expect(JSON.parse(result.content).error).toContain("out of range");
 		});
 
 		it("returns error with the remaining items when nothing matches", () => {

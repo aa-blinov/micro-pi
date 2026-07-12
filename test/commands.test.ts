@@ -13,6 +13,20 @@ import type { UseAgentSession } from "../src/ui/useAgentSession.ts";
 
 const { handleInput } = await import("../src/ui/commands.ts");
 
+// Every handler that persists (saveSession in /clear and /new, updateSettings
+// in /plan-model, readActivePlan in /build) resolves through homedir(), which
+// honors $HOME — fake it for the whole file so `npm test` never writes into
+// the real ~/.cast (it used to leave a session dir behind on every run).
+let realHome: string | undefined;
+beforeEach(() => {
+	realHome = process.env.HOME;
+	process.env.HOME = join(tmpdir(), `cast-cmd-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+});
+afterEach(() => {
+	if (process.env.HOME) rmSync(process.env.HOME, { recursive: true, force: true });
+	process.env.HOME = realHome;
+});
+
 interface Calls {
 	[key: string]: unknown[][];
 }
@@ -342,18 +356,6 @@ describe("SLASH_COMMANDS", () => {
 });
 
 describe("plan mode commands", () => {
-	// Real HOME must stay untouched: /new saves session files and /build reads
-	// ~/.cast/plans — both resolve through homedir(), which honors $HOME.
-	let realHome: string | undefined;
-	beforeEach(() => {
-		realHome = process.env.HOME;
-		process.env.HOME = join(tmpdir(), `cast-cmd-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-	});
-	afterEach(() => {
-		if (process.env.HOME) rmSync(process.env.HOME, { recursive: true, force: true });
-		process.env.HOME = realHome;
-	});
-
 	it("/plan enters plan mode", async () => {
 		const { deps, calls } = createFakeDeps();
 		await handleInput("/plan", undefined, deps);

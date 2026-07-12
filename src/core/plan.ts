@@ -378,6 +378,11 @@ function parseSections(content: string): Section[] {
 // Tool executors
 // ============================================================================
 
+/** Hard cap on a plan file's size. The plan rides in the system prompt of
+ * every build-mode request — an unbounded plan inflates every request for the
+ * rest of the session. ~32k chars ≈ 8k tokens is already a very large spec. */
+export const MAX_PLAN_CHARS = 32_000;
+
 export function execPlanWrite(args: Record<string, unknown>, planState: PlanState): ToolResult {
 	const name = slugifyPlanName(typeof args.name === "string" ? args.name : "");
 	if (!name) {
@@ -389,6 +394,12 @@ export function execPlanWrite(args: Record<string, unknown>, planState: PlanStat
 	const content = typeof args.content === "string" ? args.content.trim() : "";
 	if (!content) {
 		return { content: "Error: content is required and must not be empty.", isError: true };
+	}
+	if (content.length > MAX_PLAN_CHARS) {
+		return {
+			content: `Error: plan is ${content.length} chars — the limit is ${MAX_PLAN_CHARS}. A plan is an execution spec, not a document dump: cut decision-free prose, keep every step concrete.`,
+			isError: true,
+		};
 	}
 
 	const path = join(planState.plansDir, `${name}.md`);
@@ -462,6 +473,12 @@ export function execPlanEdit(args: Record<string, unknown>, planState: PlanState
 	const after = lines.slice(section.bodyEndLine);
 	const newLines = [...before, newBody.trimEnd(), ...after];
 	const newContent = newLines.join("\n");
+	if (newContent.length > MAX_PLAN_CHARS) {
+		return {
+			content: `Error: the edit would grow the plan to ${newContent.length} chars — the limit is ${MAX_PLAN_CHARS}. Tighten the section instead of expanding it.`,
+			isError: true,
+		};
+	}
 
 	writePlanFile(path, newContent);
 
@@ -592,18 +609,32 @@ export function execPlanCheck(args: Record<string, unknown>, planState: PlanStat
 			isError: true,
 		};
 	}
-	if (matches.length > 1) {
+	// Optional 1-based index resolves ambiguity when several items share the
+	// same text (or a common substring the model can't tighten further).
+	const requestedIndex =
+		typeof args.index === "number" && Number.isInteger(args.index) ? (args.index as number) : undefined;
+	if (matches.length > 1 && requestedIndex === undefined) {
 		return {
 			content: JSON.stringify({
 				success: false,
-				error: `Item "${item}" is ambiguous — matches ${matches.length} entries. Use more specific text.`,
-				matchingItems: matches.map((c) => c.text),
+				error: `Item "${item}" is ambiguous — matches ${matches.length} entries. Use more specific text, or pass index (1-based) to pick one.`,
+				matchingItems: matches.map((c, n) => `${n + 1}. ${c.text}`),
+			}),
+			isError: true,
+		};
+	}
+	if (requestedIndex !== undefined && (requestedIndex < 1 || requestedIndex > matches.length)) {
+		return {
+			content: JSON.stringify({
+				success: false,
+				error: `index ${requestedIndex} is out of range — ${matches.length} item(s) match "${item}".`,
+				matchingItems: matches.map((c, n) => `${n + 1}. ${c.text}`),
 			}),
 			isError: true,
 		};
 	}
 
-	const checked = matches[0]!;
+	const checked = matches[requestedIndex !== undefined ? requestedIndex - 1 : 0]!;
 	lines[checked.index] = `${checked.prefix}[x] ${checked.text}`;
 	writePlanFile(path, lines.join("\n"));
 

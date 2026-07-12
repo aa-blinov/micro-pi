@@ -135,7 +135,15 @@ export function TextInputModal(props: {
 			// Accept multi-char paste (Cmd+V / Ctrl+V): terminals deliver
 			// clipboard contents as one string. Strip control characters
 			// and whitespace that bracketed-paste wrappers may add.
-			const printable = [...input].filter((c) => c >= " " && c !== String.fromCodePoint(0x7f)).join("");
+			// Also strip DECXCPR cursor-position reports (\x1b[<row>;<col>R):
+			// the scroll-resync poll queries them every 500 ms, and once Ink
+			// eats the ESC the "[38;1R" tail reads as printable text the user
+			// never typed.
+			const printable = [...input]
+				.filter((c) => c >= " " && c !== String.fromCodePoint(0x7f))
+				.join("")
+				// biome-ignore lint/suspicious/noControlCharactersInRegex: DECXCPR response format
+				.replace(/\x1b?\[\d+(?:;\d+)*R/g, "");
 			if (printable) setText((t) => t + printable);
 		}
 	});

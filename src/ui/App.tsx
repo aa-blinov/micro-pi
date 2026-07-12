@@ -298,7 +298,25 @@ export function App(props: AppProps): JSX.Element {
 				} else if (choice === "build") {
 					setPlanMode(false);
 					showNotice("[Plan approved — your next message starts implementation]");
+				} else if (choice === "refine") {
+					// Structured refine: collect the feedback right here and hand it
+					// to the model as the next planning turn — no dead air where the
+					// user has to re-explain what "refine" meant.
+					const feedback = await pickers.promptText(
+						"Refine plan — what should change?",
+						undefined,
+						"e.g. merge steps 2-3, drop the migration, use library X",
+					);
+					if (feedback?.trim()) {
+						setPendingAutoSubmit({
+							text: `Refine the plan: ${feedback.trim()}. Update it with plan_edit/plan_write, then call plan_done again.`,
+							wantPlanMode: true,
+						});
+					} else {
+						showNotice("[Staying in plan mode — describe what to change]");
+					}
 				} else {
+					// Esc on the dialog: stay in plan mode, nothing submitted.
 					showNotice("[Staying in plan mode — describe what to change]");
 				}
 			})();

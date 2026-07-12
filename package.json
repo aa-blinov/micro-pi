@@ -16,7 +16,8 @@
 		"lint": "biome check src/ test/",
 		"format": "biome format --write src/ test/",
 		"test": "vitest run",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"e2e:plan": "bash scripts/e2e-plan-mode.sh"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.29.0",
