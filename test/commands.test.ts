@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppConfig } from "../src/core/config.ts";
 import type { McpSetupResult } from "../src/core/mcp.ts";
 import type { Persona } from "../src/core/personas.ts";
@@ -126,6 +129,14 @@ function createFakeDeps(overrides?: Partial<CommandDeps> & { running?: boolean }
 		},
 		pickers: fakePickers,
 		reasoningMeta: undefined,
+		subagentModel: undefined,
+		setSubagentModel: track("setSubagentModel"),
+		webToolsEnabled: true,
+		setWebToolsEnabled: track("setWebToolsEnabled"),
+		planMode: false,
+		setPlanMode: track("setPlanMode"),
+		planModel: undefined,
+		setPlanModel: track("setPlanModel"),
 		setReasoningMeta: track("setReasoningMeta"),
 		personaOptions: {},
 		setPersonaOptions: track("setPersonaOptions"),
@@ -327,5 +338,76 @@ describe("SLASH_COMMANDS", () => {
 		const { SLASH_COMMANDS } = await import("../src/ui/commands.ts");
 		const names = SLASH_COMMANDS.map((c) => c.name);
 		expect(names).toEqual([...names].sort());
+	});
+});
+
+describe("plan mode commands", () => {
+	// Real HOME must stay untouched: /new saves session files and /build reads
+	// ~/.cast/plans — both resolve through homedir(), which honors $HOME.
+	let realHome: string | undefined;
+	beforeEach(() => {
+		realHome = process.env.HOME;
+		process.env.HOME = join(tmpdir(), `cast-cmd-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+	});
+	afterEach(() => {
+		if (process.env.HOME) rmSync(process.env.HOME, { recursive: true, force: true });
+		process.env.HOME = realHome;
+	});
+
+	it("/plan enters plan mode", async () => {
+		const { deps, calls } = createFakeDeps();
+		await handleInput("/plan", undefined, deps);
+		expect(calls.setPlanMode?.[0]).toEqual([true]);
+		expect(noticeText(calls)).toContain("Plan mode: ON");
+	});
+
+	it("/plan is a no-op when already in plan mode", async () => {
+		const { deps, calls } = createFakeDeps({ planMode: true });
+		await handleInput("/plan", undefined, deps);
+		expect(calls.setPlanMode).toBeUndefined();
+		expect(noticeText(calls)).toContain("Already in plan mode");
+	});
+
+	it("/plan and /build are rejected while the agent is running", async () => {
+		for (const cmd of ["/plan", "/build"]) {
+			const { deps, calls } = createFakeDeps({ running: true, planMode: cmd === "/build" });
+			await handleInput(cmd, undefined, deps);
+			expect(calls.setPlanMode, cmd).toBeUndefined();
+			expect(noticeText(calls), cmd).toContain("Agent running");
+		}
+	});
+
+	it("/build exits plan mode (no plan on disk: full-toolset notice)", async () => {
+		const { deps, calls } = createFakeDeps({ planMode: true });
+		await handleInput("/build", undefined, deps);
+		expect(calls.setPlanMode?.[0]).toEqual([false]);
+		expect(noticeText(calls)).toContain("full toolset restored");
+	});
+
+	it("/build outside plan mode explains itself", async () => {
+		const { deps, calls } = createFakeDeps();
+		await handleInput("/build", undefined, deps);
+		expect(calls.setPlanMode).toBeUndefined();
+		expect(noticeText(calls)).toContain("Not in plan mode");
+	});
+
+	it("/new resets the mode to build", async () => {
+		const { deps, calls } = createFakeDeps({ planMode: true });
+		await handleInput("/new", undefined, deps);
+		expect(calls.setPlanMode?.[0]).toEqual([false]);
+	});
+
+	it("/plan-model cancelled leaves the override unchanged", async () => {
+		const { deps, calls } = createFakeDeps({ planModel: "expensive-model" });
+		await handleInput("/plan-model", undefined, deps);
+		expect(calls.setPlanModel).toBeUndefined();
+		expect(noticeText(calls)).toContain("Cancelled");
+	});
+
+	it("/plan-model off clears the override so plan mode uses the main model", async () => {
+		const { deps, calls } = createFakeDeps({ planModel: "expensive-model" });
+		await handleInput("/plan-model off", undefined, deps);
+		expect(calls.setPlanModel?.[0]).toEqual([undefined]);
+		expect(noticeText(calls)).toContain("plan mode uses the main model");
 	});
 });

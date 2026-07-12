@@ -10,6 +10,7 @@ User settings are persisted to `~/.cast/settings.json`. This file is loaded on s
 |-------|------|-------------|
 | `model` | string | Last used model |
 | `subagentModel` | string | Model for sub-agents (falls back to `model`) |
+| `planModel` | string | Model used while plan mode is active (falls back to `model`) |
 | `reasoningLevel` | string | Last used reasoning level |
 | `persona` | string | Last used persona name |
 | `providerUrl` | string | Provider endpoint URL |

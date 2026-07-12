@@ -55,6 +55,14 @@ Dialogs open only when the run settles, never mid-run — the mode always flips 
 
 Plan mode is per-task session state: `/new` and switching sessions via `/sessions` always reset it to build mode.
 
+### Per-phase model
+
+Planning can run on a different model than building: `/plan-model` picks a model used only while plan mode is active (`/plan-model <id>` sets it directly, `/plan-model off` clears it). Stored in `settings.json` (`planModel`), like `subagentModel`. The typical split: a strong expensive model for planning, a cheap one for building, a fast one for subagents.
+
+- `session.model` stays the main model — the override is a per-phase substitution at run time, applied the moment plan mode turns on (including the `plan_enter` auto-started turn) and dropped on `/build`.
+- Everything downstream reports the model actually in use: the status bar, the `Model:` line in the system prompt, and the run itself.
+- Unset → plan mode uses the main model, exactly as before.
+
 ### Persistence
 
 The mode is stored **per session** (`SessionState.mode`) and restored when that session is resumed — quitting mid-planning comes back to plan mode in that session, without leaking it into other projects (the original global `settings.mode` did exactly that and was retired). Unset means "build": **build is the default mode**. Every transition persists via the single `setPlanMode` setter; `/new` starts fresh sessions in build, `/sessions` restores whatever mode the chosen session was left in.
@@ -97,7 +105,7 @@ Headless runs (`cast run`) have no plan mode: `run.ts` adds all `PLAN_TOOL_NAMES
 | `web_search` | **toggle** | toggle | Respects `/web` toggle. If user disabled web tools, they stay disabled in plan mode. |
 | `web_fetch` | **toggle** | toggle | Same as web_search. |
 | `task` | yes | yes | Available but inherits restricted `disabledTools`. Subagent cannot call bash/write/edit either. |
-| `bash` | **read-only** | yes | Executor-enforced allowlist in plan mode: pipelines of inspection binaries (ls, cat, grep, find, wc, diff, jq, git log/show/diff/status/blame, …) pass; redirects, command substitution, unlisted binaries (incl. test runners and package managers — `npm test` runs an arbitrary script) are rejected with the reason. |
+| `bash` | **read-only** | yes | Executor-enforced allowlist in plan mode: pipelines of inspection binaries (ls, cat, grep, find, wc, diff, jq, git log/show/diff/status/blame, …) pass; redirects, command/process substitution, unlisted binaries (incl. test runners, package managers, `env` — all can run arbitrary code) are rejected with the reason. Argument-level writers on allowlisted binaries are also caught: `find -delete/-exec`, `fd -x`, `sort -o`, `tree -o`, `--output`, `uniq in out`. |
 | `write` | **no** | yes | Blocked — cannot write files |
 | `edit` | **no** | yes | Blocked — cannot edit files |
 | `plan_write` | **yes** | no | New. Write or replace a named plan; it becomes the active one. |

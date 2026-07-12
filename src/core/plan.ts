@@ -39,6 +39,20 @@ export const PLAN_TOOL_NAMES = [
 	"plan_discard",
 ] as const;
 
+/**
+ * Mode policy as data: which tools the TUI hides for a given mode. Plan mode
+ * blocks writers (bash stays advertised — the executor gate restricts it to
+ * the read-only allowlist) plus the build-only plan tools; build mode blocks
+ * the plan-authoring tools. plan_read is deliberately in neither list — it is
+ * available in both modes. Kept next to PLAN_TOOL_NAMES so a new plan tool
+ * can't be added without deciding its mode here (a test enforces this).
+ */
+export function modeDisabledTools(planMode: boolean): readonly string[] {
+	return planMode
+		? ["write", "edit", "plan_check", "plan_enter"]
+		: ["plan_write", "plan_edit", "plan_done", "plan_discard"];
+}
+
 export interface PlanState {
 	enabled: boolean;
 	/** Directory holding this session's plans: ~/.cast/plans/<session-id>/ */
@@ -100,12 +114,21 @@ const READONLY_BINARIES = new Set([
 	"echo",
 	"printf",
 	"date",
-	"env",
 	"column",
 	"strings",
 	"jq",
 	"yq",
 ]);
+
+/** Flags that turn an otherwise read-only binary into a writer or executor.
+ * `--output`/`--output=` is checked globally (git log, sort, tree all have
+ * output flags); these are the per-binary extras. */
+const FORBIDDEN_FLAGS: Record<string, RegExp> = {
+	find: /^-(delete|exec|execdir|ok|okdir|fprint0?|fprintf|fls)$/,
+	fd: /^(-x|-X|--exec|--exec-batch)$/,
+	sort: /^(-o|--output)$/,
+	tree: /^-o$/,
+};
 
 /** Git subcommands that cannot mutate the repository. `branch`/`tag`/`remote`
  * are excluded on purpose — without arguments they list, with arguments they
@@ -139,8 +162,8 @@ export function checkReadOnlyCommand(command: string): { ok: boolean; reason?: s
 	if (/[>]/.test(command)) {
 		return { ok: false, reason: "output redirection (>) can write files" };
 	}
-	if (/\$\(|`/.test(command)) {
-		return { ok: false, reason: "command substitution can run arbitrary commands" };
+	if (/\$\(|`|<\(/.test(command)) {
+		return { ok: false, reason: "command/process substitution can run arbitrary commands" };
 	}
 	// Split into pipeline/sequence stages; every stage must be read-only.
 	const stages = command
@@ -155,8 +178,13 @@ export function checkReadOnlyCommand(command: string): { ok: boolean; reason?: s
 		while (i < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i]!)) i++;
 		const binary = tokens[i]?.replace(/^.*\//, "");
 		if (!binary) return { ok: false, reason: "empty pipeline stage" };
+		const args = tokens.slice(i + 1);
+		// Output flags write files without any `>` — git log --output, sort -o, …
+		if (args.some((t) => t === "--output" || t.startsWith("--output="))) {
+			return { ok: false, reason: "--output writes a file" };
+		}
 		if (binary === "git") {
-			const sub = tokens.slice(i + 1).find((t) => !t.startsWith("-"));
+			const sub = args.find((t) => !t.startsWith("-"));
 			if (!sub || !READONLY_GIT_SUBCOMMANDS.has(sub)) {
 				return { ok: false, reason: `git ${sub ?? "(none)"} is not a read-only subcommand` };
 			}
@@ -164,6 +192,15 @@ export function checkReadOnlyCommand(command: string): { ok: boolean; reason?: s
 		}
 		if (!READONLY_BINARIES.has(binary)) {
 			return { ok: false, reason: `"${binary}" is not on the read-only allowlist` };
+		}
+		const forbidden = FORBIDDEN_FLAGS[binary];
+		if (forbidden) {
+			const hit = args.find((t) => forbidden.test(t));
+			if (hit) return { ok: false, reason: `${binary} ${hit} can modify files or run commands` };
+		}
+		// `uniq input output` writes its second positional argument.
+		if (binary === "uniq" && args.filter((t) => !t.startsWith("-")).length > 1) {
+			return { ok: false, reason: "uniq with two file arguments writes the second one" };
 		}
 	}
 	return { ok: true };

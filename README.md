@@ -99,6 +99,10 @@ Swap the agent's role without changing its tools:
 
 Add your own in `~/.cast/personas/` (global) or `.cast/personas/` (project).
 
+### Plan mode
+
+Think before you build: `/plan` switches the agent to read-only exploration — it studies the codebase (parallel sub-agents, read-only shell) and writes an execution-spec plan with a `- [ ]` checklist to `~/.cast/plans/`. When the plan is ready you get an approval dialog: implement now, implement in a fresh context, approve for later, or keep refining. In build mode the approved plan rides in the system prompt (surviving compaction and restarts) and the agent checks off steps as it lands them. The agent can also propose planning itself (`plan_enter`) when a task looks complex. Each phase can run its own model — see `/plan-model`.
+
 ### Context compaction
 
 When the conversation gets too long, the agent automatically summarizes older messages — keeps the context window useful without losing important details.
@@ -118,6 +122,9 @@ Every conversation auto-saves. Resume with `--continue`, pick from a list with `
 | Any text | Send a prompt to the agent |
 | `/model [name]` | Show/change model |
 | `/subagent-model [name]` | Show/change sub-agent model |
+| `/plan-model [name\|off]` | Show/change the plan-mode model |
+| `/plan` | Enter plan mode (explore + plan only) |
+| `/build` | Exit plan mode, restore full toolset |
 | `/reasoning` | Change reasoning level |
 | `/persona [name]` | Show/change persona |
 | `/provider` | Change provider endpoint and API key |

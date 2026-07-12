@@ -75,6 +75,8 @@ export interface StartupResult {
 	subagentPrompts: SubagentPrompt[];
 	/** Model for subagents (falls back to main model if unset). */
 	subagentModel?: string;
+	/** Model for plan mode (falls back to main model if unset). */
+	planModel?: string;
 	reasoningMeta?: ModelReasoningMeta;
 	confirmBash: (command: string, reason: string) => Promise<boolean>;
 	projectDeps: ProjectResolverDeps;
@@ -362,6 +364,7 @@ export async function runStartup(
 		personas: allPersonas,
 		subagentPrompts: loadSubagentPrompts(),
 		subagentModel: settings.subagentModel,
+		planModel: settings.planModel,
 		reasoningMeta,
 		confirmBash,
 		projectDeps,

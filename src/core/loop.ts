@@ -371,9 +371,11 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 		buildPlanSnapshot?.path && loopConfig.planState
 			? listPlanNames(loopConfig.planState.plansDir).filter((n) => n !== basename(buildPlanSnapshot.path!, ".md"))
 			: [];
+	// Neutral wording: this line rides along with BOTH mirror variants, and the
+	// done-variant explicitly says the plan no longer steers.
 	const otherPlansLine =
 		otherPlanNames.length > 0
-			? `\n\nOther plans in this session: ${otherPlanNames.join(", ")} — use plan_read with a name to view one. Only the approved plan above steers the work.`
+			? `\n\nOther plans in this session: ${otherPlanNames.join(", ")} — use plan_read with a name to view one; none of them steers the work unless approved.`
 			: "";
 
 	// Recompute the system prompt from the latest contextFiles/@-mentions and

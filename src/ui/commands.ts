@@ -58,6 +58,7 @@ export const SLASH_COMMANDS: Array<{ name: string; description: string; takesArg
 	{ name: "/permissions", description: "Change bash confirmation mode" },
 	{ name: "/persona", description: "Show or change persona" },
 	{ name: "/plan", description: "Enter plan mode (explore + plan only)" },
+	{ name: "/plan-model", description: "Show or change the plan-mode model" },
 	{ name: "/provider", description: "Change provider URL and API key" },
 	{ name: "/q", description: "Alias for /queue", takesArgs: true },
 	{ name: "/queue", description: "Queue a message for after the run", takesArgs: true },
@@ -122,6 +123,9 @@ export interface CommandDeps {
 	setWebToolsEnabled: (v: boolean) => void;
 	planMode: boolean;
 	setPlanMode: (v: boolean) => void;
+	/** Model used while plan mode is active; undefined falls back to session.model. */
+	planModel?: string;
+	setPlanModel: (m: string | undefined) => void;
 	onThemeChange?: () => void;
 }
 
@@ -155,7 +159,9 @@ function rebuildSystemPrompt(
 			overrides.skillsPromptSuffix ?? deps.skillsPromptSuffix,
 			cwd,
 			{
-				model: deps.session.model,
+				// The Model line reports the model actually in use — in plan mode
+				// with an override that's the plan model, not session.model.
+				model: deps.planMode && deps.planModel ? deps.planModel : deps.session.model,
 				reasoningLevel: deps.config.reasoningLevel,
 				reasoningMeta: deps.reasoningMeta,
 				mode: deps.planMode ? "plan" : "build",
@@ -410,6 +416,39 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 		updateSettings({ model: newModel, reasoningLevel: config.reasoningLevel });
 		agent.refresh();
 		showNotice(`[Model: ${newModel} (reasoning: ${config.reasoningLevel})]`);
+		return;
+	}
+
+	if (input === "/plan-model") {
+		const selection = await selectModel(config, deps.pickers, deps.planModel ?? session.model);
+		if (!selection) {
+			showNotice("[Cancelled — plan-mode model unchanged]");
+			return;
+		}
+		deps.setPlanModel(selection.model);
+		updateSettings({ planModel: selection.model });
+		agent.refresh();
+		showNotice(`[Plan-mode model: ${selection.model}]`);
+		return;
+	}
+
+	if (input.startsWith("/plan-model ")) {
+		const newModel = input.slice("/plan-model ".length).trim();
+		if (newModel === "off" || newModel === "reset") {
+			deps.setPlanModel(undefined);
+			updateSettings({ planModel: undefined });
+			showNotice("[Plan-mode model: off — plan mode uses the main model]");
+			return;
+		}
+		const ok = await runOnboardingCheck(config, newModel, { log: deps.pickers.log });
+		if (!ok) {
+			showNotice(`[Model ${newModel} failed validation]`);
+			return;
+		}
+		deps.setPlanModel(newModel);
+		updateSettings({ planModel: newModel });
+		agent.refresh();
+		showNotice(`[Plan-mode model: ${newModel}]`);
 		return;
 	}
 
@@ -692,6 +731,9 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 		session.updatedAt = chosen.updatedAt;
 		session.usage = chosen.usage;
 		session.cwd = chosen.cwd;
+		// Context-size signal belongs to the session being resumed — leaving the
+		// old session's value here feeds shouldCompact a foreign context size.
+		session.lastPromptTokens = chosen.lastPromptTokens;
 		// Mode travels with the session: restore what the resumed session was
 		// left in instead of carrying over the current one.
 		deps.setPlanMode(chosen.mode === "plan");
@@ -827,6 +869,7 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 				"  /compact            Compact context now\n" +
 				"  /new                Start new session\n" +
 				"  /plan               Enter plan mode (explore + plan only)\n" +
+				"  /plan-model [m|off] Show or change the plan-mode model\n" +
 				"  /abort              Abort running agent (alias: /stop)\n" +
 				"  /queue (/q)         Queue message for next turn\n" +
 				"  /queue-reset        Clear queue\n" +
