@@ -134,17 +134,17 @@ Use for:
 
 ## Plan Tools
 
-Plan tools are only available in plan mode. See [Plan Mode](plan-mode.md) for details.
+Availability is mode-gated: authoring tools exist only in plan mode, progress and suggestion tools only in build mode, `plan_read` in both. See [Plan Mode](plan-mode.md) for details.
 
-| Tool | Description |
-|------|-------------|
-| `plan_write` | Write or replace a named plan file |
-| `plan_edit` | Edit a section of the active plan by heading |
-| `plan_read` | Read a plan's content and headings |
-| `plan_done` | Signal that the plan is ready for review |
-| `plan_discard` | Delete a plan from the session |
-| `plan_enter` | Suggest switching to plan mode |
-| `plan_check` | Mark a checklist item as done |
+| Tool | Mode | Description |
+|------|------|-------------|
+| `plan_write` | Plan | Write or replace a named plan file |
+| `plan_edit` | Plan | Edit a section of the active plan by heading |
+| `plan_read` | Both | Read a plan's content and headings (switches the active plan only in plan mode) |
+| `plan_done` | Plan | Signal that the plan is ready for review |
+| `plan_discard` | Plan | Delete a plan from the session |
+| `plan_enter` | Build | Suggest switching to plan mode |
+| `plan_check` | Build | Mark a checklist item as done |
 
 ## Subagent System
 

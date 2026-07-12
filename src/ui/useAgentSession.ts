@@ -163,6 +163,10 @@ interface UseAgentSessionParams {
 	 * or plan_enter ("enter"). The App shows the corresponding confirmation
 	 * dialog once the run settles — never mid-run, so tool sets stay consistent. */
 	onPlanSignal?: (kind: "done" | "enter") => void;
+	/** Runs the loop on this model instead of session.model — the plan-mode
+	 * model override. session.model stays untouched: it is the user's main
+	 * model, this is a per-phase substitution. */
+	modelOverride?: string;
 }
 
 /**
@@ -271,6 +275,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 		disabledTools,
 		planState,
 		onPlanSignal,
+		modelOverride,
 	} = params;
 	const [messages, setMessages] = useState<ChatMessage[]>(() => buildDisplayMessages(session.messages));
 	const [streaming, setStreaming] = useState<StreamingState | null>(null);
@@ -488,7 +493,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 			try {
 				const result = await runAgentLoop(session.messages, {
 					config,
-					model: session.model,
+					model: modelOverride ?? session.model,
 					cwd,
 					systemPrompt,
 					signal: ac.signal,
@@ -732,6 +737,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 			disabledTools,
 			planState,
 			onPlanSignal,
+			modelOverride,
 		],
 	);
 
@@ -762,6 +768,12 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 
 	const clearContext = useCallback(() => {
 		session.messages = [];
+		// The authoritative context-size signal must reset with the context it
+		// measured — otherwise shouldCompact still sees the pre-clear size and
+		// the first turn after clearing a long session (e.g. the "clear context,
+		// then implement" plan approval) runs a pointless compaction pass over
+		// an almost-empty conversation.
+		session.lastPromptTokens = undefined;
 		saveSession(session);
 		// Static-rendered history is permanently committed to the terminal's own
 		// scrollback (see ChatLog.tsx) — resetting the messages array doesn't

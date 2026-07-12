@@ -12,6 +12,8 @@ import {
 	execPlanRead,
 	execPlanWrite,
 	listPlanNames,
+	modeDisabledTools,
+	PLAN_TOOL_NAMES,
 	type PlanState,
 	planChecklistState,
 	readActivePlan,
@@ -36,6 +38,40 @@ describe("plan", () => {
 
 	afterEach(() => {
 		if (existsSync(TEST_PLANS_DIR)) rmSync(TEST_PLANS_DIR, { recursive: true });
+	});
+
+	describe("modeDisabledTools", () => {
+		it("plan mode blocks writers and build-only plan tools, never bash", () => {
+			const gated = modeDisabledTools(true);
+			expect(gated).toContain("write");
+			expect(gated).toContain("edit");
+			expect(gated).toContain("plan_check");
+			expect(gated).toContain("plan_enter");
+			// bash stays advertised — the executor's read-only gate handles it
+			expect(gated).not.toContain("bash");
+			expect(gated).not.toContain("plan_write");
+			expect(gated).not.toContain("plan_read");
+		});
+
+		it("build mode blocks exactly the authoring tools", () => {
+			const gated = modeDisabledTools(false);
+			expect([...gated].sort()).toEqual(["plan_discard", "plan_done", "plan_edit", "plan_write"]);
+		});
+
+		it("every plan tool has an explicit mode decision (or is dual-mode plan_read)", () => {
+			// A new PLAN_TOOL_NAMES entry must be placed in exactly one mode's
+			// gate list — or knowingly left dual-mode like plan_read. This test
+			// fails the moment someone adds a tool without deciding.
+			const planGated = new Set(modeDisabledTools(true).filter((n) => n.startsWith("plan_")));
+			const buildGated = new Set(modeDisabledTools(false));
+			const dualMode = ["plan_read"];
+			for (const name of PLAN_TOOL_NAMES) {
+				const decisions = [planGated.has(name), buildGated.has(name), dualMode.includes(name)].filter(
+					Boolean,
+				).length;
+				expect(decisions, `tool ${name} needs exactly one mode decision`).toBe(1);
+			}
+		});
 	});
 
 	describe("createPlanState", () => {
@@ -80,6 +116,28 @@ describe("plan", () => {
 			expect(checkReadOnlyCommand("ls && touch x").ok).toBe(false);
 			expect(checkReadOnlyCommand("find . -name '*.md' | xargs rm").ok).toBe(false);
 			expect(checkReadOnlyCommand("").ok).toBe(false);
+		});
+
+		it("rejects argument-level writers and executors on allowlisted binaries", () => {
+			// find/fd can delete or exec through flags
+			expect(checkReadOnlyCommand("find . -name '*.tmp' -delete").ok).toBe(false);
+			expect(checkReadOnlyCommand("find . -exec rm {} \\;").ok).toBe(false);
+			expect(checkReadOnlyCommand("fd -x rm").ok).toBe(false);
+			// output flags write without any `>`
+			expect(checkReadOnlyCommand("sort -o out.txt in.txt").ok).toBe(false);
+			expect(checkReadOnlyCommand("tree -o out.txt").ok).toBe(false);
+			expect(checkReadOnlyCommand("git log --output=/tmp/x").ok).toBe(false);
+			expect(checkReadOnlyCommand("git log --output /tmp/x").ok).toBe(false);
+			// process substitution executes commands
+			expect(checkReadOnlyCommand("diff <(rm -rf x) file").ok).toBe(false);
+			// env launches arbitrary binaries
+			expect(checkReadOnlyCommand("env sh -c 'rm -rf x'").ok).toBe(false);
+			// uniq's second positional argument is an output file
+			expect(checkReadOnlyCommand("uniq input.txt output.txt").ok).toBe(false);
+			// ...while the plain read-only forms of the same binaries still pass
+			expect(checkReadOnlyCommand("find . -name '*.md' -type f").ok).toBe(true);
+			expect(checkReadOnlyCommand("sort in.txt | uniq -c").ok).toBe(true);
+			expect(checkReadOnlyCommand("git log --oneline").ok).toBe(true);
 		});
 	});
 

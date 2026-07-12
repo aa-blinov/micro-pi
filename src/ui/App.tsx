@@ -2,7 +2,7 @@ import { Box, Text, useApp } from "ink";
 import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppConfig } from "../core/config.ts";
 import { formatContextFilesForPrompt, resolveNestedContextFiles } from "../core/context-files.ts";
-import { createPlanState, readActivePlan } from "../core/plan.ts";
+import { createPlanState, modeDisabledTools, readActivePlan } from "../core/plan.ts";
 import { buildSystemPrompt, makeConfirmBash } from "../core/project.ts";
 import {
 	formatRulesForTurn,
@@ -96,6 +96,7 @@ export function App(props: AppProps): JSX.Element {
 	const [personas] = useState(result.personas);
 	const [subagentPrompts] = useState(result.subagentPrompts);
 	const [subagentModel, setSubagentModel] = useState(result.subagentModel);
+	const [planModel, setPlanModel] = useState(result.planModel);
 	const [webToolsEnabled, setWebToolsEnabled] = useState(() => loadSettings().webTools === true);
 	// Mode is per-session state: restored from the (possibly resumed) session
 	// on startup, persisted into the session file on every toggle — so quitting
@@ -119,25 +120,11 @@ export function App(props: AppProps): JSX.Element {
 			s.add("web_search");
 			s.add("web_fetch");
 		}
-		if (planMode) {
-			// Hard block write-capable tools in plan mode. bash stays advertised:
-			// the loop's executor gate restricts it to a read-only allowlist
-			// (git log/diff/blame, grep, ls, …) so exploration keeps its teeth.
-			s.add("write");
-			s.add("edit");
-			// Checking off steps and proposing to plan are build-mode acts
-			s.add("plan_check");
-			s.add("plan_enter");
-		} else {
-			// Plan authoring tools only available in plan mode; the approved plan
-			// can't be rewritten (or discarded) during implementation, only
-			// checked off. plan_read stays available in build mode as a read-only
-			// reference (it only switches the active plan while plan mode is on).
-			s.add("plan_write");
-			s.add("plan_edit");
-			s.add("plan_done");
-			s.add("plan_discard");
-		}
+		// Mode policy lives in core/plan.ts (modeDisabledTools) so it's testable
+		// as data: plan mode blocks writers (bash stays advertised — the
+		// executor gate restricts it to a read-only allowlist) and the
+		// build-only plan tools; build mode blocks the plan-authoring tools.
+		for (const name of modeDisabledTools(planMode)) s.add(name);
 		return s;
 	}, [webToolsEnabled, planMode]);
 	// One object per session, mutated in place: an in-flight run captured this
@@ -145,6 +132,11 @@ export function App(props: AppProps): JSX.Element {
 	// same object for the loop's per-request system prompt sync to see them.
 	const planState = useMemo(() => createPlanState(session.id), [session.id]);
 	planState.enabled = planMode;
+	// Per-phase model: planning can run on a stronger model than building.
+	// session.model stays the main model; the override applies only while plan
+	// mode is on, and everything downstream (run, system prompt Model line,
+	// status bar) reports the model actually in use.
+	const activeModel = planMode && planModel ? planModel : session.model;
 	// Mode-transition signal from the run (plan_done / plan_enter succeeded).
 	// A ref, not state: it must not trigger renders mid-run — the dialog opens
 	// only when the run settles (see the effect below), so the mode always
@@ -210,7 +202,7 @@ export function App(props: AppProps): JSX.Element {
 				rulesLazySuffix,
 				skillsPromptSuffix,
 				cwd,
-				{ model: session.model, reasoningLevel: config.reasoningLevel, mode: planMode ? "plan" : "build" },
+				{ model: activeModel, reasoningLevel: config.reasoningLevel, mode: planMode ? "plan" : "build" },
 			);
 		},
 		[
@@ -222,7 +214,7 @@ export function App(props: AppProps): JSX.Element {
 			skillsPromptSuffix,
 			cwd,
 			projectTrusted,
-			session.model,
+			activeModel,
 			config.reasoningLevel,
 			planMode,
 		],
@@ -245,6 +237,7 @@ export function App(props: AppProps): JSX.Element {
 		disabledTools,
 		planState,
 		onPlanSignal,
+		modelOverride: planMode && planModel ? planModel : undefined,
 	});
 	const running = agent.status === "running";
 	const canSubmit = useCallback(
@@ -411,6 +404,8 @@ export function App(props: AppProps): JSX.Element {
 		setWebToolsEnabled,
 		planMode,
 		setPlanMode,
+		planModel,
+		setPlanModel,
 		onThemeChange,
 	});
 	depsRef.current = {
@@ -458,6 +453,8 @@ export function App(props: AppProps): JSX.Element {
 		setWebToolsEnabled,
 		planMode,
 		setPlanMode,
+		planModel,
+		setPlanModel,
 		onThemeChange,
 	};
 
@@ -542,7 +539,7 @@ export function App(props: AppProps): JSX.Element {
 					    changes what the agent may do), build stays quiet. */}
 					{planMode ? <Text color={theme().warning}> [PLAN]</Text> : <Text color={theme().muted}> [BUILD]</Text>}
 					<Text color={theme().muted}> │ </Text>
-					<Text color={theme().muted}>{session.model}</Text>
+					<Text color={theme().muted}>{activeModel}</Text>
 					{/* Zero-width marker toggled by the resize effect. After that effect
 					    clears the screen, Ink's log-update would otherwise skip redrawing
 					    an *unchanged* frame — leaving a blank screen on an empty session

@@ -59,6 +59,7 @@ See [Rules](rules.md) for rule types and creation.
 |---------|-------------|
 | `/plan` | Enter plan mode (explore and plan only, no code changes) |
 | `/build` | Exit plan mode, restore full toolset |
+| `/plan-model [name\|off]` | Show/change the model used while plan mode is active |
 
 See [Plan Mode](plan-mode.md) for the full workflow.
 

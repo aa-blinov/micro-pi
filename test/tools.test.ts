@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppConfig } from "../src/core/config.ts";
-import { createToolExecutor } from "../src/core/tools.ts";
+import { PLAN_TOOL_NAMES, type PlanState } from "../src/core/plan.ts";
+import { createToolExecutor, getToolDefinitions } from "../src/core/tools.ts";
 
 const TEST_DIR = join(import.meta.dirname, "__test_tmp__");
 
@@ -852,5 +853,62 @@ describe("task", () => {
 		const runs = Array.from({ length: 5 }, () => exec("task", { assignment: "work" }));
 		await Promise.all(runs);
 		expect(confirmPeak).toBe(1);
+	});
+});
+
+// ============================================================================
+// plan tools — executor dispatch and definition invariants
+// ============================================================================
+
+describe("plan tools dispatch", () => {
+	function planStateInTestDir(): PlanState {
+		return { enabled: true, plansDir: join(TEST_DIR, "plans") };
+	}
+
+	it("returns 'not available' for every plan tool when no planState is wired (headless, subagents)", async () => {
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		for (const name of PLAN_TOOL_NAMES) {
+			const result = await exec(name, { name: "x", content: "# P", item: "x", reason: "r" });
+			expect(result.isError, `${name} must be unavailable without planState`).toBe(true);
+			expect(result.content).toContain("not available");
+		}
+	});
+
+	it("routes the full lifecycle through the real executors when planState is wired", async () => {
+		const planState = planStateInTestDir();
+		const exec = createToolExecutor(TEST_DIR, mockConfig, undefined, undefined, planState);
+
+		const write = await exec("plan_write", { name: "lifecycle", content: "# P\n\n## Steps\n- [ ] only step" });
+		expect(write.isError).toBeFalsy();
+		expect(existsSync(join(TEST_DIR, "plans", "lifecycle.md"))).toBe(true);
+
+		const read = JSON.parse((await exec("plan_read", {})).content);
+		expect(read.name).toBe("lifecycle");
+		expect(read.plans).toEqual(["lifecycle"]);
+
+		const done = JSON.parse((await exec("plan_done", { summary: "s" })).content);
+		expect(done.planReady).toBe(true);
+
+		const check = JSON.parse((await exec("plan_check", { item: "only step" })).content);
+		expect(check.allDone).toBe(true);
+
+		const enter = JSON.parse((await exec("plan_enter", { reason: "complex" })).content);
+		expect(enter.planSuggested).toBe(true);
+
+		const discard = JSON.parse((await exec("plan_discard", { name: "lifecycle" })).content);
+		expect(discard.discarded).toBe("lifecycle");
+		expect(existsSync(join(TEST_DIR, "plans", "lifecycle.md"))).toBe(false);
+	});
+});
+
+describe("plan tool definitions", () => {
+	it("every plan_* definition is gated by PLAN_TOOL_NAMES — and vice versa", () => {
+		// PLAN_TOOL_NAMES drives the headless and subagent disable lists; a
+		// plan tool defined but missing from it would leak into contexts that
+		// have no plan mode at all.
+		const defined = getToolDefinitions()
+			.map((t) => t.function.name)
+			.filter((n) => n.startsWith("plan_"));
+		expect([...defined].sort()).toEqual([...PLAN_TOOL_NAMES].sort());
 	});
 });

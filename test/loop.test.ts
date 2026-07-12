@@ -32,7 +32,7 @@ vi.mock("../src/core/llm.ts", async (importOriginal) => {
 	};
 });
 
-const { runAgentLoop, MessageQueue } = await import("../src/core/loop.ts");
+const { runAgentLoop, MessageQueue, compactSessionMessages } = await import("../src/core/loop.ts");
 const { streamAndCollect } = await import("../src/core/llm.ts");
 type AgentEvent = Parameters<Parameters<typeof runAgentLoop>[1]["onEvent"]>[0];
 
@@ -767,18 +767,18 @@ describe("runAgentLoop — nested AGENTS.md injection", () => {
 // runAgentLoop — plan mode
 // ============================================================================
 
-describe("runAgentLoop — plan mode", () => {
-	// applyCacheControl rewrites message content in place into a structured
-	// [{ type: "text", text }] array before the request goes out — flatten it
-	// back to text to assert on the prompt.
-	const contentToText = (content: unknown): string => {
-		if (typeof content === "string") return content;
-		if (!Array.isArray(content)) return "";
-		return content
-			.map((p: { type?: string; text?: string }) => (p?.type === "text" && typeof p.text === "string" ? p.text : ""))
-			.join("");
-	};
+// applyCacheControl rewrites message content in place into a structured
+// [{ type: "text", text }] array before the request goes out — flatten it
+// back to text to assert on prompts.
+const contentToText = (content: unknown): string => {
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content
+		.map((p: { type?: string; text?: string }) => (p?.type === "text" && typeof p.text === "string" ? p.text : ""))
+		.join("");
+};
 
+describe("runAgentLoop — plan mode", () => {
 	it("prepends the plan block even when rebuildSystemPrompt replaces the prompt", async () => {
 		// rebuildSystemPrompt is always set in the TUI and rebuilds the prompt
 		// wholesale — the plan block must be applied after it, not overwritten.
@@ -1039,6 +1039,55 @@ describe("runAgentLoop — plan mode", () => {
 			expect(toolEnd.result.isError).toBe(true);
 			expect(toolEnd.result.content).toContain("not available");
 		}
+	});
+});
+
+// ============================================================================
+// compactSessionMessages — plan-mode extra instructions
+// ============================================================================
+
+describe("compactSessionMessages — extraInstructions", () => {
+	// Enough alternating turns that compactMessages finds a safe cut point.
+	const history = (): Message[] =>
+		Array.from({ length: 10 }, (_, i): Message[] => [
+			{ role: "user", content: `question ${i}` },
+			{ role: "assistant", content: `answer ${i}` },
+		]).flat();
+
+	it("appends the plan-mode compaction guidance to the summarization prompt", async () => {
+		let promptText = "";
+		vi.mocked(streamAndCollect).mockImplementationOnce(
+			async (_client: unknown, _model: string, messages: unknown) => {
+				promptText = contentToText((messages as Message[])[1]!.content);
+				return { content: "summary", thinking: "", finishReason: "stop" };
+			},
+		);
+
+		const result = await compactSessionMessages(
+			history(),
+			testConfig,
+			"test-model",
+			undefined,
+			undefined,
+			undefined,
+			"PLAN_MODE_EXTRA_INSTRUCTIONS",
+		);
+		expect(result.compacted).toBe(true);
+		expect(promptText).toContain("<conversation>");
+		expect(promptText.endsWith("PLAN_MODE_EXTRA_INSTRUCTIONS")).toBe(true);
+	});
+
+	it("leaves the prompt untouched without extraInstructions", async () => {
+		let promptText = "";
+		vi.mocked(streamAndCollect).mockImplementationOnce(
+			async (_client: unknown, _model: string, messages: unknown) => {
+				promptText = contentToText((messages as Message[])[1]!.content);
+				return { content: "summary", thinking: "", finishReason: "stop" };
+			},
+		);
+
+		await compactSessionMessages(history(), testConfig, "test-model");
+		expect(promptText).not.toContain("PLAN_MODE_EXTRA_INSTRUCTIONS");
 	});
 });
 

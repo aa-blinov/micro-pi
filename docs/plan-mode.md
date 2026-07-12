@@ -23,9 +23,11 @@ flowchart LR
 1. **Enter plan mode** — type `/plan` or the agent suggests it via `plan_enter`
 2. **Explore** — the agent reads files, runs read-only shell commands, and analyzes the codebase
 3. **Write plan** — the agent produces a structured markdown plan with a checklist
-4. **Review** — the agent signals completion with `plan_done`; you review the plan
-5. **Approve** — type `/build` to exit plan mode and start implementation
+4. **Review** — the agent signals completion with `plan_done`; the full plan file path is shown (cmd-click to open it in your editor)
+5. **Approve** — when the turn ends, an approval dialog opens: implement now, clear context and implement (the plan survives in the system prompt, the exploration chatter doesn't), approve and start yourself, or keep refining. `/build` remains as the manual gesture
 6. **Implement** — the agent works through the plan, checking off steps with `plan_check`
+
+Declining the agent's own `plan_enter` suggestion is safe: the session auto-continues in build mode.
 
 ## What's Allowed in Plan Mode
 
@@ -33,17 +35,19 @@ flowchart LR
 
 Only inspection commands are allowed. The allowlist includes:
 
-`ls`, `cat`, `head`, `tail`, `wc`, `grep`, `rg`, `fd`, `find`, `file`, `stat`, `du`, `df`, `tree`, `diff`, `sort`, `uniq`, `cut`, `nl`, `realpath`, `dirname`, `basename`, `which`, `pwd`, `echo`, `printf`, `date`, `env`, `column`, `strings`, `jq`, `yq`
+`ls`, `cat`, `head`, `tail`, `wc`, `grep`, `rg`, `fd`, `find`, `file`, `stat`, `du`, `df`, `tree`, `diff`, `sort`, `uniq`, `cut`, `nl`, `realpath`, `dirname`, `basename`, `which`, `pwd`, `echo`, `printf`, `date`, `column`, `strings`, `jq`, `yq`
 
 Git read-only subcommands: `log`, `show`, `diff`, `status`, `blame`, `rev-parse`, `ls-files`, `ls-tree`, `ls-remote`, `shortlog`, `describe`, `grep`, `reflog`, `cat-file`, `count-objects`
 
 ### Blocked
 
 - Output redirection (`>`)
-- Command substitution (`$()`, backticks)
-- Any binary not on the allowlist
+- Command and process substitution (`$()`, backticks, `<()`)
+- Any binary not on the allowlist (`env` included — it launches arbitrary binaries; same for test runners and package managers)
+- Argument-level writers on allowlisted binaries: `find -delete`/`-exec`, `fd -x`, `sort -o`, `tree -o`, `--output`, `uniq in out`
 - `write`, `edit` tools
-- `web_search`, `web_fetch` tools
+
+`web_search`/`web_fetch` follow the `/web` toggle in both modes — plan mode doesn't change them.
 
 ## Plan Tools
 
@@ -101,6 +105,9 @@ The checklist (`- [ ]`) format is important — `plan_check` marks items as `- [
 |---------|-------------|
 | `/plan` | Enter plan mode |
 | `/build` | Exit plan mode, restore full toolset |
+| `/plan-model [name\|off]` | Model used while plan mode is active |
+
+Mode switching is rejected while a run is active — modes flip only between runs.
 
 `/build` with an existing plan is the approval gesture — the plan is injected into the build-mode system prompt so the agent's next message starts implementation guided by it.
 
@@ -148,6 +155,10 @@ Once every checklist item is checked, the plan is replaced with a brief referenc
 The approved plan "name" for this task has been fully executed — every checklist
 item is checked. It no longer steers the work; treat new requests on their own terms.
 ```
+
+## Per-Phase Model
+
+`/plan-model` sets a model used only while plan mode is active (stored as `planModel` in settings, like `subagentModel`). The typical split: an expensive high-quality model for planning, a cheap one for building, a fast one for sub-agents. The status bar, the system prompt `Model:` line, and the actual requests all report the model in use; `/plan-model off` returns plan mode to the main model.
 
 ## Plan Mode Persistence
 
