@@ -2,6 +2,13 @@
 
 All notable user-facing changes to cast, newest first.
 
+## 0.5.6
+
+### Fixed
+
+- Terminal tools (`plan_done`, `plan_enter`) now force-end the turn — prevents the model from keeping runs alive by rewording summaries to dodge the doom-loop detector
+- `plan_done` no longer echoes full plan content into model context, which invited endless "refinement" loops
+
 ## 0.5.5
 
 ### Added
