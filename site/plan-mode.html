@@ -231,6 +231,26 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .content th { background: var(--bg-tertiary); font-weight: 600; }
 .content tr:hover td { background: var(--bg-tertiary); }
 
+/* ── Doc page navigation ─────────────────────────────────────────────── */
+.doc-nav {
+	display: flex; justify-content: space-between; gap: 16px;
+	margin-top: 48px; padding-top: 24px;
+	border-top: 1px solid var(--border);
+}
+.doc-nav a {
+	padding: 12px 20px; border: 1px solid var(--border); border-radius: 8px;
+	font-size: .9rem; font-weight: 500; color: var(--text-secondary);
+	background: var(--bg-secondary); transition: border-color .15s, color .15s;
+	flex: 1;
+}
+.doc-nav a:hover { border-color: var(--accent); color: var(--text); text-decoration: none; }
+.doc-nav-prev { text-align: left; }
+.doc-nav-next { text-align: right; }
+@media (max-width: 768px) {
+	.doc-nav { flex-direction: column; }
+	.doc-nav a { text-align: left; }
+}
+
 /* ── Landing page ───────────────────────────────────────────────────── */
 .hero {
 	text-align: center; padding: 100px 24px 60px;
@@ -415,6 +435,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 			<a href="themes.html">Themes</a>
 			<a href="non-interactive-mode.html">Non-Interactive Mode</a>
 			<a href="architecture.html">Architecture</a>
+			<a href="changelog.html">Changelog</a>
 	</div>
 </nav>
 
@@ -444,7 +465,7 @@ flowchart LR
 <li><strong>Explore</strong> — the agent reads files, runs read-only shell commands, and analyzes the codebase</li>
 <li><strong>Write plan</strong> — the agent produces a structured markdown plan with a checklist</li>
 <li><strong>Review</strong> — the agent signals completion with <code>plan_done</code>; the full plan file path is shown (cmd-click to open it in your editor)</li>
-<li><strong>Approve</strong> — when the turn ends, an approval dialog opens: implement now, clear context and implement (the plan survives in the system prompt, the exploration chatter doesn&#39;t), approve and start yourself, or refine — the refine option asks what should change and sends the feedback straight back to planning. <code>/build</code> remains as the manual gesture</li>
+<li><strong>Approve</strong> — when the turn ends, an approval dialog opens: implement now, clear context and implement (the plan survives in the system prompt, the exploration chatter doesn&#39;t), approve and start yourself, or refine — the refine option returns you to the regular composer (multi-line and image paste work); your next message is sent back to planning as feedback. <code>/build</code> remains as the manual gesture</li>
 <li><strong>Implement</strong> — the agent works through the plan, checking off steps with <code>plan_check</code></li>
 </ol>
 <p>Declining the agent&#39;s own <code>plan_enter</code> suggestion is safe: the session auto-continues in build mode.</p>
@@ -532,6 +553,10 @@ item is checked. It no longer steers the work; treat new requests on their own t
 <p>The plan mode state is per-session. If you quit mid-planning and resume the session, the mode is restored. A fresh session always starts in build mode.</p>
 
 	</article>
+		<nav class="doc-nav">
+			<a href="sessions.html" class="doc-nav-prev">← Sessions</a>
+			<a href="reasoning.html" class="doc-nav-next">Reasoning →</a>
+		</nav>
 </main>
 
 <script>

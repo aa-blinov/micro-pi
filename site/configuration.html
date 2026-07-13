@@ -231,6 +231,26 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .content th { background: var(--bg-tertiary); font-weight: 600; }
 .content tr:hover td { background: var(--bg-tertiary); }
 
+/* ── Doc page navigation ─────────────────────────────────────────────── */
+.doc-nav {
+	display: flex; justify-content: space-between; gap: 16px;
+	margin-top: 48px; padding-top: 24px;
+	border-top: 1px solid var(--border);
+}
+.doc-nav a {
+	padding: 12px 20px; border: 1px solid var(--border); border-radius: 8px;
+	font-size: .9rem; font-weight: 500; color: var(--text-secondary);
+	background: var(--bg-secondary); transition: border-color .15s, color .15s;
+	flex: 1;
+}
+.doc-nav a:hover { border-color: var(--accent); color: var(--text); text-decoration: none; }
+.doc-nav-prev { text-align: left; }
+.doc-nav-next { text-align: right; }
+@media (max-width: 768px) {
+	.doc-nav { flex-direction: column; }
+	.doc-nav a { text-align: left; }
+}
+
 /* ── Landing page ───────────────────────────────────────────────────── */
 .hero {
 	text-align: center; padding: 100px 24px 60px;
@@ -415,6 +435,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 			<a href="themes.html">Themes</a>
 			<a href="non-interactive-mode.html">Non-Interactive Mode</a>
 			<a href="architecture.html">Architecture</a>
+			<a href="changelog.html">Changelog</a>
 	</div>
 </nav>
 
@@ -461,6 +482,10 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 <p>Supported providers: anything that speaks the OpenAI API. Common URLs:</p>
 <div class="table-wrap"><table><thead><tr><th>Provider</th><th>URL</th></tr></thead><tbody><tr><td>OpenRouter</td><td><code>https://openrouter.ai/api/v1</code></td></tr><tr><td>OpenAI</td><td><code>https://api.openai.com/v1</code></td></tr><tr><td>Ollama</td><td><code>http://localhost:11434/v1</code></td></tr></tbody></table></div>
 	</article>
+		<nav class="doc-nav">
+			<a href="reasoning.html" class="doc-nav-prev">← Reasoning</a>
+			<a href="themes.html" class="doc-nav-next">Themes →</a>
+		</nav>
 </main>
 
 <script>

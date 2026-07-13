@@ -148,6 +148,7 @@ Every conversation auto-saves. Resume with `--continue`, pick from a list with `
 | `/copy` | Copy last assistant response to clipboard |
 | `/clear` | Clear conversation context |
 | `/theme` | Change color theme |
+| `/usage` | Show session token/cost usage |
 | `/repo` | Show cwd and git branch |
 | `/quit`, `/exit` | Save and exit |
 | `/keys` | List all keybindings |

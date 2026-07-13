@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Architecture — cast</title>
-<meta name="description" content="Architecture documentation for cast, a role-based terminal agent harness.">
+<title>Changelog — cast</title>
+<meta name="description" content="Changelog documentation for cast, a role-based terminal agent harness.">
 <style>
 :root {
 	/* cast palette — cyan→violet gradient */
@@ -434,98 +434,257 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 			<a href="configuration.html">Configuration</a>
 			<a href="themes.html">Themes</a>
 			<a href="non-interactive-mode.html">Non-Interactive Mode</a>
-			<a href="architecture.html" class="active">Architecture</a>
-			<a href="changelog.html">Changelog</a>
+			<a href="architecture.html">Architecture</a>
+			<a href="changelog.html" class="active">Changelog</a>
 	</div>
 </nav>
 
 <main class="main">
 	<article class="content">
-		<h1>Architecture</h1>
-<p>An overview of cast&#39;s source layout and key design decisions. For contributors and the curious.</p>
-<h2>Source Layout</h2>
-<pre><code>src/
-  core/               Agent logic (no UI dependency)
-    loop.ts           Agent loop — streaming, tool dispatch, compaction
-    tools.ts          17 tool definitions + executors
-    tools/
-      bash.ts         Shell execution
-      files.ts        Read/write/edit
-      search.ts       Find/grep/ls
-      web.ts          web_search (DuckDuckGo), web_fetch (Jina Reader)
-      task.ts         Sub-agent delegation
-      shared.ts       Shared types (ToolResult, ConfirmBash)
-    llm.ts            LLM interaction, streaming, retry, prompt caching
-    session.ts        Session persistence, token estimation, compaction
-    mcp.ts            MCP server connection (stdio + streamable HTTP)
-    personas.ts       Persona loading (project &gt; global &gt; builtin)
-    rules.ts          Cursor-compatible rule system (always/auto/lazy/manual)
-    skills.ts         Agent Skills spec implementation
-    config.ts         AppConfig, model validation, onboarding
-    context-files.ts  AGENTS.md / CLAUDE.md discovery
-    project.ts        System prompt assembly, trust gating
-    startup.ts        Unified startup orchestration
-    runner.ts         Queue management (steering, follow-ups)
-    run.ts            Non-interactive runner (cast run)
-    vendors.ts        Reasoning metadata, think-block parsing
-    upgrade.ts        Self-update via GitHub releases
-    permissions.ts    Dangerous bash command detection
-    plan.ts           Plan mode state, file I/O, read-only bash gate
-    frontmatter.ts    Minimal YAML frontmatter parser
-    prompts.ts        Prompt file loading
-    readline.ts       Readline utilities, models cache
-    settings.ts       User settings persistence
-    stdin-manager.ts  Stdin ownership between Ink and child processes
-    subagents.ts      Sub-agent prompt loading
-    help.ts           Banner, help text, changelog
-    ...
-  ui/                 Ink TUI components
-    App.tsx           Top-level layout
-    Composer.tsx      Input with autocomplete, image paste
-    ChatLog.tsx       Message rendering
-    commands.ts       Slash command handlers
-    themes/           Color theme registry and definitions
-    input/            Keybindings, input handling
-    ...
-  pickers/            Onboarding pickers (model, persona, reasoning)
-  index.ts            CLI entry point
-</code></pre>
-<h2>Key Design Decisions</h2>
-<h3>Single OpenAI-Compatible Provider</h3>
-<p>cast speaks one API: the OpenAI chat completions format. Any provider that implements this API works — OpenRouter, OpenAI, Ollama, vLLM, LiteLLM, Azure OpenAI. No provider-specific code paths.</p>
-<h3>Parallel Tool Execution</h3>
-<p>Tool calls within one assistant message run concurrently via <code>Promise.all</code>. If the model requests <code>bash</code>, <code>read</code>, and <code>grep</code> in a single response, all three execute simultaneously.</p>
-<h3>Context Compaction</h3>
-<p>When the conversation exceeds ~75% of the context window, older messages are summarized by the LLM. The split is ~60/40 (old/recent), snapped to turn boundaries so tool calls and results stay together. File paths are extracted deterministically from tool calls and appended to the summary.</p>
-<h3>MCP Integration</h3>
-<p>MCP tools are namespaced as <code>mcp_&lt;server&gt;_&lt;tool&gt;</code> and converted to the same <code>Tool</code>/<code>ToolResult</code> shapes the built-in tools use. The rest of the codebase doesn&#39;t need to know MCP tools are different.</p>
-<h3>Trust Gating</h3>
-<p>A single trust decision per project gates all local resources (skills, MCP, context files, personas). Global resources (<code>~/.cast/</code>) always load. Asked once, remembered in settings.json.</p>
-<h3>Plan Mode</h3>
-<p>Plan mode is a restricted agent state: read-only bash, read tool, plan tools. The read-only bash gate uses a curated allowlist of inspection binaries. Plan files persist as markdown with checkbox tracking.</p>
-<h2>Development</h2>
-<pre><code class="language-bash">npm install --ignore-scripts
-npm start               # Run from source (tsx)
-npm run check           # Type check + lint (tsc + biome)
-npm test                # Unit tests (vitest)
-npm run build           # Bundle into dist/index.js (esbuild)
-npm run format          # Auto-format (biome)
-</code></pre>
-<h3>Testing</h3>
+		<h1>Changelog</h1>
+<p>All notable user-facing changes to cast, newest first.</p>
+<h2>0.5.4</h2>
+<p>Fix: ensure non-negative token counts in usage tracking and streaming.</p>
+<h2>0.5.3</h2>
+<p>Fix: <code>/usage</code> now correctly shows sub-agent token breakdown.</p>
+<h2>0.5.2</h2>
+<h3>Added</h3>
 <ul>
-<li>Framework: vitest</li>
-<li>One <code>test/&lt;module&gt;.test.ts</code> per <code>src/&lt;module&gt;.ts</code></li>
-<li>No real LLM/API calls — mock configs with fake <code>baseURL</code>/<code>apiKey</code></li>
-<li>MCP tests are the exception: they spawn a real local test-fixture server</li>
-<li>Tool tests use <code>test/__test_tmp__/</code>, created in <code>beforeEach</code>, removed in <code>afterEach</code></li>
+<li><code>/usage</code> command — show cumulative session token/cost usage</li>
+<li><code>/exit</code> command — alias for <code>/quit</code></li>
 </ul>
-<h3>Build</h3>
-<p>The bundle step (esbuild) produces a single <code>dist/index.js</code> file — self-contained, no <code>node_modules</code> needed at runtime.</p>
+<h2>0.5.1</h2>
+<h3>Changed</h3>
+<ul>
+<li>Repositioned cast as a &quot;role-based agent harness&quot; — 13 built-in personas, same tools, different judgment</li>
+</ul>
+<h2>0.5.0</h2>
+<h3>Added</h3>
+<ul>
+<li><strong>Plan mode</strong> — <code>/plan</code> enters a read-only exploration phase; the agent studies the codebase and writes a structured execution plan with a checklist</li>
+<li>Plan tools: <code>plan_write</code>, <code>plan_edit</code>, <code>plan_read</code>, <code>plan_done</code>, <code>plan_discard</code>, <code>plan_enter</code>, <code>plan_check</code></li>
+<li>Per-phase model support — <code>/plan-model</code> sets a separate model for planning vs building</li>
+<li>Plan files persist as markdown in <code>~/.cast/plans/</code>; survive compaction and session restarts</li>
+<li>Approval dialog: implement now, clear context + implement, approve for later, or refine</li>
+<li>E2E smoke test for plan mode</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Comprehensive documentation overhaul — all features now documented in <code>docs/</code></li>
+</ul>
+<h2>0.4.7</h2>
+<h3>Added</h3>
+<ul>
+<li>Improved picker viewport handling with scrolling and index clamping</li>
+<li>8 new dangerous bash patterns (fork bombs, <code>shutdown</code>, <code>npm publish</code>, <code>killall</code>, etc.)</li>
+</ul>
+<h2>0.4.6</h2>
+<h3>Changed</h3>
+<ul>
+<li>Enhanced dangerous command detection in permissions</li>
+</ul>
+<h2>0.4.5</h2>
+<h3>Changed</h3>
+<ul>
+<li>Removed interactive command checks from permissions (simplified)</li>
+</ul>
+<h2>0.4.4</h2>
+<h3>Added</h3>
+<ul>
+<li><strong>Web tools</strong> — <code>web_search</code> (DuckDuckGo) and <code>web_fetch</code> (Jina Reader) for internet access</li>
+<li>Web tools are off by default; toggle with <code>/web</code> (persists to settings)</li>
+</ul>
+<h2>0.4.3</h2>
+<h3>Added</h3>
+<ul>
+<li><strong>Doom loop detection</strong> — blocks a tool after 3 identical consecutive calls with the same arguments</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Streaming viewport clamping and scroll position issues</li>
+</ul>
+<h2>0.4.2</h2>
+<h3>Added</h3>
+<ul>
+<li><code>/copy</code> command — copy last assistant response to clipboard</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Scroll position not resetting on resync while user is scrolled up</li>
+</ul>
+<h2>0.4.1</h2>
+<h3>Fixed</h3>
+<ul>
+<li>Atomic writes for session and settings files (prevents corruption on crash)</li>
+<li>Session listing and MCP connect timeout hardening</li>
+<li>Clear error on missing required prompt files</li>
+<li>Persona sorting uses label instead of name</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Split <code>tools.ts</code> into per-tool modules (<code>bash.ts</code>, <code>files.ts</code>, <code>search.ts</code>, <code>web.ts</code>, <code>task.ts</code>)</li>
+<li>Centralized prompts directory resolution</li>
+</ul>
+<h2>0.4.0</h2>
+<h3>Added</h3>
+<ul>
+<li>Multi-source personas — project-local, global, and builtin with priority ordering</li>
+<li>Sub-agent support via the <code>task</code> tool — delegate work to isolated sub-agents</li>
+<li><code>coder-with-subagents</code> persona</li>
+</ul>
+<h2>0.3.17</h2>
+<h3>Added</h3>
+<ul>
+<li>Brace expansion in glob patterns</li>
+<li>Enhanced gitignore handling</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Agent loop and UI performance tracking improvements</li>
+</ul>
+<h2>0.3.16</h2>
+<h3>Added</h3>
+<ul>
+<li><strong>Non-interactive mode</strong> — <code>cast run</code> sends a single prompt, streams to stdout, exits</li>
+<li><code>--format json</code> for structured JSONL output</li>
+</ul>
+<h2>0.3.15</h2>
+<h3>Added</h3>
+<ul>
+<li><code>/repo</code> command — show cwd, git branch, dirty state, remote, and HEAD</li>
+<li>Multiple color themes (16 total)</li>
+</ul>
+<h2>0.3.13</h2>
+<h3>Added</h3>
+<ul>
+<li>Theme support — <code>/theme</code> picker, persisted to settings</li>
+</ul>
+<h2>0.3.12</h2>
+<h3>Fixed</h3>
+<ul>
+<li>Made node-pty optional with pipe fallback for release bundles</li>
+</ul>
+<h2>0.3.11</h2>
+<h3>Added</h3>
+<ul>
+<li>PTY for bash commands — captures interactive prompts (e.g. <code>npm init</code>)</li>
+</ul>
+<h2>0.3.10</h2>
+<h3>Fixed</h3>
+<ul>
+<li>Live bash command reveal only when waiting for input</li>
+</ul>
+<h2>0.3.9</h2>
+<h3>Added</h3>
+<ul>
+<li>Re-pick model when provider token changes at startup</li>
+<li>Custom model id entry in picker</li>
+<li>Surface actionable turn errors (revoked key, quota exceeded, no access)</li>
+<li>Recover from dead provider connection at startup</li>
+<li>Esc stops the running turn; Ctrl+C exits with confirmation</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Provider key persistence on re-entry</li>
+<li>Distinguish aborted, disconnected, and completed turns at stream end</li>
+</ul>
+<h2>0.3.8</h2>
+<h3>Changed</h3>
+<ul>
+<li>Streaming and rendering logic overhaul for chat messages</li>
+</ul>
+<h2>0.3.7</h2>
+<h3>Added</h3>
+<ul>
+<li>StdinManager for handling interactive input in child processes</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Streamlined session handling</li>
+</ul>
+<h2>0.3.6</h2>
+<h3>Fixed</h3>
+<ul>
+<li>Inline model context windows map (removed external JSON file dependency)</li>
+</ul>
+<h2>0.3.5</h2>
+<h3>Changed</h3>
+<ul>
+<li>Documentation updates</li>
+</ul>
+<h2>0.3.4</h2>
+<h3>Fixed</h3>
+<ul>
+<li>Message sanitization and tool call handling</li>
+</ul>
+<h2>0.3.3</h2>
+<h3>Fixed</h3>
+<ul>
+<li><code>/steer</code> behavior when idle (now submits as normal prompt)</li>
+</ul>
+<h2>0.3.2</h2>
+<h3>Added</h3>
+<ul>
+<li>Paste chip functionality in Composer</li>
+<li>Command aliases: <code>/s</code> for <code>/steer</code>, <code>/q</code> for <code>/queue</code></li>
+<li>Nested context file resolution (AGENTS.md in subdirectories)</li>
+</ul>
+<h2>0.3.0</h2>
+<h3>Added</h3>
+<ul>
+<li><strong>Rules system</strong> — Cursor-compatible <code>.cast/rules/*.md</code> with always/auto/lazy/manual modes</li>
+<li><code>@rule-name</code> mentions in messages</li>
+<li>Chat log display improvements (clampTailToRows)</li>
+</ul>
+<h2>0.2.3</h2>
+<h3>Added</h3>
+<ul>
+<li>System state block in system prompt (model, reasoning, cwd, git branch)</li>
+</ul>
+<h2>0.2.1</h2>
+<h3>Added</h3>
+<ul>
+<li><code>/keys</code> command — list all keybindings</li>
+</ul>
+<h2>0.2.0</h2>
+<h3>Added</h3>
+<ul>
+<li>Multi-source personas (project &gt; global &gt; builtin)</li>
+<li>Built-in skills</li>
+<li>Cast meta-skill for self-configuration</li>
+</ul>
+<h2>0.1.4</h2>
+<h3>Fixed</h3>
+<ul>
+<li>Token count abbreviation in status line (8.7k, 1.2M)</li>
+</ul>
+<h2>0.1.3</h2>
+<h3>Added</h3>
+<ul>
+<li><code>/model</code> highlights current selection in picker</li>
+<li>Honest reasoning display</li>
+</ul>
+<h2>0.1.2</h2>
+<h3>Fixed</h3>
+<ul>
+<li><code>reasoning_content</code> field support</li>
+<li>Resize reflow</li>
+<li>Tool call summaries</li>
+<li><code>/steer</code> and <code>/queue</code> validation</li>
+</ul>
+<h2>0.1.1</h2>
+<h3>Fixed</h3>
+<ul>
+<li>ThinkBlockParser off-by-one</li>
+<li>Added QA personas and vendors tests</li>
+</ul>
+<h2>0.1.0</h2>
+<p>Initial release. Ink TUI, 13 built-in personas, OpenAI-compatible provider, session persistence, context compaction, MCP servers, skills, parallel tool execution, sub-agents.</p>
 
 	</article>
 		<nav class="doc-nav">
-			<a href="non-interactive-mode.html" class="doc-nav-prev">← Non-Interactive Mode</a>
-			<a href="changelog.html" class="doc-nav-next">Changelog →</a>
+			<a href="architecture.html" class="doc-nav-prev">← Architecture</a>
+			<a href="getting-started.html" class="doc-nav-next">Getting Started →</a>
 		</nav>
 </main>
 

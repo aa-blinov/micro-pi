@@ -28,3 +28,4 @@ A terminal coding agent that works with **any** OpenAI-compatible API. Point it 
 | [Themes](themes.md) | Color themes |
 | [Non-Interactive Mode](non-interactive-mode.md) | `cast run` and JSON output |
 | [Architecture](architecture.md) | Source layout and design decisions |
+| [Changelog](changelog.md) | Version history and feature highlights |

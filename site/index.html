@@ -231,6 +231,26 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .content th { background: var(--bg-tertiary); font-weight: 600; }
 .content tr:hover td { background: var(--bg-tertiary); }
 
+/* ── Doc page navigation ─────────────────────────────────────────────── */
+.doc-nav {
+	display: flex; justify-content: space-between; gap: 16px;
+	margin-top: 48px; padding-top: 24px;
+	border-top: 1px solid var(--border);
+}
+.doc-nav a {
+	padding: 12px 20px; border: 1px solid var(--border); border-radius: 8px;
+	font-size: .9rem; font-weight: 500; color: var(--text-secondary);
+	background: var(--bg-secondary); transition: border-color .15s, color .15s;
+	flex: 1;
+}
+.doc-nav a:hover { border-color: var(--accent); color: var(--text); text-decoration: none; }
+.doc-nav-prev { text-align: left; }
+.doc-nav-next { text-align: right; }
+@media (max-width: 768px) {
+	.doc-nav { flex-direction: column; }
+	.doc-nav a { text-align: left; }
+}
+
 /* ── Landing page ───────────────────────────────────────────────────── */
 .hero {
 	text-align: center; padding: 100px 24px 60px;
@@ -498,6 +518,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 			<a href="themes.html" class="doc-card"><h3>Themes</h3><p>Color themes for the TUI</p></a>
 			<a href="non-interactive-mode.html" class="doc-card"><h3>Non-Interactive Mode</h3><p>cast run and JSON output</p></a>
 			<a href="architecture.html" class="doc-card"><h3>Architecture</h3><p>Source layout and design decisions</p></a>
+			<a href="changelog.html" class="doc-card"><h3>Changelog</h3><p>Version history and feature highlights</p></a>
 		</div>
 	</section>
 

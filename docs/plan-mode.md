@@ -28,7 +28,7 @@ flowchart LR
 2. **Explore** — the agent reads files, runs read-only shell commands, and analyzes the codebase
 3. **Write plan** — the agent produces a structured markdown plan with a checklist
 4. **Review** — the agent signals completion with `plan_done`; the full plan file path is shown (cmd-click to open it in your editor)
-5. **Approve** — when the turn ends, an approval dialog opens: implement now, clear context and implement (the plan survives in the system prompt, the exploration chatter doesn't), approve and start yourself, or refine — the refine option asks what should change and sends the feedback straight back to planning. `/build` remains as the manual gesture
+5. **Approve** — when the turn ends, an approval dialog opens: refine (first — it returns you to the regular composer, where multi-line and image paste work, and your next message goes back to planning as feedback), implement now, clear context and implement (the plan survives in the system prompt, the exploration chatter doesn't), or approve and start yourself. `/build` remains as the manual gesture
 6. **Implement** — the agent works through the plan, checking off steps with `plan_check`
 
 Declining the agent's own `plan_enter` suggestion is safe: the session auto-continues in build mode.
