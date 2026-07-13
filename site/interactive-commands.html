@@ -231,6 +231,26 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .content th { background: var(--bg-tertiary); font-weight: 600; }
 .content tr:hover td { background: var(--bg-tertiary); }
 
+/* ── Doc page navigation ─────────────────────────────────────────────── */
+.doc-nav {
+	display: flex; justify-content: space-between; gap: 16px;
+	margin-top: 48px; padding-top: 24px;
+	border-top: 1px solid var(--border);
+}
+.doc-nav a {
+	padding: 12px 20px; border: 1px solid var(--border); border-radius: 8px;
+	font-size: .9rem; font-weight: 500; color: var(--text-secondary);
+	background: var(--bg-secondary); transition: border-color .15s, color .15s;
+	flex: 1;
+}
+.doc-nav a:hover { border-color: var(--accent); color: var(--text); text-decoration: none; }
+.doc-nav-prev { text-align: left; }
+.doc-nav-next { text-align: right; }
+@media (max-width: 768px) {
+	.doc-nav { flex-direction: column; }
+	.doc-nav a { text-align: left; }
+}
+
 /* ── Landing page ───────────────────────────────────────────────────── */
 .hero {
 	text-align: center; padding: 100px 24px 60px;
@@ -415,6 +435,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 			<a href="themes.html">Themes</a>
 			<a href="non-interactive-mode.html">Non-Interactive Mode</a>
 			<a href="architecture.html">Architecture</a>
+			<a href="changelog.html">Changelog</a>
 	</div>
 </nav>
 
@@ -441,7 +462,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 <p>Both steering and follow-up messages reset the doom loop counter — repeating a failing command after user guidance is treated as a new attempt, not a loop.</p>
 <h2>Context and Usage</h2>
 <p>Token usage and context size are shown automatically in the TUI status bar (prompt tokens in, completion tokens out, context percentage, tokens/second, and sub-agent tokens).</p>
-<h2>Configuration</h2>
+<div class="table-wrap"><table><thead><tr><th>Command</th><th>Description</th></tr></thead><tbody><tr><td><code>/usage</code></td><td>Show cumulative session token/cost usage (prompt, completion, cache hits, sub-agent tokens)</td></tr></tbody></table></div><h2>Configuration</h2>
 <div class="table-wrap"><table><thead><tr><th>Command</th><th>Description</th></tr></thead><tbody><tr><td><code>/permissions</code></td><td>Open permission mode picker</td></tr><tr><td><code>/permissions default</code></td><td>Switch to gated mode (confirm dangerous commands)</td></tr><tr><td><code>/permissions bypass</code></td><td>Switch to bypass mode (no confirmation)</td></tr><tr><td><code>/web</code></td><td>Toggle web tools (web_search, web_fetch) on/off</td></tr><tr><td><code>/theme</code></td><td>Open theme picker</td></tr><tr><td><code>/theme &lt;id&gt;</code></td><td>Switch to a specific theme</td></tr></tbody></table></div><h2>Utility</h2>
 <div class="table-wrap"><table><thead><tr><th>Command</th><th>Description</th></tr></thead><tbody><tr><td><code>/repo</code></td><td>Show cwd, git branch, dirty state, remote, and HEAD</td></tr><tr><td><code>/keys</code></td><td>List all keybindings</td></tr><tr><td><code>/help</code></td><td>Show the command list</td></tr></tbody></table></div><h2>Keybindings</h2>
 <div class="table-wrap"><table><thead><tr><th>Action</th><th>Keys</th></tr></thead><tbody><tr><td>Cursor up/down/left/right</td><td>↑ / ↓ / ← / →</td></tr><tr><td>Word left/right</td><td>Alt+← / Alt+→ (or Ctrl+← / Ctrl+→)</td></tr><tr><td>Line start/end</td><td>Home / End (or Ctrl+A / Ctrl+E)</td></tr><tr><td>Delete char</td><td>Backspace / Delete</td></tr><tr><td>Delete word</td><td>Ctrl+W / Alt+Backspace</td></tr><tr><td>Delete to line start</td><td>Ctrl+U</td></tr><tr><td>Delete to line end</td><td>Ctrl+K</td></tr><tr><td>New line</td><td>Shift+Enter / Ctrl+J / Alt+Enter</td></tr><tr><td>Submit</td><td>Enter</td></tr><tr><td>Stop turn / clear input</td><td>Esc</td></tr><tr><td>Exit (2× to confirm)</td><td>Ctrl+C</td></tr><tr><td>Attach image</td><td>Ctrl+G</td></tr><tr><td>Autocomplete</td><td>Tab</td></tr></tbody></table></div><p><strong>Esc</strong> stops the current turn while generating; clears the input otherwise.</p>
@@ -457,6 +478,10 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 <p>All other input is rejected with a notice. Use Esc to stop the current turn (clears input when idle).</p>
 
 	</article>
+		<nav class="doc-nav">
+			<a href="cli-reference.html" class="doc-nav-prev">← CLI Reference</a>
+			<a href="tools.html" class="doc-nav-next">Tools →</a>
+		</nav>
 </main>
 
 <script>

@@ -88,6 +88,10 @@ Both steering and follow-up messages reset the doom loop counter — repeating a
 
 Token usage and context size are shown automatically in the TUI status bar (prompt tokens in, completion tokens out, context percentage, tokens/second, and sub-agent tokens).
 
+| Command | Description |
+|---------|-------------|
+| `/usage` | Show cumulative session token/cost usage (prompt, completion, cache hits, sub-agent tokens) |
+
 ## Configuration
 
 | Command | Description |

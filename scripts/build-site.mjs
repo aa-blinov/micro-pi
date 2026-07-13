@@ -24,6 +24,7 @@ const NAV_ORDER = [
 	{ file: "themes.md", label: "Themes" },
 	{ file: "non-interactive-mode.md", label: "Non-Interactive Mode" },
 	{ file: "architecture.md", label: "Architecture" },
+	{ file: "changelog.md", label: "Changelog" },
 ];
 
 // ── marked config ───────────────────────────────────────────────────────────
@@ -294,6 +295,26 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 }
 .content th { background: var(--bg-tertiary); font-weight: 600; }
 .content tr:hover td { background: var(--bg-tertiary); }
+
+/* ── Doc page navigation ─────────────────────────────────────────────── */
+.doc-nav {
+	display: flex; justify-content: space-between; gap: 16px;
+	margin-top: 48px; padding-top: 24px;
+	border-top: 1px solid var(--border);
+}
+.doc-nav a {
+	padding: 12px 20px; border: 1px solid var(--border); border-radius: 8px;
+	font-size: .9rem; font-weight: 500; color: var(--text-secondary);
+	background: var(--bg-secondary); transition: border-color .15s, color .15s;
+	flex: 1;
+}
+.doc-nav a:hover { border-color: var(--accent); color: var(--text); text-decoration: none; }
+.doc-nav-prev { text-align: left; }
+.doc-nav-next { text-align: right; }
+@media (max-width: 768px) {
+	.doc-nav { flex-direction: column; }
+	.doc-nav a { text-align: left; }
+}
 
 /* ── Landing page ───────────────────────────────────────────────────── */
 .hero {
@@ -577,6 +598,12 @@ function docPage(title, bodyHtml, activeFile) {
 		return `\t\t\t<a href="${item.file.replace(".md", ".html")}"${cls}>${item.label}</a>`;
 	}).join("\n");
 
+	// Prev/next sequential navigation (wraps: last → first)
+	const idx = NAV_ORDER.findIndex((item) => item.file === activeFile);
+	const prev = idx > 0 ? NAV_ORDER[idx - 1] : NAV_ORDER[NAV_ORDER.length - 1];
+	const next = idx < NAV_ORDER.length - 1 ? NAV_ORDER[idx + 1] : NAV_ORDER[0];
+	const docNav = `\n\t\t<nav class="doc-nav">\n\t\t\t<a href="${prev.file.replace(".md", ".html")}" class="doc-nav-prev">← ${prev.label}</a>\n\t\t\t<a href="${next.file.replace(".md", ".html")}" class="doc-nav-next">${next.label} →</a>\n\t\t</nav>`;
+
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -607,7 +634,7 @@ ${sidebarLinks}
 <main class="main">
 	<article class="content">
 		${bodyHtml}
-	</article>
+	</article>${docNav}
 </main>
 
 <script>
@@ -769,6 +796,7 @@ function getDescription(file) {
 		"themes.md": "Color themes for the TUI",
 		"non-interactive-mode.md": "cast run and JSON output",
 		"architecture.md": "Source layout and design decisions",
+		"changelog.md": "Version history and feature highlights",
 	};
 	return descs[file] || "";
 }
