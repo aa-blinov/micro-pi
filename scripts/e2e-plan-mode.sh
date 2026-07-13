@@ -84,7 +84,9 @@ grep -q '\- \[ \]' $PLAN_FILE || fail "plan file has no unchecked checklist item
 echo "ok: plan file on disk with checklist"
 
 echo "== approve & implement =="
-send Enter # first option: Approve — switch to build and implement now
+# "Keep planning" sits first now — step down to "Approve — switch to build and implement now".
+send Down; sleep 1
+send Enter
 sleep 2
 wait_for 'The plan is approved' 15 "auto-submitted approval message"
 wait_for 'plan_check' 240 "implementation reached plan_check"

@@ -50,6 +50,19 @@ describe("classifyProviderError", () => {
 		);
 	});
 
+	it("classifies the SDK's APIConnectionError wrapper as unreachable", () => {
+		// The OpenAI SDK wraps network failures: the top message is just
+		// "Connection error." and the real ECONNREFUSED sits in the cause chain
+		// (verified against a live closed port). Both signals must classify.
+		const wrapped = new Error("Connection error.", {
+			cause: new TypeError("fetch failed", { cause: new Error("connect ECONNREFUSED 127.0.0.1:59987") }),
+		});
+		expect(classifyProviderError(wrapped)).toBe("unreachable");
+		// Even a severed cause chain still classifies via the wrapper's own message.
+		expect(classifyProviderError(new Error("Connection error."))).toBe("unreachable");
+		expect(classifyProviderError(new Error("Request timed out."))).toBe("unreachable");
+	});
+
 	it("defaults to unknown for anything unrecognized (e.g. no /v1/models 404)", () => {
 		// A provider that just doesn't implement /v1/models must NOT be treated as
 		// a connection failure — otherwise startup would nag for credentials that

@@ -142,6 +142,10 @@ export function App(props: AppProps): JSX.Element {
 	// only when the run settles (see the effect below), so the mode always
 	// flips between runs and tool sets stay consistent.
 	const planSignalRef = useRef<"done" | "enter" | null>(null);
+	// Armed by the "Keep planning" choice in the approval dialog: the next
+	// non-command composer submission is wrapped as refine feedback. Lives in
+	// the composer (not a modal) so multi-line paste and image paste work.
+	const refineArmedRef = useRef(false);
 	const onPlanSignal = useCallback((kind: "done" | "enter") => {
 		planSignalRef.current = kind;
 	}, []);
@@ -277,6 +281,9 @@ export function App(props: AppProps): JSX.Element {
 				const planPath = readActivePlan(planState).path;
 				const choice = await pickers.pickOption(
 					[
+						// Refine first: iterating on the plan is the common case —
+						// approving the first draft outright is the exception.
+						{ value: "refine", label: "Keep planning — I'll give feedback" },
 						{ value: "implement", label: "Approve — switch to build and implement now" },
 						{
 							value: "fresh",
@@ -284,7 +291,6 @@ export function App(props: AppProps): JSX.Element {
 							description: "Drops the planning conversation; the plan survives in the system prompt",
 						},
 						{ value: "build", label: "Approve — switch to build, I'll start myself" },
-						{ value: "refine", label: "Keep planning — I'll give feedback" },
 					],
 					{ title: planPath ? `Plan ready: ${planPath}` : "Plan ready. What next?" },
 				);
@@ -299,22 +305,12 @@ export function App(props: AppProps): JSX.Element {
 					setPlanMode(false);
 					showNotice("[Plan approved — your next message starts implementation]");
 				} else if (choice === "refine") {
-					// Structured refine: collect the feedback right here and hand it
-					// to the model as the next planning turn — no dead air where the
-					// user has to re-explain what "refine" meant.
-					const feedback = await pickers.promptText(
-						"Refine plan — what should change?",
-						undefined,
-						"e.g. merge steps 2-3, drop the migration, use library X",
-					);
-					if (feedback?.trim()) {
-						setPendingAutoSubmit({
-							text: `Refine the plan: ${feedback.trim()}. Update it with plan_edit/plan_write, then call plan_done again.`,
-							wantPlanMode: true,
-						});
-					} else {
-						showNotice("[Staying in plan mode — describe what to change]");
-					}
+					// Feedback goes through the regular composer, not a modal text
+					// box: the composer supports multi-line paste, image paste, and
+					// history. handleSubmit wraps the next non-command message as
+					// the refine turn so the model knows to update the plan.
+					refineArmedRef.current = true;
+					showNotice("[Refining — type your feedback below; it goes back to the planner]");
 				} else {
 					// Esc on the dialog: stay in plan mode, nothing submitted.
 					showNotice("[Staying in plan mode — describe what to change]");
@@ -495,7 +491,21 @@ export function App(props: AppProps): JSX.Element {
 	};
 
 	const handleSubmit = useCallback(async (text: string) => {
-		await handleInput(text, undefined, depsRef.current);
+		let input = text;
+		// Refine armed (see the approval dialog): the next real message is the
+		// plan feedback — wrap it so the model updates the plan instead of
+		// treating it as a new request. Slash commands pass through without
+		// disarming (running /model etc. first shouldn't eat the refine).
+		// Leaving plan mode by any other path cancels the pending refine.
+		if (refineArmedRef.current) {
+			if (!depsRef.current.planMode) {
+				refineArmedRef.current = false;
+			} else if (!text.trim().startsWith("/")) {
+				refineArmedRef.current = false;
+				input = `Refine the plan based on this feedback, update it with plan_edit/plan_write, then call plan_done again:\n\n${text.trim()}`;
+			}
+		}
+		await handleInput(input, undefined, depsRef.current);
 	}, []);
 
 	return (
@@ -541,15 +551,13 @@ export function App(props: AppProps): JSX.Element {
 			{agent.pendingSteers.map((text, i) => (
 				// biome-ignore lint/suspicious/noArrayIndexKey: FIFO queue, no stable identity
 				<Text key={`steer-${i}`} color={theme().warning}>
-					[Steer queued{agent.pendingSteers.length > 1 ? ` (${i + 1}/${agent.pendingSteers.length})` : ""}:{" "}
-					{text.slice(0, 60)}]
+					[Steer queued{agent.pendingSteers.length > 1 ? ` (${i + 1}/${agent.pendingSteers.length})` : ""}: {text}]
 				</Text>
 			))}
 			{agent.pendingQueue.map((text, i) => (
 				// biome-ignore lint/suspicious/noArrayIndexKey: FIFO queue, no stable identity
 				<Text key={`queue-${i}`} color={theme().warning}>
-					[Queued{agent.pendingQueue.length > 1 ? ` (${i + 1}/${agent.pendingQueue.length})` : ""}:{" "}
-					{text.slice(0, 60)}]
+					[Queued{agent.pendingQueue.length > 1 ? ` (${i + 1}/${agent.pendingQueue.length})` : ""}: {text}]
 				</Text>
 			))}
 			<Composer

@@ -106,14 +106,14 @@ export async function fetchModels(config: AppConfig): Promise<FetchModelsResult>
 		models.sort((a, b) => a.id.localeCompare(b.id));
 		return { ok: true, models };
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = providerErrorText(error);
 
-		if (message.includes("ECONNREFUSED") || message.includes("fetch failed") || message.includes("ENOTFOUND")) {
-			return { ok: false, error: `Cannot connect to ${config.baseURL}` };
+		if (message.includes("ETIMEDOUT") || /Request timed out/i.test(message)) {
+			return { ok: false, error: `Connection to ${config.baseURL} timed out` };
 		}
 
-		if (message.includes("ETIMEDOUT")) {
-			return { ok: false, error: `Connection to ${config.baseURL} timed out` };
+		if (UNREACHABLE_PATTERN.test(message)) {
+			return { ok: false, error: `Cannot connect to ${config.baseURL}` };
 		}
 
 		if (message.includes("401") || message.includes("Unauthorized") || message.includes("Invalid API key")) {
@@ -131,6 +131,31 @@ export async function fetchModels(config: AppConfig): Promise<FetchModelsResult>
 // ============================================================================
 // Validation
 // ============================================================================
+
+/**
+ * Flatten an error's message together with its `cause` chain. The OpenAI SDK
+ * wraps every network failure in APIConnectionError whose own message is just
+ * "Connection error." — the actual ECONNREFUSED / ENOTFOUND / fetch failed
+ * lives one or two `cause` levels down (undici), so string-matching the top
+ * message alone misclassifies a dead endpoint as "provider quirk". Verified
+ * against a real closed port: message "Connection error.", cause "fetch
+ * failed", cause.cause "connect ECONNREFUSED".
+ */
+export function providerErrorText(error: unknown): string {
+	const parts: string[] = [];
+	let current: unknown = error;
+	for (let depth = 0; current !== undefined && current !== null && depth < 5; depth++) {
+		parts.push(current instanceof Error ? current.message : String(current));
+		current = (current as { cause?: unknown }).cause;
+	}
+	return parts.join(" | ");
+}
+
+// "Connection error." / "Request timed out." are the SDK's own wrapper
+// messages (APIConnectionError / APIConnectionTimeoutError) — treat them as
+// unreachable even when the cause chain got severed somewhere.
+const UNREACHABLE_PATTERN =
+	/ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ETIMEDOUT|fetch failed|Connection error|Request timed out/i;
 
 export interface ValidationResult {
 	ok: boolean;
@@ -163,14 +188,14 @@ export async function validateModel(config: AppConfig, model: string): Promise<V
 
 		return { ok: true, responseSnippet: (content || reasoning || "").slice(0, 100) };
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = providerErrorText(error);
 
-		if (message.includes("ECONNREFUSED") || message.includes("fetch failed") || message.includes("ENOTFOUND")) {
-			return { ok: false, error: `Cannot connect to ${config.baseURL}` };
+		if (message.includes("ETIMEDOUT") || /Request timed out/i.test(message)) {
+			return { ok: false, error: `Connection to ${config.baseURL} timed out` };
 		}
 
-		if (message.includes("ETIMEDOUT")) {
-			return { ok: false, error: `Connection to ${config.baseURL} timed out` };
+		if (UNREACHABLE_PATTERN.test(message)) {
+			return { ok: false, error: `Cannot connect to ${config.baseURL}` };
 		}
 
 		if (message.includes("401") || message.includes("Unauthorized") || message.includes("Invalid API key")) {
@@ -225,9 +250,9 @@ export async function runOnboardingCheck(
 		const first = await list[Symbol.asyncIterator]().next();
 		if (!silent) log(`Endpoint + API key: ok${first.done ? " (empty model list)" : ""}`);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = providerErrorText(error);
 
-		if (message.includes("ECONNREFUSED") || message.includes("fetch failed") || message.includes("ENOTFOUND")) {
+		if (UNREACHABLE_PATTERN.test(message)) {
 			log(`Endpoint + API key: failed — cannot reach ${config.baseURL}`);
 			return false;
 		}
@@ -272,10 +297,10 @@ export type ProviderProbe = "ok" | "auth" | "permission" | "unreachable" | "unkn
  */
 export function classifyProviderError(error: unknown): Exclude<ProviderProbe, "ok"> {
 	const status = (error as { status?: number } | undefined)?.status;
-	const message = error instanceof Error ? error.message : String(error);
+	const message = providerErrorText(error);
 	if (status === 401 || /\b401\b|unauthorized|invalid api key/i.test(message)) return "auth";
 	if (status === 403 || /\b403\b|forbidden/i.test(message)) return "permission";
-	if (/ECONNREFUSED|ENOTFOUND|ETIMEDOUT|fetch failed/i.test(message)) return "unreachable";
+	if (UNREACHABLE_PATTERN.test(message)) return "unreachable";
 	return "unknown";
 }
 
