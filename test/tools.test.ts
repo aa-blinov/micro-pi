@@ -23,7 +23,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	rmSync(TEST_DIR, { recursive: true, force: true });
+	rmSync(TEST_DIR, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
 });
 
 // ============================================================================
