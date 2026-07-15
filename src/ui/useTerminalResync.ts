@@ -54,6 +54,37 @@ import { isStreamingActive, isTerminalSuspended } from "../core/stdin-manager.ts
  * (SIGWINCH without an actual size change, e.g. tmux pane focus) are
  * ignored entirely.
  */
+/**
+ * Decides whether a streaming turn ended in a state that needs one cleanup
+ * repaint. Pure and self-contained (no terminal I/O) so the "only repaint when
+ * a desync was actually observed" guarantee is unit-testable.
+ *
+ * - noteFrame(cuuFits, streaming): call per rendered frame. A frame whose live
+ *   area is taller than the viewport (`cuuFits === false`) while streaming is
+ *   the condition under which spinner/frame redraws stack — it arms the tracker.
+ * - onPoll(streaming): call once per poll tick. Returns true exactly once, on
+ *   the streaming→idle edge, and only if a stacking frame was seen during the
+ *   turn. A turn whose frames all fit never returns true, so no repaint is paid.
+ */
+export function createDesyncTracker(streamingNow: boolean): {
+	noteFrame(cuuFits: boolean, streaming: boolean): void;
+	onPoll(streaming: boolean): boolean;
+} {
+	let armed = false;
+	let wasStreaming = streamingNow;
+	return {
+		noteFrame(cuuFits, streaming) {
+			if (!cuuFits && streaming) armed = true;
+		},
+		onPoll(streaming) {
+			const request = wasStreaming && !streaming && armed;
+			if (!streaming) armed = false;
+			wasStreaming = streaming;
+			return request;
+		},
+	};
+}
+
 export function useTerminalResync(onResync: () => void): void {
 	useEffect(() => {
 		const out = process.stdout;
@@ -76,6 +107,14 @@ export function useTerminalResync(onResync: () => void): void {
 		// --- resize: debounce a settle, then hard reset ---
 		let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 		let resyncPending = false;
+
+		// One-shot cleanup repaint after a streaming turn — but only when the live
+		// area outgrew the viewport mid-stream, the condition under which Ink's
+		// in-place spinner/frame redraw can stack into scrollback (and which the
+		// scroll guard can't catch, since DECXCPR polling is off while streaming).
+		// Gating on real evidence means an ordinary turn whose frames fit triggers
+		// no clear/replay at all — the full repaint is never paid speculatively.
+		const desyncTracker = createDesyncTracker(isStreamingActive());
 		// Last known size, to drop no-op SIGWINCH events (tmux pane focus,
 		// VS Code panel toggles) that fire "resize" without changing anything —
 		// each one used to cost a full clear (+ scrollback wipe via \x1b[3J),
@@ -140,7 +179,14 @@ export function useTerminalResync(onResync: () => void): void {
 		// the user scrolls back to the bottom — but only after a fresh poll has
 		// confirmed the scroll state (see scrollUpStale above).
 		const checkDeferredResync = () => {
-			if (isStreamingActive() || isTerminalSuspended()) {
+			const streamingNow = isStreamingActive();
+			// Streaming just ended after the live area outgrew the viewport at some
+			// point during it — request one cleanup repaint. It rides the same
+			// deferral/guards below (scroll, suspend, scroll-known), so it never
+			// clears while the user is scrolled up reading.
+			if (desyncTracker.onPoll(streamingNow)) resyncPending = true;
+
+			if (streamingNow || isTerminalSuspended()) {
 				scrollUpStale = true;
 				return;
 			}
@@ -175,6 +221,10 @@ export function useTerminalResync(onResync: () => void): void {
 				// so never latch scrollUp from the CUU heuristic alone.
 				const cuuFits = (Number(m[1]) || 1) <= (out.rows || 24);
 				if (cuuFits && !decxprActive) scrollUp = false;
+				// A live area taller than the viewport while streaming is when
+				// spinner/frame redraws can stack. Remember it; the cleanup repaint
+				// happens once the turn settles (see checkDeferredResync).
+				desyncTracker.noteFrame(cuuFits, isStreamingActive());
 			}
 
 			if (scrollUp && CURSOR_OR_ERASE_RE.test(s)) {
