@@ -2,6 +2,13 @@
 
 All notable user-facing changes to cast, newest first.
 
+## 0.6.0
+
+### Added
+
+- **SSH tool** — run commands on remote hosts via SSH; hosts configured in `~/.cast/ssh.json` (global) or `.cast/ssh.json` (project)
+- `/queue-reset` alias — shortcut for clearing the command queue
+
 ## 0.5.8
 
 ### Added
