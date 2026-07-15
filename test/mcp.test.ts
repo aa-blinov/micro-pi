@@ -6,6 +6,7 @@ import {
 	closeMcpConnections,
 	connectMcpServers,
 	loadMcpConfig,
+	mcpHttpFetch,
 	mcpToolName,
 	sanitizeToolNamePart,
 } from "../src/core/mcp.ts";
@@ -28,6 +29,29 @@ describe("sanitizeToolNamePart / mcpToolName", () => {
 
 	it("namespaces a tool name under its server", () => {
 		expect(mcpToolName("filesystem", "read_file")).toBe("mcp_filesystem_read_file");
+	});
+});
+
+describe("mcpHttpFetch", () => {
+	// Declines the transport's standalone GET SSE listening stream (returns 405
+	// without hitting the network) so it can't be held open and block POST
+	// responses on Node fetch. POST/DELETE must pass through untouched.
+	it("returns a synthetic 405 for the GET listening stream without a network call", async () => {
+		const res = await mcpHttpFetch("http://example.invalid/mcp/", { method: "GET" });
+		expect(res.status).toBe(405);
+	});
+
+	it("treats a missing method (defaults to GET) as the listening stream", async () => {
+		const res = await mcpHttpFetch("http://example.invalid/mcp/");
+		expect(res.status).toBe(405);
+	});
+
+	it("passes POST through to the real fetch (reaches the network, not a synthetic 405)", async () => {
+		// Points at an unroutable address: a real fetch attempt rejects, whereas
+		// the synthetic 405 path would resolve. Rejection proves it passed through.
+		await expect(
+			mcpHttpFetch("http://127.0.0.1:1/mcp/", { method: "POST", body: "{}" }),
+		).rejects.toBeDefined();
 	});
 });
 

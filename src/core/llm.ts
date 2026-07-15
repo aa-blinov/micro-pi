@@ -409,6 +409,61 @@ export interface CompletionResult {
 	disconnected?: boolean;
 }
 
+/** Coerce a Hermes-XML parameter value (always captured as text) to a JSON
+ * scalar: Python-ish None → null, booleans, integers, and floats; everything
+ * else stays a string (so "in_progress", ISO dates, free text pass through). */
+function coerceHermesValue(raw: string): unknown {
+	const v = raw.trim();
+	if (v === "None" || v === "null") return null;
+	if (v === "true") return true;
+	if (v === "false") return false;
+	if (/^-?\d+$/.test(v)) return Number(v);
+	if (/^-?\d*\.\d+$/.test(v)) return Number(v);
+	return v;
+}
+
+/**
+ * Recover tool calls a model emitted as Hermes-style XML in its text content —
+ * `<function=NAME><parameter=KEY>VALUE</parameter>…</function>`, optionally
+ * wrapped in `<tool_call>`. Some models (e.g. xiaomi mimo) produce calls this
+ * way and the provider's OpenAI-compat layer then returns truncated/invalid
+ * JSON in tool_calls.arguments; cast would reject that and the model would retry
+ * the same broken shape indefinitely. Returns [] when there is no such block.
+ */
+export function parseHermesToolCalls(content: string): Array<{ id: string; name: string; arguments: string }> {
+	const calls: Array<{ id: string; name: string; arguments: string }> = [];
+	let i = 0;
+	for (const m of content.matchAll(/<function=([^>\s]+)\s*>([\s\S]*?)<\/function>/g)) {
+		const name = m[1]!;
+		const params: Record<string, unknown> = {};
+		for (const pm of m[2]!.matchAll(/<parameter=([^>\s]+)\s*>([\s\S]*?)<\/parameter>/g)) {
+			params[pm[1]!] = coerceHermesValue(pm[2]!);
+		}
+		calls.push({ id: `hermes_${i++}`, name, arguments: JSON.stringify(params) });
+	}
+	return calls;
+}
+
+/** Strip recovered Hermes XML tool-call blocks (and their `<tool_call>` wrapper)
+ * from content so they aren't shown to the user as literal markup. */
+export function stripHermesToolCalls(content: string): string {
+	return content
+		.replace(/<function=[^>\s]+\s*>[\s\S]*?<\/function>/g, "")
+		.replace(/<\/?tool_call>/g, "")
+		.trim();
+}
+
+/** True when a tool_calls[].arguments string is a usable JSON object. Empty,
+ * truncated (`{"x":`), or non-object payloads are not. */
+function isValidJsonObject(s: string): boolean {
+	try {
+		const v = JSON.parse(s);
+		return typeof v === "object" && v !== null;
+	} catch {
+		return false;
+	}
+}
+
 export async function streamAndCollect(
 	client: OpenAI,
 	model: string,
@@ -471,6 +526,22 @@ export async function streamAndCollect(
 	// avoids false-flagging providers that omit finish_reason but still send a
 	// terminal usage chunk (include_usage) on a genuinely complete turn.
 	const disconnected = Boolean(!sawFinish && !signal?.aborted && firstChunkAt !== undefined && usage === undefined);
+
+	// Hermes-XML tool-call recovery. When the structured tool_calls are missing
+	// or carry malformed JSON (truncated `arguments`), but the content holds an
+	// XML call, parse it into a proper tool call and drop the markup from the
+	// visible content. Without this, providers that mis-serialize such calls
+	// (xiaomi mimo) trap the model in a retry loop on "arguments were malformed".
+	const malformed = !toolCalls?.length || toolCalls.some((tc) => !isValidJsonObject(tc.arguments));
+	if (malformed && content.includes("<function=")) {
+		const recovered = parseHermesToolCalls(content);
+		if (recovered.length > 0) {
+			toolCalls = recovered;
+			finishReason = "tool_calls";
+			content = stripHermesToolCalls(content);
+		}
+	}
+
 	return { content, thinking, toolCalls, finishReason, usage, generationMs, interrupted, disconnected };
 }
 

@@ -61,11 +61,20 @@ export function App(props: AppProps): JSX.Element {
 		noticeDurationRef.current = duration ?? 6000;
 	}, []);
 
-	// Resize/reflow and terminal-scroll desyncs both need the same hard reset
-	// (clear + full <Static> replay) — see useTerminalResync for why. Bumping
-	// repaintKey is what triggers that replay (see the ChatLog key below).
+	// Resize/reflow, terminal-scroll, and focus-return desyncs all need the same
+	// hard reset (clear + full <Static> replay) — see useTerminalResync for why.
+	// Reprint the banner first (it lives outside <Static>, so the replay alone
+	// wouldn't restore it), then bump repaintKey to replay the transcript below
+	// it — same ordering as onThemeChange.
 	const [repaintKey, setRepaintKey] = useState(0);
-	useTerminalResync(useCallback(() => setRepaintKey((k) => k + 1), []));
+	useTerminalResync(
+		useCallback(() => {
+			void (async () => {
+				await onRepaintBanner?.();
+				setRepaintKey((k) => k + 1);
+			})();
+		}, [onRepaintBanner]),
+	);
 
 	// Pickers used after mount (slash commands, confirmBash) render their
 	// modal inline in this same Ink tree instead of spinning up a second

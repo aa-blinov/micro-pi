@@ -85,6 +85,27 @@ export function createDesyncTracker(streamingNow: boolean): {
 	};
 }
 
+/**
+ * Distinguishes a genuine alt-tab return (window lost focus, then regained it)
+ * from the spurious focus-in some terminals emit the moment focus reporting is
+ * enabled. Only a focus-in that FOLLOWS a focus-out should trigger a resync —
+ * acting on the startup focus-in would clear the freshly printed banner, which
+ * lives outside Ink's <Static> and so isn't restored by the resync's replay.
+ * Pure so the rule is unit-testable.
+ */
+export function createFocusReturnTracker(): { onData(data: string): boolean } {
+	let sawFocusOut = false;
+	return {
+		onData(data) {
+			if (data.includes("\x1b[O")) sawFocusOut = true; // focus lost
+			if (!data.includes("\x1b[I")) return false; // no focus-in in this chunk
+			if (!sawFocusOut) return false; // focus-in with no prior loss — ignore
+			sawFocusOut = false;
+			return true;
+		},
+	};
+}
+
 export function useTerminalResync(onResync: () => void): void {
 	useEffect(() => {
 		const out = process.stdout;
@@ -161,15 +182,14 @@ export function useTerminalResync(onResync: () => void): void {
 			origWrite("\x1b[?1004h");
 			focusReportingOn = true;
 		}
-		// biome-ignore lint/suspicious/noControlCharactersInRegex: focus-in report
-		const FOCUS_IN_RE = /\x1b\[I/;
+		const focusTracker = createFocusReturnTracker();
 		let focusTimer: ReturnType<typeof setTimeout> | null = null;
 		const onFocusData = (chunk: Buffer) => {
-			// Debounced: an alt-tab can emit focus-out then focus-in in quick
-			// succession, and some terminals repeat the report. One resync per
-			// settle is enough; doResync's own guards defer it if the run is
-			// streaming, suspended, or the user is scrolled up.
-			if (!FOCUS_IN_RE.test(chunk.toString("latin1"))) return;
+			// Resync only on a real focus RETURN (focus-out then focus-in), never on
+			// the spurious focus-in emitted when ?1004h is first enabled — that one
+			// would wipe the startup banner. Debounced because a terminal may repeat
+			// the report; doResync's own guards defer it during streaming/suspend/scroll.
+			if (!focusTracker.onData(chunk.toString("latin1"))) return;
 			if (focusTimer) clearTimeout(focusTimer);
 			focusTimer = setTimeout(doResync, 80);
 		};
