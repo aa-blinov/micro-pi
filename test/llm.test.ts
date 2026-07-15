@@ -38,7 +38,8 @@ function rateLimitError(body: Record<string, unknown>) {
 
 describe("parseHermesToolCalls / stripHermesToolCalls", () => {
 	it("parses a Hermes XML call into a proper tool call with JSON arguments", () => {
-		const content = "<tool_call>\n<function=search_tasks>\n<parameter=status>in_progress</parameter>\n</function>\n</tool_call>";
+		const content =
+			"<tool_call>\n<function=search_tasks>\n<parameter=status>in_progress</parameter>\n</function>\n</tool_call>";
 		const calls = parseHermesToolCalls(content);
 		expect(calls).toHaveLength(1);
 		expect(calls[0]!.name).toBe("search_tasks");
@@ -73,11 +74,24 @@ describe("streamAndCollect — Hermes tool-call recovery", () => {
 		const client = fakeClient([
 			{
 				choices: [
-					{ delta: { content: "<tool_call>\n<function=search_tasks>\n<parameter=status>in_progress</parameter>\n</function>\n</tool_call>" } },
+					{
+						delta: {
+							content:
+								"<tool_call>\n<function=search_tasks>\n<parameter=status>in_progress</parameter>\n</function>\n</tool_call>",
+						},
+					},
 				],
 			},
 			{
-				choices: [{ delta: { tool_calls: [{ index: 0, id: "t1", function: { name: "search_tasks", arguments: '{"memberId": ' } }] } }],
+				choices: [
+					{
+						delta: {
+							tool_calls: [
+								{ index: 0, id: "t1", function: { name: "search_tasks", arguments: '{"memberId": ' } },
+							],
+						},
+					},
+				],
 			},
 			{ choices: [{ delta: {}, finish_reason: "tool_calls" }] },
 		]);
@@ -93,7 +107,15 @@ describe("streamAndCollect — Hermes tool-call recovery", () => {
 
 	it("leaves well-formed tool_calls untouched (no false recovery)", async () => {
 		const client = fakeClient([
-			{ choices: [{ delta: { tool_calls: [{ index: 0, id: "t1", function: { name: "read", arguments: '{"path":"a.ts"}' } }] } }] },
+			{
+				choices: [
+					{
+						delta: {
+							tool_calls: [{ index: 0, id: "t1", function: { name: "read", arguments: '{"path":"a.ts"}' } }],
+						},
+					},
+				],
+			},
 			{ choices: [{ delta: {}, finish_reason: "tool_calls" }] },
 		]);
 		const res = await streamAndCollect(client, "m", [], [], 100);
