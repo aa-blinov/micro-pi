@@ -339,6 +339,7 @@ export async function runStartup(
 		rulesSuffix,
 		rulesLazySuffix,
 		skillsPromptSuffix,
+		"", // MCP not connected yet — will be populated on first turn
 		cwd,
 		{
 			model,
@@ -347,7 +348,7 @@ export async function runStartup(
 		},
 	);
 	onProgress?.("Connecting MCP servers...");
-	const mcpResult = await resolveMcpForCwd(projectDeps, cwd, projectTrusted);
+	const mcpResult = await resolveMcpForCwd(projectDeps, cwd, projectTrusted, settings.disabledMcpServers ?? []);
 	const confirmBash = makeConfirmBash(pickers, permissionMode);
 
 	return {

@@ -176,6 +176,93 @@ export function TextInputModal(props: {
 	);
 }
 
+export function MultiSelectPicker<T>(props: {
+	options: PickOption<T>[];
+	opts?: PickOptions;
+	initialSelected: Set<number>;
+	onConfirm: (selectedIndices: number[]) => void;
+	onCancel: () => void;
+}): JSX.Element {
+	const [idx, setIdx] = useState(() =>
+		Math.min(Math.max(0, props.opts?.defaultIndex ?? 0), Math.max(0, props.options.length - 1)),
+	);
+	const [selected, setSelected] = useState(() => new Set(props.initialSelected));
+	useInput((input, key) => {
+		if (key.upArrow) {
+			setIdx((i) => (i - 1 + props.options.length) % props.options.length);
+			return;
+		}
+		if (key.downArrow) {
+			setIdx((i) => (i + 1) % props.options.length);
+			return;
+		}
+		if (input === " ") {
+			setSelected((prev) => {
+				const next = new Set(prev);
+				if (next.has(idx)) next.delete(idx);
+				else next.add(idx);
+				return next;
+			});
+			return;
+		}
+		if (key.return) {
+			props.onConfirm([...selected].sort((a, b) => a - b));
+			return;
+		}
+		if (key.escape || input === "q") {
+			props.onCancel();
+		}
+	});
+	const rows = pickerViewportRows(process.stdout.rows || 24);
+	const scrollRef = useRef(0);
+	const maxScroll = Math.max(0, props.options.length - rows);
+	if (scrollRef.current > maxScroll) scrollRef.current = maxScroll;
+	if (idx < scrollRef.current) scrollRef.current = idx;
+	else if (idx >= scrollRef.current + rows) scrollRef.current = idx - rows + 1;
+	const scroll = scrollRef.current;
+	const visible = props.options.slice(scroll, scroll + rows);
+	const title = props.opts?.title;
+	return (
+		<Box flexDirection="column" padding={1}>
+			{title && (
+				<Text bold color={theme().accent}>
+					{title}
+				</Text>
+			)}
+			{visible.map((o, vi) => {
+				const i = scroll + vi;
+				const focused = i === idx;
+				const checked = selected.has(i);
+				return (
+					<Box key={i} flexDirection="column">
+						<Text wrap="truncate">
+							<Text color={focused ? theme().accent : theme().muted}>{focused ? ">" : " "}</Text>{" "}
+							<Text color={focused ? theme().accent : "white"} bold={focused}>
+								{checked ? "[x]" : "[ ]"}
+							</Text>{" "}
+							<Text color={focused ? theme().accent : "white"} bold={focused}>
+								{o.label}
+							</Text>
+						</Text>
+						{focused && o.description && (
+							<Text color={theme().muted} wrap="truncate">
+								{" "}
+								{o.description}
+							</Text>
+						)}
+					</Box>
+				);
+			})}
+			<Box marginTop={1}>
+				<Text color={theme().muted}>
+					up/down navigate · Space toggle · Enter confirm · Esc cancel
+					{props.options.length > rows ? ` · ${idx + 1}/${props.options.length}` : ""}
+				</Text>
+			</Box>
+		</Box>
+	);
+}
+
 /**
  * Standalone Ink-backed Pickers implementation. Each call spins up its own
  * short-lived Ink instance (render → wait for selection → unmount).
@@ -217,6 +304,34 @@ export const inkPickers: Pickers = {
 					error={error}
 					onSubmit={(v) => {
 						resolve(v);
+						instance.unmount();
+					}}
+					onCancel={() => {
+						resolve(null);
+						instance.unmount();
+					}}
+				/>,
+			);
+		});
+	},
+
+	pickMulti<T>(options: PickOption<T>[], opts?: PickOptions & { initialSelected?: T[] }): Promise<T[] | null> {
+		if (options.length === 0) return Promise.resolve([]);
+		const initialIndices = new Set<number>();
+		if (opts?.initialSelected) {
+			for (const val of opts.initialSelected) {
+				const i = options.findIndex((o) => o.value === val);
+				if (i >= 0) initialIndices.add(i);
+			}
+		}
+		return new Promise((resolve) => {
+			const instance = render(
+				<MultiSelectPicker
+					options={options}
+					opts={opts}
+					initialSelected={initialIndices}
+					onConfirm={(indices) => {
+						resolve(indices.map((i) => options[i]!.value));
 						instance.unmount();
 					}}
 					onCancel={() => {

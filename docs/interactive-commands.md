@@ -39,7 +39,7 @@ See [Personas](personas.md) for the full list.
 |---------|-------------|
 | `/skills` | List loaded skills |
 | `/skill:<name> [args]` | Force-load and run a skill by name |
-| `/mcp` | List connected MCP servers and their tools |
+| `/mcp` | Toggle MCP servers on/off (multi-select picker) |
 | `/reload` | Re-scan skills, rules, MCP servers, and personas for cwd |
 
 `/reload` is useful after adding a new skill, rule, or MCP server — no restart needed.

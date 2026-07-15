@@ -443,6 +443,20 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 	<article class="content">
 		<h1>Changelog</h1>
 <p>All notable user-facing changes to cast, newest first.</p>
+<h2>0.5.8</h2>
+<h3>Added</h3>
+<ul>
+<li>MCP server toggle — <code>/mcp</code> now opens an interactive multi-select picker to enable/disable individual servers mid-session. Disabled servers are hidden from the model and persisted in settings.</li>
+<li><code>&lt;available_mcp&gt;</code> block in the system prompt — the model sees only enabled MCP servers and their tools, and will not attempt to call disabled ones.</li>
+<li>Hermes XML tool-call parsing and recovery</li>
+<li>Terminal desync tracking with automatic resync on focus return</li>
+</ul>
+<h2>0.5.7</h2>
+<h3>Added</h3>
+<ul>
+<li>Enhanced search functionality with permission handling and output notes</li>
+<li>Improved tool name sanitization to prevent doom loops</li>
+</ul>
 <h2>0.5.6</h2>
 <h3>Fixed</h3>
 <ul>

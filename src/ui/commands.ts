@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { type AppConfig, runOnboardingCheck } from "../core/config.ts";
 import { formatContextFilesForPrompt, loadProjectContextFiles } from "../core/context-files.ts";
 import { compactSessionMessages, PLAN_COMPACTION_PROMPT } from "../core/loop.ts";
-import { closeMcpConnections, type McpSetupResult } from "../core/mcp.ts";
+import { closeMcpConnections, formatMcpForPrompt, type McpSetupResult } from "../core/mcp.ts";
 import { findPersona, type LoadPersonasOptions, type Persona } from "../core/personas.ts";
 import { createPlanState, readActivePlan } from "../core/plan.ts";
 import {
@@ -18,10 +18,11 @@ import {
 import { getModelsCache } from "../core/readline.ts";
 import { formatRuleInvocation, type Rule } from "../core/rules.ts";
 import { addUsage, createSession, type SessionState, saveSession } from "../core/session.ts";
-import { type PermissionMode, updateSettings } from "../core/settings.ts";
+import { loadSettings, type PermissionMode, updateSettings } from "../core/settings.ts";
 import { formatSkillInvocation, type Skill } from "../core/skills.ts";
 import { getReasoningOptions, type ModelReasoningMeta } from "../core/vendors.ts";
 import {
+	selectMcpServers,
 	selectModel,
 	selectPermissionMode,
 	selectPersona,
@@ -53,7 +54,7 @@ export const SLASH_COMMANDS: Array<{ name: string; description: string; takesArg
 	{ name: "/exit", description: "Save and exit (alias for /quit)" },
 	{ name: "/help", description: "Show this command list" },
 	{ name: "/keys", description: "List all keybindings" },
-	{ name: "/mcp", description: "List connected MCP servers" },
+	{ name: "/mcp", description: "Toggle MCP servers on/off" },
 	{ name: "/model", description: "Show or change model" },
 	{ name: "/new", description: "Start a new session" },
 	{ name: "/permissions", description: "Change bash confirmation mode" },
@@ -159,6 +160,7 @@ function rebuildSystemPrompt(
 			overrides.rulesSuffix ?? deps.rulesSuffix,
 			overrides.rulesLazySuffix ?? deps.rulesLazySuffix,
 			overrides.skillsPromptSuffix ?? deps.skillsPromptSuffix,
+			formatMcpForPrompt(deps.mcpResult),
 			cwd,
 			{
 				// The Model line reports the model actually in use — in plan mode
@@ -551,15 +553,36 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 
 	if (input === "/mcp") {
 		deps.agent.addDisplayMessage({ role: "user", content: input });
-		if (deps.mcpResult.connections.length === 0) {
+		const allNames = deps.mcpResult.allServerNames;
+		if (allNames.length === 0) {
 			deps.agent.addDisplayMessage({
 				role: "warning",
-				content: "No MCP servers connected. See --mcp <path>, .cast/mcp.json",
+				content: "No MCP servers configured. See --mcp <path>, .cast/mcp.json",
 			});
-		} else {
-			const lines = deps.mcpResult.connections.map((c) => `${c.serverName} (${c.toolCount} tools)`);
-			deps.agent.addDisplayMessage({ role: "warning", content: `MCP Servers\n${lines.join("\n")}` });
+			return;
 		}
+		const settings = loadSettings();
+		const disabledNames = settings.disabledMcpServers ?? [];
+		const toolCounts: Record<string, number> = {};
+		for (const c of deps.mcpResult.connections) toolCounts[c.serverName] = c.toolCount;
+		const enabledNames = await selectMcpServers(deps.pickers, allNames, disabledNames, toolCounts);
+		if (enabledNames === null) return; // cancelled
+		const newDisabled = allNames.filter((n) => !enabledNames.includes(n));
+		const oldDisabledSet = new Set(disabledNames);
+		const newDisabledSet = new Set(newDisabled);
+		const toEnable = allNames.filter((n) => oldDisabledSet.has(n) && !newDisabledSet.has(n));
+		const toDisable = allNames.filter((n) => !oldDisabledSet.has(n) && newDisabledSet.has(n));
+		if (toEnable.length === 0 && toDisable.length === 0) return; // no change
+		// Hot-swap: close all, re-resolve with updated disabled list
+		await closeMcpConnections(deps.mcpResult.connections);
+		const newResult = await resolveMcpForCwd(deps.projectDeps, deps.cwd, deps.projectTrusted, newDisabled);
+		deps.setMcpResult(newResult);
+		rebuildSystemPrompt(deps, deps.cwd);
+		updateSettings({ disabledMcpServers: newDisabled.length > 0 ? newDisabled : undefined });
+		deps.agent.addDisplayMessage({
+			role: "warning",
+			content: `[MCP: enabled ${toEnable.length}, disabled ${toDisable.length}]`,
+		});
 		return;
 	}
 
@@ -592,7 +615,9 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 			skillsPromptSuffix,
 		});
 		await closeMcpConnections(deps.mcpResult.connections);
-		deps.setMcpResult(await resolveMcpForCwd(deps.projectDeps, deps.cwd, trusted));
+		deps.setMcpResult(
+			await resolveMcpForCwd(deps.projectDeps, deps.cwd, trusted, loadSettings().disabledMcpServers ?? []),
+		);
 		showNotice(
 			`[Reloaded: ${newSkills.length} skill(s), ${resolvedRules.directoryRules.length} rule(s), ${deps.mcpResult.connections.length} mcp server(s), personas]`,
 		);
@@ -788,7 +813,9 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 			const newPersonaOpts = personaOptionsForCwd(chosen.cwd, trusted);
 			deps.setPersonaOptions(newPersonaOpts);
 			await closeMcpConnections(deps.mcpResult.connections);
-			deps.setMcpResult(await resolveMcpForCwd(deps.projectDeps, chosen.cwd, trusted));
+			deps.setMcpResult(
+				await resolveMcpForCwd(deps.projectDeps, chosen.cwd, trusted, loadSettings().disabledMcpServers ?? []),
+			);
 		}
 		rebuildSystemPrompt(deps, chosen.cwd || deps.cwd, {
 			contextFilesSuffix,
@@ -907,7 +934,7 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 				"  /reasoning [level]  Show/change reasoning level\n" +
 				"  /persona [name]     Show/change persona\n" +
 				"  /skills             List loaded skills\n" +
-				"  /mcp                List MCP servers\n" +
+				"  /mcp                Toggle MCP servers on/off\n" +
 				"  /reload             Re-scan skills, MCP, rules\n" +
 				"  /skill:<name>       Invoke a skill\n" +
 				"  /rule:<name>        Invoke a rule\n" +

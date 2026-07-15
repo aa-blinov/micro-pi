@@ -17,6 +17,13 @@ export type ModalRequest =
 			resolve: (value: string | null) => void;
 	  }
 	| {
+			kind: "multi";
+			options: PickOption<unknown>[];
+			opts?: PickOptions;
+			initialSelected: Set<number>;
+			resolve: (value: number[] | null) => void;
+	  }
+	| {
 			kind: "status";
 			label: string;
 	  };
@@ -72,6 +79,29 @@ function createModalBridge(onLog: (text: string) => void): ModalBridge {
 					resolve: (value) => {
 						setRequest(null);
 						resolvePromise(value);
+					},
+				});
+			});
+		},
+		pickMulti<T>(options: PickOption<T>[], opts?: PickOptions & { initialSelected?: T[] }): Promise<T[] | null> {
+			if (options.length === 0) return Promise.resolve([]);
+			const initialIndices = new Set<number>();
+			if (opts?.initialSelected) {
+				for (const val of opts.initialSelected) {
+					const i = options.findIndex((o) => o.value === val);
+					if (i >= 0) initialIndices.add(i);
+				}
+			}
+			return new Promise((resolvePromise) => {
+				setRequest({
+					kind: "multi",
+					options: options as PickOption<unknown>[],
+					opts,
+					initialSelected: initialIndices,
+					resolve: (indices) => {
+						setRequest(null);
+						if (indices === null) resolvePromise(null);
+						else resolvePromise(indices.map((i) => options[i]!.value));
 					},
 				});
 			});

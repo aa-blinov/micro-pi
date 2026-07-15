@@ -53,6 +53,9 @@ export interface Settings {
 	theme?: string;
 	/** When false, web_search and web_fetch tools are not advertised to the model. */
 	webTools?: boolean;
+	/** MCP server names the user has disabled via /mcp toggle. Persisted so
+	 * they stay disabled across sessions and /reload. */
+	disabledMcpServers?: string[];
 	/** @deprecated Agent mode moved to SessionState.mode — the mode is per-task
 	 * session state, and storing it globally leaked plan mode across projects.
 	 * Kept only so old settings.json files still parse. */

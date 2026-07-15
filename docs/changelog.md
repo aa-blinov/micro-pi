@@ -2,6 +2,22 @@
 
 All notable user-facing changes to cast, newest first.
 
+## 0.5.8
+
+### Added
+
+- MCP server toggle — `/mcp` now opens an interactive multi-select picker to enable/disable individual servers mid-session. Disabled servers are hidden from the model and persisted in settings.
+- `<available_mcp>` block in the system prompt — the model sees only enabled MCP servers and their tools, and will not attempt to call disabled ones.
+- Hermes XML tool-call parsing and recovery
+- Terminal desync tracking with automatic resync on focus return
+
+## 0.5.7
+
+### Added
+
+- Enhanced search functionality with permission handling and output notes
+- Improved tool name sanitization to prevent doom loops
+
 ## 0.5.6
 
 ### Fixed

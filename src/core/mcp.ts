@@ -76,6 +76,9 @@ export interface McpSetupResult {
 	toolDefinitions: Tool[];
 	connections: McpConnection[];
 	diagnostics: string[];
+	/** Every server name from the original config, regardless of connection
+	 * success or disabled state — so the /mcp picker can show the full list. */
+	allServerNames: string[];
 }
 
 // The common `npx -y <package>` config style (same one Claude Desktop/Cursor
@@ -244,7 +247,31 @@ export async function connectMcpServers(servers: Record<string, McpServerConfig>
 		}),
 	);
 
-	return { toolIndex, toolDefinitions, connections, diagnostics };
+	return { toolIndex, toolDefinitions, connections, diagnostics, allServerNames: Object.keys(servers) };
+}
+
+function escapeXml(s: string): string {
+	return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** Format connected MCP servers for the system prompt as <available_mcp>.
+ * Only currently enabled servers appear — disabled ones are excluded entirely.
+ * If a server is configured in mcp.json but missing here, the user has
+ * disabled it via /mcp; do not attempt to call its tools. */
+export function formatMcpForPrompt(result: McpSetupResult): string {
+	if (result.connections.length === 0) return "";
+	const lines = ["\n<available_mcp>", "  <!-- Only enabled MCP servers are listed. -->"];
+	for (const c of result.connections) {
+		lines.push(`  <server name="${escapeXml(c.serverName)}" tools="${c.toolCount}">`);
+		for (const t of result.toolDefinitions) {
+			if (t.function.description?.startsWith(`[${c.serverName}]`)) {
+				lines.push(`    <tool>${escapeXml(t.function.name)}</tool>`);
+			}
+		}
+		lines.push("  </server>");
+	}
+	lines.push("</available_mcp>");
+	return lines.join("\n");
 }
 
 export async function closeMcpConnections(connections: McpConnection[]): Promise<void> {
