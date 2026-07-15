@@ -4,8 +4,10 @@ import {
 	describeTurnError,
 	EMPTY_ASSISTANT_PLACEHOLDER,
 	isRetryableStreamError,
+	parseHermesToolCalls,
 	streamAndCollect,
 	streamChat,
+	stripHermesToolCalls,
 } from "../src/core/llm.ts";
 
 function fakeClient(chunks: unknown[], onChunk?: () => void): OpenAI {
@@ -33,6 +35,73 @@ function fakeClient(chunks: unknown[], onChunk?: () => void): OpenAI {
 function rateLimitError(body: Record<string, unknown>) {
 	return new OpenAI.RateLimitError(429, body, undefined, {} as never);
 }
+
+describe("parseHermesToolCalls / stripHermesToolCalls", () => {
+	it("parses a Hermes XML call into a proper tool call with JSON arguments", () => {
+		const content = "<tool_call>\n<function=search_tasks>\n<parameter=status>in_progress</parameter>\n</function>\n</tool_call>";
+		const calls = parseHermesToolCalls(content);
+		expect(calls).toHaveLength(1);
+		expect(calls[0]!.name).toBe("search_tasks");
+		expect(JSON.parse(calls[0]!.arguments)).toEqual({ status: "in_progress" });
+	});
+
+	it("coerces None/null/booleans/numbers, leaves free text as strings", () => {
+		const content =
+			"<function=f><parameter=a>None</parameter><parameter=b>true</parameter><parameter=c>42</parameter><parameter=d>hello world</parameter></function>";
+		expect(JSON.parse(parseHermesToolCalls(content)[0]!.arguments)).toEqual({
+			a: null,
+			b: true,
+			c: 42,
+			d: "hello world",
+		});
+	});
+
+	it("returns [] when there is no Hermes block", () => {
+		expect(parseHermesToolCalls("just a normal answer, no calls")).toEqual([]);
+	});
+
+	it("strips the XML block (and tool_call wrapper) from visible content", () => {
+		const content = "before <tool_call><function=f><parameter=x>1</parameter></function></tool_call> after";
+		expect(stripHermesToolCalls(content)).toBe("before  after");
+	});
+});
+
+describe("streamAndCollect — Hermes tool-call recovery", () => {
+	it("recovers a valid tool call when the provider emits XML content + truncated arguments", async () => {
+		// The exact failure shape from xiaomi mimo: the call leaks into content as
+		// Hermes XML while tool_calls.arguments arrives as truncated, invalid JSON.
+		const client = fakeClient([
+			{
+				choices: [
+					{ delta: { content: "<tool_call>\n<function=search_tasks>\n<parameter=status>in_progress</parameter>\n</function>\n</tool_call>" } },
+				],
+			},
+			{
+				choices: [{ delta: { tool_calls: [{ index: 0, id: "t1", function: { name: "search_tasks", arguments: '{"memberId": ' } }] } }],
+			},
+			{ choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+		]);
+		const res = await streamAndCollect(client, "m", [], [], 100);
+		expect(res.toolCalls).toHaveLength(1);
+		expect(res.toolCalls![0]!.name).toBe("search_tasks");
+		// Arguments are now valid JSON (were truncated before recovery).
+		expect(() => JSON.parse(res.toolCalls![0]!.arguments)).not.toThrow();
+		expect(JSON.parse(res.toolCalls![0]!.arguments)).toEqual({ status: "in_progress" });
+		// The XML markup is stripped from what the user sees.
+		expect(res.content).not.toContain("<function=");
+	});
+
+	it("leaves well-formed tool_calls untouched (no false recovery)", async () => {
+		const client = fakeClient([
+			{ choices: [{ delta: { tool_calls: [{ index: 0, id: "t1", function: { name: "read", arguments: '{"path":"a.ts"}' } }] } }] },
+			{ choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+		]);
+		const res = await streamAndCollect(client, "m", [], [], 100);
+		expect(res.toolCalls).toHaveLength(1);
+		expect(res.toolCalls![0]!.id).toBe("t1");
+		expect(JSON.parse(res.toolCalls![0]!.arguments)).toEqual({ path: "a.ts" });
+	});
+});
 
 describe("isRetryableStreamError", () => {
 	it("retries a generic rate-limit error", () => {

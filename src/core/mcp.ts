@@ -108,6 +108,32 @@ interface McpContentPart {
 }
 
 /**
+ * Custom fetch for Streamable HTTP MCP servers that declines the transport's
+ * standalone GET SSE "listening" stream (returns a synthetic 405 for GET).
+ *
+ * Why: the SDK opens a long-lived GET SSE stream for unsolicited server
+ * messages. Node's built-in fetch (undici) serializes work on a kept-alive
+ * HTTP/1.1 connection, so while that stream is held open the responses to
+ * subsequent POSTs never arrive — every tool call (and the initial tools/list)
+ * hangs until the SDK's 60s request timeout fires. Observed with servers that
+ * accept the GET stream and keep it open (e.g. https://mcp.bitrix24.tech/mcp/);
+ * confirmed that declining the stream makes the same server respond in ~400ms.
+ *
+ * The GET stream is optional per the MCP spec (the SDK already handles a 405 by
+ * skipping it), and every request/response result still arrives on that POST's
+ * own SSE body — so tools work fully. The only thing forgone is unsolicited
+ * server→client notifications, which cast does not consume (it lists tools once
+ * at startup). GET is used solely for this listening stream; POST/DELETE (send,
+ * session terminate) pass through to the real fetch untouched.
+ */
+export function mcpHttpFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
+	if ((init?.method ?? "GET") === "GET") {
+		return Promise.resolve(new Response(null, { status: 405, statusText: "SSE listening stream declined" }));
+	}
+	return fetch(url as Parameters<typeof fetch>[0], init);
+}
+
+/**
  * Connects to every configured server in parallel — one slow/hung server
  * (bad command, server that never responds) shouldn't block the others, so
  * each gets its own connect timeout and a failure here becomes a diagnostic,
@@ -127,6 +153,7 @@ export async function connectMcpServers(servers: Record<string, McpServerConfig>
 			if (cfg.url) {
 				transport = new StreamableHTTPClientTransport(new URL(cfg.url), {
 					requestInit: cfg.headers ? { headers: cfg.headers } : undefined,
+					fetch: mcpHttpFetch,
 				});
 			} else if (cfg.command) {
 				transport = new StdioClientTransport({ command: cfg.command, args: cfg.args, env: cfg.env, cwd: cfg.cwd });

@@ -1,5 +1,41 @@
 import { describe, expect, it } from "vitest";
-import { createDesyncTracker } from "../src/ui/useTerminalResync.ts";
+import { createDesyncTracker, createFocusReturnTracker } from "../src/ui/useTerminalResync.ts";
+
+// A focus resync clears the screen (banner included, since it lives outside
+// Ink's <Static>), so it must fire ONLY on a genuine alt-tab return — never on
+// the spurious focus-in a terminal emits when focus reporting is first enabled.
+describe("createFocusReturnTracker", () => {
+	const IN = "\x1b[I";
+	const OUT = "\x1b[O";
+
+	it("ignores a focus-in with no preceding focus-out (the startup event)", () => {
+		const t = createFocusReturnTracker();
+		expect(t.onData(IN)).toBe(false);
+	});
+
+	it("fires on a focus-in that follows a focus-out (real alt-tab return)", () => {
+		const t = createFocusReturnTracker();
+		expect(t.onData(OUT)).toBe(false); // left the window
+		expect(t.onData(IN)).toBe(true); // came back
+	});
+
+	it("does not re-fire on a repeated focus-in without another focus-out", () => {
+		const t = createFocusReturnTracker();
+		t.onData(OUT);
+		expect(t.onData(IN)).toBe(true);
+		expect(t.onData(IN)).toBe(false); // duplicate report — ignored
+	});
+
+	it("handles out+in arriving in a single chunk", () => {
+		const t = createFocusReturnTracker();
+		expect(t.onData(`${OUT}${IN}`)).toBe(true);
+	});
+
+	it("ignores unrelated input", () => {
+		const t = createFocusReturnTracker();
+		expect(t.onData("hello")).toBe(false);
+	});
+});
 
 // The cleanup repaint (clear + full <Static> replay) is expensive, so the
 // tracker must request it ONLY when a streaming turn actually stacked frames —
