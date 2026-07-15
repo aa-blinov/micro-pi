@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppConfig } from "../src/core/config.ts";
 import { PLAN_TOOL_NAMES, type PlanState } from "../src/core/plan.ts";
-import { createToolExecutor, getToolDefinitions } from "../src/core/tools.ts";
 import { isPermissionError, withAccessNote } from "../src/core/tools/search.ts";
+import { createToolExecutor, getToolDefinitions } from "../src/core/tools.ts";
 
 const TEST_DIR = join(import.meta.dirname, "__test_tmp__");
 
