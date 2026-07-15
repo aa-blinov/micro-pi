@@ -49,9 +49,7 @@ describe("mcpHttpFetch", () => {
 	it("passes POST through to the real fetch (reaches the network, not a synthetic 405)", async () => {
 		// Points at an unroutable address: a real fetch attempt rejects, whereas
 		// the synthetic 405 path would resolve. Rejection proves it passed through.
-		await expect(
-			mcpHttpFetch("http://127.0.0.1:1/mcp/", { method: "POST", body: "{}" }),
-		).rejects.toBeDefined();
+		await expect(mcpHttpFetch("http://127.0.0.1:1/mcp/", { method: "POST", body: "{}" })).rejects.toBeDefined();
 	});
 });
 
