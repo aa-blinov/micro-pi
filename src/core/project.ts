@@ -106,8 +106,16 @@ export async function resolveMcpForCwd(
 	deps: ProjectResolverDeps,
 	cwd: string,
 	trusted: boolean,
+	disabledServers: string[] = [],
 ): Promise<McpSetupResult> {
-	if (deps.noMcp) return { toolIndex: new Map(), toolDefinitions: [], connections: [], diagnostics: [] };
+	const emptyResult = {
+		toolIndex: new Map(),
+		toolDefinitions: [],
+		connections: [],
+		diagnostics: [],
+		allServerNames: [] as string[],
+	};
+	if (deps.noMcp) return emptyResult;
 	const globalServers = loadMcpConfig(globalMcpPath);
 	let projectServers: Record<string, McpServerConfig> = {};
 	const mcpPath = projectMcpPath(cwd);
@@ -117,9 +125,13 @@ export async function resolveMcpForCwd(
 	const extraServers: Record<string, McpServerConfig> = {};
 	for (const path of deps.cliMcpPaths) Object.assign(extraServers, loadMcpConfig(path));
 	const merged = { ...globalServers, ...projectServers, ...extraServers };
-	if (Object.keys(merged).length === 0)
-		return { toolIndex: new Map(), toolDefinitions: [], connections: [], diagnostics: [] };
-	const result = await connectMcpServers(merged);
+	const allNames = Object.keys(merged);
+	if (allNames.length === 0) return { ...emptyResult, allServerNames: [] };
+	// Filter out disabled servers before connecting
+	const disabledSet = new Set(disabledServers);
+	const filtered = Object.fromEntries(Object.entries(merged).filter(([name]) => !disabledSet.has(name)));
+	const result = await connectMcpServers(filtered);
+	result.allServerNames = allNames;
 	for (const diagnostic of result.diagnostics) console.log(`[mcp warning] ${diagnostic}`);
 	return result;
 }
@@ -183,6 +195,7 @@ export function buildSystemPrompt(
 	rulesSuffix: string,
 	rulesLazySuffix: string,
 	skillsPromptSuffix: string,
+	mcpPromptSuffix: string,
 	cwd: string,
 	state?: {
 		model: string;
@@ -220,7 +233,15 @@ export function buildSystemPrompt(
 				.join("\n")}\n`
 		: `\nCurrent date: ${date}\nCurrent working directory: ${cwd}\nPlatform: ${PLATFORM_LINE}\n`;
 
-	return [persona.systemPrompt, contextFilesSuffix, rulesSuffix, rulesLazySuffix, skillsPromptSuffix, stateBlock]
+	return [
+		persona.systemPrompt,
+		contextFilesSuffix,
+		rulesSuffix,
+		rulesLazySuffix,
+		skillsPromptSuffix,
+		mcpPromptSuffix,
+		stateBlock,
+	]
 		.filter(Boolean)
 		.join("");
 }

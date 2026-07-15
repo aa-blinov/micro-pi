@@ -17,6 +17,11 @@ export const noPickers: Pickers = {
 		console.error("Run `cast` interactively first to configure model and persona.");
 		process.exit(1);
 	},
+	pickMulti(_options, opts) {
+		console.error(`Cannot prompt in non-interactive mode: ${opts?.title ?? "multi-selection"} required.`);
+		console.error("Run `cast` interactively first to configure model and persona.");
+		process.exit(1);
+	},
 	log(text) {
 		process.stderr.write(`${text}\n`);
 	},

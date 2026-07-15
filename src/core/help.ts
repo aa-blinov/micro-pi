@@ -80,7 +80,7 @@ Interactive commands:
   /permissions           Show/change bash confirmation mode (default/bypass)
   /web                   Toggle web tools (web_search, web_fetch)
   /skills                List loaded skills
-  /mcp                   List connected MCP servers and their tools
+  /mcp                   Toggle MCP servers on/off and their tools
   /reload                Re-scan skills, personas, and reconnect MCP servers
                          for the current directory (no restart needed after
                          adding a skill, persona, or mcp.json entry)

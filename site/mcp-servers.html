@@ -490,7 +490,22 @@ cast --no-mcp --mcp ~/.cast/mcp.json
 </code></pre>
 <p>Extra paths (<code>--mcp</code>) work even with <code>--no-mcp</code>.</p>
 <h2>Commands</h2>
-<div class="table-wrap"><table><thead><tr><th>Command</th><th>Description</th></tr></thead><tbody><tr><td><code>/mcp</code></td><td>List connected servers and their tool counts</td></tr><tr><td><code>/reload</code></td><td>Reconnect MCP servers (re-reads config files)</td></tr></tbody></table></div><h2>Limitations</h2>
+<div class="table-wrap"><table><thead><tr><th>Command</th><th>Description</th></tr></thead><tbody><tr><td><code>/mcp</code></td><td>Toggle MCP servers on/off (multi-select picker)</td></tr><tr><td><code>/reload</code></td><td>Reconnect MCP servers (re-reads config files)</td></tr></tbody></table></div><h3>Toggling Servers</h3>
+<p><code>/mcp</code> opens an interactive multi-select picker showing all configured servers (global + project). Use <strong>up/down</strong> to navigate, <strong>Space</strong> to toggle a server on/off, and <strong>Enter</strong> to confirm.</p>
+<p>Disabled servers:</p>
+<ul>
+<li>Are disconnected immediately (hot-swap, no restart needed)</li>
+<li>Are hidden from the model — their tools disappear from the system prompt</li>
+<li>Are persisted in <code>~/.cast/settings.json</code> — they stay disabled across sessions and <code>/reload</code></li>
+<li>Can be re-enabled at any time by running <code>/mcp</code> again</li>
+</ul>
+<p>The picker shows all servers from all config sources, regardless of connection status:</p>
+<ul>
+<li><code>serverName (N tools)</code> — connected and enabled</li>
+<li><code>serverName (disconnected)</code> — enabled but failed to connect</li>
+<li><code>serverName (disabled)</code> — toggled off by the user</li>
+</ul>
+<h2>Limitations</h2>
 <ul>
 <li><strong>Transports</strong>: stdio and streamable HTTP only. SSE transport is not supported.</li>
 <li><strong>Auth</strong>: Static header/token authentication only. OAuth (browser redirect, token storage/refresh) is not supported.</li>

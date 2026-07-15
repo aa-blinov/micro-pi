@@ -2,6 +2,7 @@ import { Box, Text, useApp } from "ink";
 import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppConfig } from "../core/config.ts";
 import { formatContextFilesForPrompt, resolveNestedContextFiles } from "../core/context-files.ts";
+import { formatMcpForPrompt } from "../core/mcp.ts";
 import { createPlanState, modeDisabledTools, readActivePlan } from "../core/plan.ts";
 import { buildSystemPrompt, makeConfirmBash } from "../core/project.ts";
 import {
@@ -17,7 +18,7 @@ import { loadSettings } from "../core/settings.ts";
 import type { StartupResult } from "../core/startup.ts";
 import { setSuspendHook } from "../core/stdin-manager.ts";
 import { fetchLatestVersion, isNewerVersion, isReleaseInstall } from "../core/upgrade.ts";
-import { ModalPicker, TextInputModal } from "../pickers/ink.tsx";
+import { ModalPicker, MultiSelectPicker, TextInputModal } from "../pickers/ink.tsx";
 import { ChatLog } from "./ChatLog.tsx";
 import { Composer } from "./Composer.tsx";
 import { canSubmitDuringRun, handleInput } from "./commands.ts";
@@ -88,6 +89,7 @@ export function App(props: AppProps): JSX.Element {
 
 	const [session] = useState(result.session);
 	const [mcpResult, setMcpResult] = useState(result.mcpResult);
+	const mcpPromptSuffix = useMemo(() => formatMcpForPrompt(mcpResult), [mcpResult]);
 	const [currentPersona, setCurrentPersona] = useState(result.persona);
 	const [systemPrompt, setSystemPrompt] = useState(result.systemPrompt);
 	const [skills, setSkills] = useState(result.skills);
@@ -214,6 +216,7 @@ export function App(props: AppProps): JSX.Element {
 				rulesBlock,
 				rulesLazySuffix,
 				skillsPromptSuffix,
+				mcpPromptSuffix,
 				cwd,
 				{ model: activeModel, reasoningLevel: config.reasoningLevel, mode: planMode ? "plan" : "build" },
 			);
@@ -225,6 +228,7 @@ export function App(props: AppProps): JSX.Element {
 			contextFilesSuffix,
 			rulesLazySuffix,
 			skillsPromptSuffix,
+			mcpPromptSuffix,
 			cwd,
 			projectTrusted,
 			activeModel,
@@ -542,6 +546,15 @@ export function App(props: AppProps): JSX.Element {
 					placeholder={modalRequest.placeholder}
 					error={modalRequest.error}
 					onSubmit={modalRequest.resolve}
+					onCancel={() => modalRequest.resolve(null)}
+				/>
+			)}
+			{modalRequest?.kind === "multi" && (
+				<MultiSelectPicker
+					options={modalRequest.options}
+					opts={modalRequest.opts}
+					initialSelected={modalRequest.initialSelected}
+					onConfirm={modalRequest.resolve}
 					onCancel={() => modalRequest.resolve(null)}
 				/>
 			)}

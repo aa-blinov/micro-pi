@@ -402,3 +402,31 @@ export async function selectPermissionMode(pickers: Pickers, current: Permission
 	);
 	return picked ?? current;
 }
+
+// ============================================================================
+// MCP server toggle
+// ============================================================================
+
+/**
+ * Interactive multi-select for toggling MCP servers on/off. Returns the list
+ * of server names the user wants ENABLED, or null on cancel.
+ */
+export async function selectMcpServers(
+	pickers: Pickers,
+	allServerNames: string[],
+	disabledNames: string[],
+	toolCounts: Record<string, number>,
+): Promise<string[] | null> {
+	const disabledSet = new Set(disabledNames);
+	const options: PickOption<string>[] = allServerNames.map((name) => {
+		const count = toolCounts[name];
+		const status = disabledSet.has(name) ? "disabled" : count !== undefined ? `${count} tools` : "disconnected";
+		return { value: name, label: `${name} (${status})` };
+	});
+	const initialSelected = allServerNames.filter((n) => !disabledSet.has(n));
+	const picked = await pickers.pickMulti(options, {
+		title: "MCP Servers (space to toggle, enter to confirm)",
+		initialSelected,
+	});
+	return picked;
+}

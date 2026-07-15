@@ -95,8 +95,25 @@ Extra paths (`--mcp`) work even with `--no-mcp`.
 
 | Command | Description |
 |---------|-------------|
-| `/mcp` | List connected servers and their tool counts |
+| `/mcp` | Toggle MCP servers on/off (multi-select picker) |
 | `/reload` | Reconnect MCP servers (re-reads config files) |
+
+### Toggling Servers
+
+`/mcp` opens an interactive multi-select picker showing all configured servers (global + project). Use **up/down** to navigate, **Space** to toggle a server on/off, and **Enter** to confirm.
+
+Disabled servers:
+
+- Are disconnected immediately (hot-swap, no restart needed)
+- Are hidden from the model — their tools disappear from the system prompt
+- Are persisted in `~/.cast/settings.json` — they stay disabled across sessions and `/reload`
+- Can be re-enabled at any time by running `/mcp` again
+
+The picker shows all servers from all config sources, regardless of connection status:
+
+- `serverName (N tools)` — connected and enabled
+- `serverName (disconnected)` — enabled but failed to connect
+- `serverName (disabled)` — toggled off by the user
 
 ## Limitations
 

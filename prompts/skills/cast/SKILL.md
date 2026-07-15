@@ -13,11 +13,13 @@ cast stores all user configuration under `~/.cast/` (global) and `<cwd>/.cast/` 
 Personas are system prompts that give the agent a different role. Active persona's full body becomes the system prompt.
 
 **Locations** (highest priority first):
+
 1. `.cast/personas/*.md` — project (trust-gated)
 2. `~/.cast/personas/*.md` — global
 3. Shipped with cast — builtin
 
 **File format** — frontmatter + markdown body:
+
 ```markdown
 ---
 name: my-persona
@@ -31,6 +33,7 @@ You are a specialized assistant that...
 ```
 
 **Rules:**
+
 - `name` must be non-empty (used to select persona via `--persona <name>`)
 - `label` is shown in `/persona` picker and `/personas` list; defaults to `name` if omitted
 - `description` is shown in the picker
@@ -38,6 +41,7 @@ You are a specialized assistant that...
 - On name collision, project > global > builtin
 
 **Example — create a persona:**
+
 ```bash
 mkdir -p ~/.cast/personas
 cat > ~/.cast/personas/analyst.md << 'EOF'
@@ -76,12 +80,14 @@ EOF
 Skills are reusable instruction files the model can read on demand.
 
 **Locations** (highest priority first — on name collision, first-loaded wins):
+
 1. `.cast/skills/` — project (trust-gated)
 2. `~/.cast/skills/` — global
 3. Shipped with cast — builtin
 4. `--skill <path>` — extra CLI paths (loaded last)
 
 **File format** — a directory with `SKILL.md`:
+
 ```
 .cast/skills/my-skill/SKILL.md
 ```
@@ -101,12 +107,14 @@ Instructions the model reads when this skill is invoked...
 ```
 
 **Rules:**
+
 - `name` must be lowercase, alphanumeric + hyphens
 - `description` is required (shown to the model)
 - `disable-model-invocation: true` — skill is hidden from model, only usable via `/skill:name`
 - On name collision, project > global > builtin
 
 **Example — create a skill:**
+
 ```bash
 mkdir -p ~/.cast/skills/git-workflow
 cat > ~/.cast/skills/git-workflow/SKILL.md << 'EOF'
@@ -128,6 +136,7 @@ EOF
 MCP (Model Context Protocol) servers provide external tools.
 
 **Locations** (on name collision, last-loaded wins — reverse of skills/personas):
+
 1. `~/.cast/mcp.json` — global
 2. `.cast/mcp.json` — project (trust-gated)
 3. `--mcp <path>` — extra CLI paths (loaded last, highest priority)
@@ -135,6 +144,7 @@ MCP (Model Context Protocol) servers provide external tools.
 Global servers load first, project and CLI override them on name collision.
 
 **File format** — same as Claude Desktop/Cursor:
+
 ```json
 {
   "mcpServers": {
@@ -156,20 +166,25 @@ Global servers load first, project and CLI override them on name collision.
 
 **Tool names** are namespaced as `mcp_<server>_<tool>` to avoid collisions.
 
+Servers listed in mcp.json can be toggled on/off per-session via `/mcp` — disabled servers are hidden from the model and persisted in settings. Only enabled servers appear in `<available_mcp>`.
+
 ## Rules
 
 Rules are short instructions appended to the system prompt.
 
 **Locations** (both are concatenated, not priority-based):
+
 1. `~/.cast/rules.md` — global (always loaded)
 2. `.cast/rules.md` — project (trust-gated, appended after global)
 
 **Managed via commands:**
+
 - `/rules` — list all rules
 - `/rules add <text>` — add a rule (auto-numbered)
 - `/rules delete <number>` — remove a rule by number
 
 **Example:**
+
 ```
 /rules add Always respond in Spanish
 /rules add Prefer functional style over classes
@@ -179,7 +194,9 @@ Rules are short instructions appended to the system prompt.
 ## Applying Changes
 
 After creating or modifying any of the above, run:
+
 ```
 /reload
 ```
+
 This re-scans skills, personas, and reconnects MCP servers for the current directory without restarting.

@@ -79,6 +79,7 @@ function createFakeDeps(overrides?: Partial<CommandDeps> & { running?: boolean }
 	const fakePickers: Pickers = {
 		pickOption: async () => null,
 		promptText: async () => null,
+		pickMulti: async () => null,
 		log: () => {},
 	};
 
@@ -127,6 +128,7 @@ function createFakeDeps(overrides?: Partial<CommandDeps> & { running?: boolean }
 			toolDefinitions: [],
 			toolIndex: new Map(),
 			diagnostics: [],
+			allServerNames: [],
 		} as unknown as McpSetupResult,
 		setMcpResult: track("setMcpResult"),
 		permissionMode: "default" as PermissionMode,
@@ -289,6 +291,25 @@ describe("handleInput", () => {
 		const { deps, calls } = createFakeDeps();
 		await handleInput("/mcp", undefined, deps);
 		expect(displayMessageText(calls)).toContain("No MCP");
+	});
+
+	it("/mcp toggle persists disabled servers and updates mcpResult", async () => {
+		const { deps, calls } = createFakeDeps();
+		// Populate mcpResult with server names
+		(deps.mcpResult as any).allServerNames = ["context7", "github"];
+		(deps.mcpResult as any).connections = [
+			{ serverName: "context7", toolCount: 5, client: { close: async () => {} } },
+		];
+		// Override pickers: pickMulti returns only context7 enabled (github disabled)
+		deps.pickers = {
+			pickOption: async () => null,
+			promptText: async () => null,
+			pickMulti: async () => ["context7"],
+			log: () => {},
+		};
+		await handleInput("/mcp", undefined, deps);
+		expect(displayMessageText(calls)).toContain("disabled 1");
+		expect(calls.setMcpResult).toHaveLength(1);
 	});
 
 	it("unknown /command submits to agent as text (e.g. file paths)", async () => {

@@ -133,7 +133,7 @@ Every conversation auto-saves. Resume with `--continue`, pick from a list with `
 | `/sessions` | List/switch/delete saved sessions |
 | `/skills` | List loaded skills |
 | `/skill:name [args]` | Force-load and run a skill |
-| `/mcp` | List connected MCP servers and tools |
+| `/mcp` | Toggle MCP servers on/off |
 | `/reload` | Re-scan skills, rules, MCP, and personas for cwd |
 | `/rules` | List loaded rules |
 | `/rule:name` | Invoke a rule by name |

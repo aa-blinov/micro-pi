@@ -26,6 +26,12 @@ export interface Pickers {
 	pickOption<T>(options: PickOption<T>[], opts?: PickOptions): Promise<T | null>;
 	promptText(label: string, defaultValue?: string, placeholder?: string, error?: string): Promise<string | null>;
 	/**
+	 * Multi-select picker. Returns null on cancel, array of selected values
+	 * on confirm. `initialSelected` seeds the checked set (=== equality
+	 * against option values); unset means "all unchecked".
+	 */
+	pickMulti<T>(options: PickOption<T>[], opts?: PickOptions & { initialSelected?: T[] }): Promise<T[] | null>;
+	/**
 	 * Show a spinner with a label while an async step runs (model validation,
 	 * fetching the model list); returns a function that dismisses it. Optional —
 	 * implementations without a live Ink tree (startup's one-shot pickers, test
