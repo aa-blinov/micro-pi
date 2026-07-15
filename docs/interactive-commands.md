@@ -71,7 +71,7 @@ These commands work while the agent is running:
 |---------|-------|-------------|
 | `/steer <message>` | `/s` | Inject a message into the running turn |
 | `/queue <message>` | `/q` | Queue a message for after the current turn |
-| `/queue-reset` | | Clear the message queue |
+| `/queue-reset` | `/qr` | Clear the message queue |
 | `/abort`, `/stop` | | Stop current agent run |
 
 **`/steer`** interrupts the current turn with new context — the message is injected immediately into the conversation, and the agent sees it on the next tool-call iteration. Useful for correcting course mid-execution.
@@ -139,7 +139,7 @@ While the agent is executing, only these commands are accepted:
 
 - `/steer` / `/s` — inject context
 - `/queue` / `/q` — queue follow-up
-- `/queue-reset` — clear queue
+- `/queue-reset` / `/qr` — clear queue
 - `/abort` / `/stop` — stop the run
 
 All other input is rejected with a notice. Use Esc to stop the current turn (clears input when idle).

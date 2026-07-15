@@ -455,7 +455,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 <div class="table-wrap"><table><thead><tr><th>Command</th><th>Description</th></tr></thead><tbody><tr><td><code>/plan</code></td><td>Enter plan mode (explore and plan only, no code changes)</td></tr><tr><td><code>/build</code></td><td>Exit plan mode, restore full toolset</td></tr><tr><td><code>/plan-model [name|off]</code></td><td>Show/change the model used while plan mode is active</td></tr></tbody></table></div><p>See <a href="plan-mode.html">Plan Mode</a> for the full workflow.</p>
 <h2>Steering</h2>
 <p>These commands work while the agent is running:</p>
-<div class="table-wrap"><table><thead><tr><th>Command</th><th>Short</th><th>Description</th></tr></thead><tbody><tr><td><code>/steer &lt;message&gt;</code></td><td><code>/s</code></td><td>Inject a message into the running turn</td></tr><tr><td><code>/queue &lt;message&gt;</code></td><td><code>/q</code></td><td>Queue a message for after the current turn</td></tr><tr><td><code>/queue-reset</code></td><td></td><td>Clear the message queue</td></tr><tr><td><code>/abort</code>, <code>/stop</code></td><td></td><td>Stop current agent run</td></tr></tbody></table></div><p><strong><code>/steer</code></strong> interrupts the current turn with new context — the message is injected immediately into the conversation, and the agent sees it on the next tool-call iteration. Useful for correcting course mid-execution.</p>
+<div class="table-wrap"><table><thead><tr><th>Command</th><th>Short</th><th>Description</th></tr></thead><tbody><tr><td><code>/steer &lt;message&gt;</code></td><td><code>/s</code></td><td>Inject a message into the running turn</td></tr><tr><td><code>/queue &lt;message&gt;</code></td><td><code>/q</code></td><td>Queue a message for after the current turn</td></tr><tr><td><code>/queue-reset</code></td><td><code>/qr</code></td><td>Clear the message queue</td></tr><tr><td><code>/abort</code>, <code>/stop</code></td><td></td><td>Stop current agent run</td></tr></tbody></table></div><p><strong><code>/steer</code></strong> interrupts the current turn with new context — the message is injected immediately into the conversation, and the agent sees it on the next tool-call iteration. Useful for correcting course mid-execution.</p>
 <p><strong><code>/queue</code></strong> saves a message to run after the agent finishes its current turn. The message becomes a new turn automatically.</p>
 <p>If nothing is running, both <code>/steer</code> and <code>/queue</code> submit the message as a normal prompt.</p>
 <p><strong><code>/abort</code></strong> stops the current run and clears both the steering and follow-up queues — anything queued before the abort is discarded.</p>
@@ -472,7 +472,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 <ul>
 <li><code>/steer</code> / <code>/s</code> — inject context</li>
 <li><code>/queue</code> / <code>/q</code> — queue follow-up</li>
-<li><code>/queue-reset</code> — clear queue</li>
+<li><code>/queue-reset</code> / <code>/qr</code> — clear queue</li>
 <li><code>/abort</code> / <code>/stop</code> — stop the run</li>
 </ul>
 <p>All other input is rejected with a notice. Use Esc to stop the current turn (clears input when idle).</p>

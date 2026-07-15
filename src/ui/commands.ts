@@ -63,6 +63,7 @@ export const SLASH_COMMANDS: Array<{ name: string; description: string; takesArg
 	{ name: "/plan-model", description: "Show or change the plan-mode model" },
 	{ name: "/provider", description: "Change provider URL and API key" },
 	{ name: "/q", description: "Alias for /queue", takesArgs: true },
+	{ name: "/qr", description: "Alias for /queue-reset" },
 	{ name: "/queue", description: "Queue a message for after the run", takesArgs: true },
 	{ name: "/queue-reset", description: "Clear the message queue" },
 	{ name: "/quit", description: "Save and exit" },
@@ -195,7 +196,7 @@ async function applyPermissionMode(deps: CommandDeps, newMode: PermissionMode): 
 }
 
 /** Commands allowed while the agent is running — plain text is rejected. */
-const RUNNING_COMMANDS = new Set(["/queue", "/q", "/queue-reset", "/steer", "/s", "/abort", "/stop"]);
+const RUNNING_COMMANDS = new Set(["/queue", "/q", "/queue-reset", "/qr", "/steer", "/s", "/abort", "/stop"]);
 
 export function canSubmitDuringRun(text: string): boolean {
 	const input = text.trim();
@@ -244,6 +245,11 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 		// App.tsx), not on a fixed timer that could clear it long before a
 		// tool-heavy turn gets around to draining the queue.
 		agent.steer(msg);
+		return;
+	}
+	if (input === "/queue-reset" || input === "/qr") {
+		agent.resetQueue();
+		showNotice("[Queue cleared]");
 		return;
 	}
 	if (input === "/queue" || input.startsWith("/queue ") || input === "/q" || input.startsWith("/q ")) {
@@ -927,7 +933,7 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 				"  /plan-model [m|off] Show or change the plan-mode model\n" +
 				"  /abort              Abort running agent (alias: /stop)\n" +
 				"  /queue (/q)         Queue message for next turn\n" +
-				"  /queue-reset        Clear queue\n" +
+				"  /queue-reset (/qr)  Clear queue\n" +
 				"  /steer (/s)         Inject message into running turn\n" +
 				"  /model [name]       Show/change model\n" +
 				"  /subagent-model [name]  Show/change subagent model\n" +
@@ -1045,12 +1051,6 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 			role: "warning",
 			content: `${header}\n${lines.join("\n")}${notes}`,
 		});
-		return;
-	}
-
-	if (input === "/queue-reset") {
-		agent.resetQueue();
-		showNotice("[Queue cleared]");
 		return;
 	}
 

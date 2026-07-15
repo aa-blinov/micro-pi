@@ -89,7 +89,7 @@ Interactive commands:
   /context               Show current context size vs. the model's window
   /steer <message>       Inject message while agent is running
   /queue <message>       Queue message for after agent stops
-  /queue-reset           Clear the message queue
+  /queue-reset (/qr)     Clear the message queue
   /abort, /stop          Abort current agent run
   /help                  Show help
 `);

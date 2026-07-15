@@ -49,6 +49,7 @@ function createFakeDeps(overrides?: Partial<CommandDeps> & { running?: boolean }
 		followUp: track("agent.followUp"),
 		abort: track("agent.abort"),
 		clearContext: track("agent.clearContext"),
+		resetQueue: track("agent.resetQueue"),
 		refresh: track("agent.refresh"),
 		addDisplayMessage: track("agent.addDisplayMessage"),
 		messages: [],
@@ -345,6 +346,27 @@ describe("handleInput", () => {
 		await handleInput("/queue next step", undefined, deps);
 		expect(calls["agent.followUp"]).toBeUndefined();
 		expect(calls["agent.submit"]).toEqual([["next step", undefined]]);
+	});
+
+	it("/queue-reset calls resetQueue when idle", async () => {
+		const { deps, calls } = createFakeDeps({ running: false });
+		await handleInput("/queue-reset", undefined, deps);
+		expect(calls["agent.resetQueue"]).toHaveLength(1);
+		expect(noticeText(calls)).toContain("Queue cleared");
+	});
+
+	it("/queue-reset calls resetQueue when running (not blocked by the running guard)", async () => {
+		const { deps, calls } = createFakeDeps({ running: true });
+		await handleInput("/queue-reset", undefined, deps);
+		expect(calls["agent.resetQueue"]).toHaveLength(1);
+		expect(noticeText(calls)).toContain("Queue cleared");
+	});
+
+	it("/qr is an alias for /queue-reset", async () => {
+		const { deps, calls } = createFakeDeps({ running: true });
+		await handleInput("/qr", undefined, deps);
+		expect(calls["agent.resetQueue"]).toHaveLength(1);
+		expect(noticeText(calls)).toContain("Queue cleared");
 	});
 
 	it("empty input does nothing (no submit)", async () => {

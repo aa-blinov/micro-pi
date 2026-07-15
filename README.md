@@ -142,6 +142,7 @@ Every conversation auto-saves. Resume with `--continue`, pick from a list with `
 | `/queue <msg>` | Queue message for after agent stops |
 | `/q <msg>` | Alias for `/queue` |
 | `/queue-reset` | Clear the message queue |
+| `/qr` | Alias for `/queue-reset` |
 | `/abort`, `/stop` | Stop current agent run |
 | `/compact` | Force context compaction |
 | `/new` | Start a new session (autosaves current) |
