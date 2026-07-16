@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppConfig } from "../core/config.ts";
-import { describeTurnError, isRetryableStreamError } from "../core/llm.ts";
+import { describeTurnError, isRetryableStreamError, stripHermesToolCalls } from "../core/llm.ts";
 import { type AgentEvent, runAgentLoop } from "../core/loop.ts";
 import type { McpSetupResult } from "../core/mcp.ts";
 import { readActivePlan } from "../core/plan.ts";
@@ -170,17 +170,6 @@ interface UseAgentSessionParams {
 	 * model override. session.model stays untouched: it is the user's main
 	 * model, this is a per-phase substitution. */
 	modelOverride?: string;
-}
-
-/**
- * Strip Hermes-style XML tool-call blocks from streaming content.
- * Only applies when the content also has valid structured tool_calls.
- */
-function stripStreamingXmlToolCalls(text: string): string {
-	return text
-		.replace(/<function=[^>\s]+\s*>[\s\S]*?<\/function>/g, "")
-		.replace(/<\/?(?:tool_call|:invoke|function_call)>/g, "")
-		.trim();
 }
 
 /**
@@ -556,7 +545,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 									// user-provided XML that happens to contain <function=.
 									const last = appended[appended.length - 1];
 									if (last && last.kind === "content" && last.text.includes("<tool_call>")) {
-										const stripped = stripStreamingXmlToolCalls(last.text);
+										const stripped = stripHermesToolCalls(last.text);
 										if (stripped !== last.text) {
 											return {
 												blocks: [...appended.slice(0, -1), { kind: "content" as const, text: stripped }],
