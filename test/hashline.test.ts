@@ -68,6 +68,14 @@ describe("hashline", () => {
 		expect(parseAnchor("42:abc")).toEqual({ line: 42, localHash: "abc" });
 	});
 
+	it("parseAnchor tolerates a pasted gutter — arrow and line content are dropped", () => {
+		// Models copy the whole `22:abc:rst→content` gutter instead of just
+		// the anchor; everything from the arrow onward must be ignored.
+		expect(parseAnchor("4:ddg:qwi→")).toEqual({ line: 4, localHash: "ddg", chunkHash: "qwi" });
+		expect(parseAnchor("22:abc:rst→\tconst x = 1;")).toEqual({ line: 22, localHash: "abc", chunkHash: "rst" });
+		expect(parseAnchor("  22:abc:rst  ")).toEqual({ line: 22, localHash: "abc", chunkHash: "rst" });
+	});
+
 	it("parseAnchor rejects garbage", () => {
 		expect(parseAnchor("abc")).toBeNull();
 		expect(parseAnchor(":abc")).toBeNull();

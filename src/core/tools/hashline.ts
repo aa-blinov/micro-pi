@@ -152,9 +152,15 @@ const ANCHOR_RE = /^(\d+):([a-z]+)(?::([a-z]+))?$/;
 /**
  * Parse `LINE:LOCAL` or `LINE:LOCAL:CHUNK` into its parts. Returns `null`
  * for garbage — the caller decides how to surface that.
+ *
+ * Models routinely paste the whole gutter (`22:abc:rst→content`) instead
+ * of just the anchor, so anything from the arrow separator onward is
+ * dropped before parsing. `→` can never appear inside a valid anchor.
  */
 export function parseAnchor(anchor: string): ParsedAnchor | null {
-	const match = ANCHOR_RE.exec(anchor);
+	const arrowIdx = anchor.indexOf("→");
+	const head = (arrowIdx === -1 ? anchor : anchor.slice(0, arrowIdx)).trim();
+	const match = ANCHOR_RE.exec(head);
 	if (!match) return null;
 	const [, lineStr, local, chunk] = match;
 	return {
