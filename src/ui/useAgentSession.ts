@@ -8,6 +8,7 @@ import type { AgentRunner } from "../core/runner.ts";
 import { addUsage, appendMessage, type SessionState, type SessionUsage, saveSession } from "../core/session.ts";
 import type { PermissionMode } from "../core/settings.ts";
 import { setStreamingActive } from "../core/stdin-manager.ts";
+import { displayWidthCacheFlush } from "./display-width.ts";
 
 export type AgentStatus = "idle" | "running" | "error";
 
@@ -711,6 +712,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 				promoteStreamingToHistory();
 				updateStreaming(() => null, true);
 				setStreamingActive(false);
+				displayWidthCacheFlush();
 				setRetry(null);
 				setStatus("idle");
 				process.off("SIGINT", onSigint);

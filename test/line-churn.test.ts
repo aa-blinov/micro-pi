@@ -29,10 +29,21 @@ describe("lineChurn", () => {
 		expect(lineChurn("", "")).toEqual({ added: 0, removed: 0 });
 	});
 
-	it("falls back to a block count (no LCS) past the O(m·n) size cap", () => {
-		// 501×501 = 251_001 > 250_000 → fallback. Identical texts would give {0,0}
-		// under LCS, so a {501,501} result proves the fallback fired instead.
+	it("falls back to Set-based comparison past the O(m·n) size cap", () => {
+		// 501×501 = 251_001 > 250_000 → fallback. Identical texts give {0,0}
+		// under the Set-based fallback (the old block-count fallback returned
+		// {501,501} even for identical text — that was a bug).
 		const big = Array.from({ length: 501 }, (_, i) => `line ${i}`).join("\n");
-		expect(lineChurn(big, big)).toEqual({ added: 501, removed: 501 });
+		expect(lineChurn(big, big)).toEqual({ added: 0, removed: 0 });
+	});
+
+	it("Set-based fallback counts real changes past the cap", () => {
+		const a = Array.from({ length: 501 }, (_, i) => `line ${i}`).join("\n");
+		const b = Array.from({ length: 501 }, (_, i) => `line ${i + 1}`).join("\n");
+		const result = lineChurn(a, b);
+		// First and last lines differ; middle 499 are shared.
+		expect(result.removed).toBeGreaterThan(0);
+		expect(result.added).toBeGreaterThan(0);
+		expect(result.removed + result.added).toBeLessThan(1002);
 	});
 });

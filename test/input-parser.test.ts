@@ -46,6 +46,13 @@ describe("InputParser — sequence classification", () => {
 		expect(events).toEqual([]);
 	});
 
+	it("drops DECXCPR cursor-position responses (CSI row;col R)", () => {
+		const { events, feed } = makeParser();
+		feed("\x1b[12;40R");
+		feed("\x1b[1;1R");
+		expect(events).toEqual([]);
+	});
+
 	it("ignores an unrecognized control byte (< 32, no binding)", () => {
 		const { events, feed } = makeParser();
 		feed("\x00");
