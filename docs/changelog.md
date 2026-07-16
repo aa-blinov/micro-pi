@@ -3,6 +3,17 @@
 All notable user-facing changes to cast, newest first.
 
 ## 0.6.7
+## 0.6.8
+
+### Changed
+
+- **Hashline anchor format switched from `<LINE>:<HASH>` to `<LINE>:<LOCAL>:<CHUNK>`** for `read`/`edit`/`grep` output. The three-part form gives finer-grained movement detection when lines shift around, and the stale-anchor error path now returns a fresh anchor instead of failing blind. Anchors emitted under 0.6.7 are no longer valid; re-read the file to get anchors in the new format.
+
+### Fixed
+
+- `parseAnchor` now ignores any content past the `→` separator, so pasting a `read` gutter line (with its arrow and trailing content) into `edit` produces the correct anchor instead of a malformed one.
+
+
 
 ### Changed
 
