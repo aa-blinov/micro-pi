@@ -2,7 +2,26 @@
 
 All notable user-facing changes to cast, newest first.
 
-## 0.6.6
+## 0.6.7
+
+### Changed
+
+- **`read` output now carries hashline anchors** in the form `<LINE>:<HASH>→content` so a line reference made in one assistant turn still points at the same line after a re-read; `edit` accepts `replace` / `insert_after` / `write` operations keyed by those anchors and validates the whole batch atomically against the current file (stale anchors return fresh anchors instead of failing blind).
+
+### Internal
+
+- Per-line hash computation for `read`/`edit`/`grep` is now backed by an in-memory LRU (default 20 entries, ~4 MB worst case). Entries are re-validated against file `mtime` on every access, so cache hits silently invalidate after external edits.
+- `Lru` exposes a `size` getter so the test-only `hashlineCacheSize` no longer reaches into a private field.
+
+
+
+### Internal
+
+- `read`/`edit` now emit and accept hashline anchors (`<LINE>:<HASH>→…`) so line references in the conversation survive re-reads; edits are validated atomically against the file as it stands at edit time
+- In-memory LRU (default 20 entries, ~4 MB worst case) caches per-line hashes for `read`/`edit`/`grep`; entries are re-validated against file `mtime`, so cache hits silently invalidate on external edits
+- Added a public `size` getter on the LRU so `hashlineCacheSize` no longer reaches into a private field
+
+
 
 ### Changed
 

@@ -52,6 +52,10 @@ class Lru {
 		return e.value;
 	}
 
+	get size(): number {
+		return this.map.size;
+	}
+
 	put(key: string, value: CachedFile): void {
 		const existing = this.map.get(key);
 		if (existing) {
@@ -158,5 +162,5 @@ export function clearHashlineCache(): void {
 
 /** Test-only: how many entries the LRU currently holds. */
 export function hashlineCacheSize(): number {
-	return cache["map"].size;
+	return cache.size;
 }
