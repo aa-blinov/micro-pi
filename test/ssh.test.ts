@@ -6,7 +6,7 @@ import type { AppConfig } from "../src/core/config.ts";
 import { loadSshConfig, resolveSshHosts, validateKeyPermissions } from "../src/core/ssh.ts";
 import { createToolExecutor, getToolDefinitions } from "../src/core/tools.ts";
 
-const TEST_DIR = join(import.meta.dirname, "__test_tmp__");
+const TEST_DIR = join(import.meta.dirname, "__test_tmp__", "ssh");
 
 const mockConfig: AppConfig = {
 	baseURL: "http://localhost",

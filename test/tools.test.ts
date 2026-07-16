@@ -6,7 +6,7 @@ import { PLAN_TOOL_NAMES, type PlanState } from "../src/core/plan.ts";
 import { isPermissionError, withAccessNote } from "../src/core/tools/search.ts";
 import { createToolExecutor, getToolDefinitions } from "../src/core/tools.ts";
 
-const TEST_DIR = join(import.meta.dirname, "__test_tmp__");
+const TEST_DIR = join(import.meta.dirname, "__test_tmp__", "tools");
 
 const mockConfig: AppConfig = {
 	baseURL: "http://localhost",

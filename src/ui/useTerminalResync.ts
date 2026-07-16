@@ -46,13 +46,25 @@ import { isStreamingActive, isTerminalSuspended } from "../core/stdin-manager.ts
  *    Either signal triggers the guard: cursor/erase writes are swallowed
  *    until the user scrolls back to the bottom.
  *
- * The resync itself (clear + \x1b[3J scrollback wipe + replay) is deferred
- * while streaming is active (isStreamingActive, set by useAgentSession),
- * while a child process owns the terminal (suspendAndRun), or while the
- * user is scrolled up — clearing at any of those moments would erase what
- * they're looking at. It fires once conditions clear. No-op resize events
- * (SIGWINCH without an actual size change, e.g. tmux pane focus) are
- * ignored entirely.
+ * The resync itself has two tiers:
+ *
+ * - Light (resize, focus-regain): \x1b[2J (clear visible screen) + \x1b[H
+ *   (cursor home) + <Static> replay. No \x1b[3J scrollback wipe — the
+ *   scrollback content is still valid (reflowed by the terminal on resize,
+ *   or untouched on focus), so wiping it would destroy the user's scroll
+ *   position for no reason and cause a visible flash while the full history
+ *   replays. The banner stays in scrollback from the initial print.
+ *
+ * - Full (theme change, streaming desync): \x1b[2J + \x1b[3J (wipe
+ *   scrollback) + banner reprint + <Static> replay. The old gradient banner
+ *   must be wiped because the new one has different colors.
+ *
+ * Both tiers are deferred while streaming is active (isStreamingActive, set
+ * by useAgentSession), while a child process owns the terminal
+ * (suspendAndRun), or while the user is scrolled up — clearing at any of
+ * those moments would erase what they're looking at. It fires once
+ * conditions clear. No-op resize events (SIGWINCH without an actual size
+ * change, e.g. tmux pane focus) are ignored entirely.
  */
 /**
  * Decides whether a streaming turn ended in a state that needs one cleanup
@@ -106,7 +118,7 @@ export function createFocusReturnTracker(): { onData(data: string): boolean } {
 	};
 }
 
-export function useTerminalResync(onResync: () => void): void {
+export function useTerminalResync(onResync: (preserveScrollback: boolean) => void): void {
 	useEffect(() => {
 		const out = process.stdout;
 		if (!out.isTTY) return;
@@ -119,10 +131,10 @@ export function useTerminalResync(onResync: () => void): void {
 		// disabled during streaming and terminal suspension — so right after
 		// either ends the flag is stale. A resync must not trust a stale
 		// "not scrolled": the user may have scrolled up with the trackpad
-		// mid-generation, and clearing (+ \x1b[3J scrollback wipe) in the
-		// ~200-700ms window before the first fresh poll would yank them to
-		// the top of the replayed history. Set stale while streaming/suspended;
-		// cleared by every completed poll (which only runs outside both).
+		// mid-generation, and clearing in the ~200-700ms window before the
+		// first fresh poll would yank them to the top of the replayed history.
+		// Set stale while streaming/suspended; cleared by every completed poll
+		// (which only runs outside both).
 		let scrollUpStale = false;
 
 		// --- resize: debounce a settle, then hard reset ---
@@ -147,20 +159,30 @@ export function useTerminalResync(onResync: () => void): void {
 		// polls, so staleness can't clear there — don't let it block forever.
 		const scrollKnown = () => !scrollUpStale || !process.stdin.isTTY;
 
-		const doResync = () => {
-			// The clear below includes \x1b[3J (wipe scrollback) — running it
-			// while the user is scrolled up reading history yanks them to the
-			// bottom and destroys what they were reading. Defer until they
-			// return to the bottom (scrollUp is refreshed by the DECXCPR poll),
-			// and until the poll has actually run since streaming/suspension
-			// ended — a stale "not scrolled" is not a green light.
+		// Full clear: wipes scrollback (\x1b[3J) so the old banner disappears
+		// and the fresh one is the only copy. Used by theme changes.
+		const doFullResync = () => {
 			if (isStreamingActive() || isTerminalSuspended() || scrollUp || !scrollKnown()) {
 				resyncPending = true;
 				return;
 			}
 			resyncPending = false;
 			origWrite("\x1b[2J\x1b[3J\x1b[H");
-			onResync();
+			onResync(false);
+		};
+		// Light clear: only the visible screen (\x1b[2J), no scrollback wipe.
+		// Used by resize and focus-regain — the scrollback content is still
+		// valid (reflowed by the terminal on resize, or untouched on focus),
+		// so wiping it would destroy the user's scroll position for no reason
+		// and cause a visible flash while the full history replays.
+		const doLightResync = () => {
+			if (isStreamingActive() || isTerminalSuspended() || scrollUp || !scrollKnown()) {
+				resyncPending = true;
+				return;
+			}
+			resyncPending = false;
+			origWrite("\x1b[2J\x1b[H");
+			onResync(true);
 		};
 
 		const onResize = () => {
@@ -169,7 +191,7 @@ export function useTerminalResync(onResync: () => void): void {
 			lastCols = out.columns;
 			lastRows = out.rows;
 			if (resizeTimer) clearTimeout(resizeTimer);
-			resizeTimer = setTimeout(doResync, 80);
+			resizeTimer = setTimeout(doLightResync, 80);
 		};
 		out.on("resize", onResize);
 
@@ -191,13 +213,15 @@ export function useTerminalResync(onResync: () => void): void {
 			// the report; doResync's own guards defer it during streaming/suspend/scroll.
 			if (!focusTracker.onData(chunk.toString("latin1"))) return;
 			if (focusTimer) clearTimeout(focusTimer);
-			focusTimer = setTimeout(doResync, 80);
+			focusTimer = setTimeout(doLightResync, 80);
 		};
 		if (process.stdin.isTTY) process.stdin.on("data", onFocusData);
 
 		// Flush a deferred resync once streaming ends / terminal is released /
 		// the user scrolls back to the bottom — but only after a fresh poll has
-		// confirmed the scroll state (see scrollUpStale above).
+		// confirmed the scroll state (see scrollUpStale above). Uses the full
+		// path (doFullResync) because a streaming desync may need the banner
+		// reprinted after the live region stacked above it.
 		const checkDeferredResync = () => {
 			const streamingNow = isStreamingActive();
 			// Streaming just ended after the live area outgrew the viewport at some
@@ -212,7 +236,7 @@ export function useTerminalResync(onResync: () => void): void {
 			}
 			if (resyncPending && !scrollUp && scrollKnown()) {
 				if (resizeTimer) clearTimeout(resizeTimer);
-				resizeTimer = setTimeout(doResync, 80);
+				resizeTimer = setTimeout(doFullResync, 80);
 				resyncPending = false;
 			}
 		};
@@ -305,6 +329,11 @@ export function useTerminalResync(onResync: () => void): void {
 			function onStdin(chunk: Buffer) {
 				if (!active) return;
 				buf += chunk.toString();
+				// The DECXCPR response (\x1b[row;colR) also reaches the Composer's
+				// StdinBuffer via its own stdin listener on the same stream. That's
+				// safe: StdinBuffer parses it as a complete CSI sequence and
+				// InputParser explicitly drops it (see input-parser.ts). We process
+				// it independently here — no coordination needed.
 				const match = DECXCPR_RE.exec(buf);
 				if (match) {
 					const row = Number(match[1]);

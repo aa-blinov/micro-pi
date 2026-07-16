@@ -62,19 +62,23 @@ export function App(props: AppProps): JSX.Element {
 		noticeDurationRef.current = duration ?? 6000;
 	}, []);
 
-	// Resize/reflow, terminal-scroll, and focus-return desyncs all need the same
-	// hard reset (clear + full <Static> replay) — see useTerminalResync for why.
-	// Reprint the banner first (it lives outside <Static>, so the replay alone
-	// wouldn't restore it), then bump repaintKey to replay the transcript below
-	// it — same ordering as onThemeChange.
+	// Resize/reflow, terminal-scroll, and focus-return desyncs all need a
+	// screen clear + full <Static> replay — see useTerminalResync for why.
+	// Two tiers: resize and focus-regain use a light clear (\x1b[2J only,
+	// no scrollback wipe) so the user's scroll position survives; theme
+	// changes do a full clear (\x1b[2J\x1b[3J) because the banner gradient
+	// changed and the old copy in scrollback must disappear.
 	const [repaintKey, setRepaintKey] = useState(0);
 	useTerminalResync(
-		useCallback(() => {
-			void (async () => {
-				await onRepaintBanner?.();
-				setRepaintKey((k) => k + 1);
-			})();
-		}, [onRepaintBanner]),
+		useCallback(
+			(preserveScrollback: boolean) => {
+				void (async () => {
+					if (!preserveScrollback) await onRepaintBanner?.();
+					setRepaintKey((k) => k + 1);
+				})();
+			},
+			[onRepaintBanner],
+		),
 	);
 
 	// Pickers used after mount (slash commands, confirmBash) render their

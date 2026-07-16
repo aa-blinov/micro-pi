@@ -1,5 +1,6 @@
 import { Box, Static, Text } from "ink";
 import { type JSX, useMemo } from "react";
+import { displayWidth } from "./display-width.ts";
 import { Spinner } from "./Spinner.tsx";
 import { theme } from "./themes/index.ts";
 import type { ChatMessage, RetryInfo, StreamBlock, StreamingState, ToolCallEntry } from "./useAgentSession.ts";
@@ -22,15 +23,26 @@ interface ChatLogProps {
  * Line-level churn between two blocks of text. Uses an LCS so the counts
  * reflect the lines that actually changed, not the whole replaced block — a
  * one-line tweak inside a 6-line oldText/newText reads as "+1 -1", not "+6 -6".
- * Falls back to a block count for pathologically large edits so the O(m·n) DP
- * can't stall the render.
+ * Falls back to a Set-based comparison for pathologically large edits so the
+ * O(m·n) DP can't stall the render.
  */
 export function lineChurn(oldText: string, newText: string): { added: number; removed: number } {
 	const a = oldText.split("\n");
 	const b = newText.split("\n");
 	const m = a.length;
 	const n = b.length;
-	if (m * n > 250_000) return { removed: m, added: n };
+	if (m * n > 250_000) {
+		// Pathological size — O(m·n) DP would stall the render. Fall back to
+		// Set-based line comparison: O(m+n), not exact LCS but correctly
+		// reports {0, 0} for identical text (the old block-count fallback
+		// returned {m, n} even when nothing changed).
+		const bSet = new Set(b);
+		const aSet = new Set(a);
+		return {
+			removed: a.filter((l) => !bSet.has(l)).length,
+			added: b.filter((l) => !aSet.has(l)).length,
+		};
+	}
 	const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
 	for (let i = m - 1; i >= 0; i--) {
 		for (let j = n - 1; j >= 0; j--) {
@@ -218,31 +230,6 @@ function BlockView({ block, truncated }: { block: StreamBlock; truncated?: boole
 		);
 	}
 	return <ToolCallView call={block.call} />;
-}
-
-/**
- * Approximate terminal column width of one logical line: CJK and emoji code
- * points occupy two cells. Counting UTF-16 units instead (the old behavior)
- * undercounted wrapped rows for CJK/emoji-heavy streams, which let the live
- * region overrun the viewport — the exact frame-stacking failure the clamp
- * exists to prevent.
- */
-function displayWidth(line: string): number {
-	let w = 0;
-	for (const ch of line) {
-		const cp = ch.codePointAt(0) ?? 0;
-		const wide =
-			(cp >= 0x1100 && cp <= 0x115f) || // Hangul Jamo
-			(cp >= 0x2e80 && cp <= 0xa4cf) || // CJK radicals … Yi
-			(cp >= 0xac00 && cp <= 0xd7a3) || // Hangul syllables
-			(cp >= 0xf900 && cp <= 0xfaff) || // CJK compatibility ideographs
-			(cp >= 0xfe30 && cp <= 0xfe4f) || // CJK compatibility forms
-			(cp >= 0xff00 && cp <= 0xff60) || // fullwidth forms
-			(cp >= 0xffe0 && cp <= 0xffe6) ||
-			cp >= 0x1f300; // emoji & symbols (approximation)
-		w += wide ? 2 : 1;
-	}
-	return w;
 }
 
 /**

@@ -73,6 +73,18 @@ export class InputParser {
 			return;
 		}
 
+		// DECXCPR cursor-position response (\x1b[row;colR), emitted by the
+		// terminal in reply to useTerminalResync's periodic \x1b[6n query. The
+		// poll's own stdin listener processes it independently, but the same
+		// chunk reaches the Composer's StdinBuffer too. StdinBuffer correctly
+		// parses it as a complete CSI sequence (R is in 0x40..0x7e); this
+		// explicit drop makes the intent clear and prevents a future keybinding
+		// from accidentally matching it.
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: DECXCPR response
+		if (/^\x1b\[\d+;\d+R$/.test(sequence)) {
+			return;
+		}
+
 		// Check for Kitty protocol activation hints
 		if (sequence.includes(":3u") || sequence.includes(":3~")) {
 			setKittyProtocolActive(true);
