@@ -542,6 +542,14 @@ export async function streamAndCollect(
 		}
 	}
 
+	// When valid structured tool_calls are present but content also contains the
+	// duplicate Hermes XML markup (some providers like xiaomi mimo emit both), strip
+	// the XML so it doesn't leak into the transcript. Only strip if we see the
+	// explicit <tool_call> marker to avoid accidentally removing user-provided XML.
+	if (toolCalls?.length && !malformed && content.includes("<tool_call>")) {
+		content = stripHermesToolCalls(content);
+	}
+
 	return { content, thinking, toolCalls, finishReason, usage, generationMs, interrupted, disconnected };
 }
 

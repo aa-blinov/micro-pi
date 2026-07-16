@@ -173,6 +173,17 @@ interface UseAgentSessionParams {
 }
 
 /**
+ * Strip Hermes-style XML tool-call blocks from streaming content.
+ * Only applies when the content also has valid structured tool_calls.
+ */
+function stripStreamingXmlToolCalls(text: string): string {
+	return text
+		.replace(/<function=[^>\s]+\s*>[\s\S]*?<\/function>/g, "")
+		.replace(/<\/?(?:tool_call|:invoke|function_call)>/g, "")
+		.trim();
+}
+
+/**
  * Flatten a raw message's content down to display text.
  *
  * Content starts as a plain string, but applyCacheControl (core/llm.ts)
@@ -532,13 +543,30 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 								}
 								updateStreaming((s) => (s ? { blocks: appendText(s.blocks, "thinking", event.text) } : s));
 								break;
-							case "token":
+							case "token": {
 								if (clearRetryOnNextChunk.current) {
 									clearRetryOnNextChunk.current = false;
 									setRetry(null);
 								}
-								updateStreaming((s) => (s ? { blocks: appendText(s.blocks, "content", event.text) } : s));
+								updateStreaming((s) => {
+									if (!s) return s;
+									const appended = appendText(s.blocks, "content", event.text);
+									// Strip duplicate Hermes XML tool-call blocks as they accumulate.
+									// Only strip if we see <tool_call> to avoid accidentally removing
+									// user-provided XML that happens to contain <function=.
+									const last = appended[appended.length - 1];
+									if (last && last.kind === "content" && last.text.includes("<tool_call>")) {
+										const stripped = stripStreamingXmlToolCalls(last.text);
+										if (stripped !== last.text) {
+											return {
+												blocks: [...appended.slice(0, -1), { kind: "content" as const, text: stripped }],
+											};
+										}
+									}
+									return { blocks: appended };
+								});
 								break;
+							}
 							case "tool_start":
 								toolNamesByIdRef.current.set(event.id, event.name);
 								updateStreaming(
