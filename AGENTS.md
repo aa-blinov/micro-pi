@@ -73,10 +73,10 @@ When the user says "make a release", follow these steps in order:
 
 Pre-1.0 (current): minor bumps feel like patches to users. Use minor for features worth advertising, patch for everything else.
 
-### 2. Update CHANGELOG.md
+### 2. Update docs/changelog.md
 
-- Add a new `## vX.Y.Z` section at the top.
-- Group changes under `### Features`, `### Fixes`, `### Internal` as applicable.
+- Add a new `## X.Y.Z` section at the top (no `v` prefix — matching existing style).
+- Group changes under `### Added`, `### Fixed`, `### Changed`, `### Internal` as applicable.
 - Summarize user-visible impact, not commit messages.
 
 ### 3. Pre-release checks
@@ -90,7 +90,7 @@ All three must pass. If any fails, fix first.
 ### 4. Commit the release
 
 ```
-git add package.json package-lock.json CHANGELOG.md
+git add package.json package-lock.json docs/changelog.md
 git commit -m "chore: bump version to X.Y.Z"
 ```
 
@@ -105,10 +105,23 @@ git push origin master && git push origin vX.Y.Z
 
 Tag push triggers the release workflow on CI.
 
-### 6. Verify
+### 6. Verify release
 
-- Confirm the tag appears on GitHub: `git ls-remote --tags origin vX.Y.Z`
-- Confirm CI release workflow succeeded.
+```bash
+# Confirm tag on remote
+git ls-remote --tags origin vX.Y.Z
+
+# Check CI workflow status
+gh run list --workflow=release.yml --limit=1
+
+# If workflow failed, inspect logs
+gh run view <run-id> --log-failed
+
+# Confirm the GitHub release was created
+gh release view vX.Y.Z
+```
+
+If the workflow is still running, wait and re-check. Do not declare the release done until CI passes.
 
 ## Dependency Security
 
