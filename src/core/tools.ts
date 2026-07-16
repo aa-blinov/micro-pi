@@ -76,6 +76,7 @@ export function getToolDefinitions(
 					"shown to you as an image in the next message; only works if the model supports vision). " +
 					"Output is truncated to 2000 lines or 64KB. Use offset/limit for large files. " +
 					"Images larger than 5MB are rejected. " +
+					"Each line is prefixed with `<LINE>:<HASH>→content` (a 6-hex hashline anchor) so it can be passed directly to `edit`. " +
 					"You already have the contents of every file you read earlier in this session — do NOT read the " +
 					"same path again unless it has changed since (e.g. you just edited it); re-use the earlier result " +
 					"instead. Reading the same unchanged file repeatedly is treated as a doom loop and blocked.",
@@ -112,30 +113,49 @@ export function getToolDefinitions(
 			function: {
 				name: "edit",
 				description:
-					"Edit a single file using exact text replacement. Every edits[].oldText must match a unique, " +
-					"non-overlapping region of the original file. If two changes touch the same block or nearby lines, " +
-					"merge them into one edit instead of emitting overlapping edits.",
+					"Edit a file using hashline anchors from a recent `read` or `grep`. " +
+					"Each op targets a line (or a line range) by anchor instead of pasting text. " +
+					"Ops: 'replace' (one line or `anchor`+`end_anchor` range; the range is INCLUSIVE on both ends), " +
+					"'insert_after' (add new lines after an anchor), 'write' (replace the whole file). " +
+					"Multiple ops in one call are validated against the pre-edit file and applied atomically. " +
+					"Stale-anchor errors include fresh anchors so a re-read is usually unnecessary.",
 				parameters: {
 					type: "object",
 					properties: {
 						path: { type: "string", description: "Path to the file to edit (relative or absolute)" },
-						edits: {
+						ops: {
 							type: "array",
 							items: {
 								type: "object",
 								properties: {
-									oldText: {
+									op: {
 										type: "string",
-										description: "Exact text for one targeted replacement. Must be unique in the file.",
+										enum: ["replace", "insert_after", "write"],
+										description: "Kind of edit operation.",
 									},
-									newText: { type: "string", description: "Replacement text for this targeted edit." },
+									anchor: {
+										type: "string",
+										description:
+											"For replace/insert_after: a hashline anchor of the form `<line>:<hash>` (or `<line>:<hash>:<secondary>` if the line is ambiguous).",
+									},
+									end_anchor: {
+										type: "string",
+										description:
+											"Optional second anchor for `replace`; the range from `anchor` to `end_anchor` (inclusive) is replaced by `content`.",
+									},
+									content: {
+										type: "string",
+										description:
+											"New text to write at the target range / after the anchor / as the new file content. Newlines split it into multiple lines.",
+									},
 								},
-								required: ["oldText", "newText"],
+								required: ["op", "content"],
 							},
-							description: "One or more targeted replacements. Each is matched against the original file.",
+							description:
+								"One or more anchor-based edit operations, applied atomically against the pre-edit file.",
 						},
 					},
-					required: ["path", "edits"],
+					required: ["path", "ops"],
 				},
 			},
 		},

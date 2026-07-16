@@ -174,7 +174,13 @@ describe("compactMessages", () => {
 					{
 						id: "c2",
 						type: "function",
-						function: { name: "edit", arguments: JSON.stringify({ path: "b.ts", oldText: "x", newText: "y" }) },
+						function: {
+							name: "edit",
+							arguments: JSON.stringify({
+								path: "b.ts",
+								ops: [{ op: "replace", anchor: "1:abc", content: "y" }],
+							}),
+						},
 					},
 				],
 			} as unknown as Message,
@@ -281,7 +287,10 @@ describe("compactMessages", () => {
 						type: "function",
 						function: {
 							name: "edit",
-							arguments: JSON.stringify({ path: "other.ts", oldText: "a", newText: "b" }),
+							arguments: JSON.stringify({
+								path: "other.ts",
+								ops: [{ op: "replace", anchor: "1:abc", content: "b" }],
+							}),
 						},
 					},
 				],

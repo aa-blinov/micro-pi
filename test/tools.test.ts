@@ -169,22 +169,25 @@ describe("bash", () => {
 // ============================================================================
 
 describe("read", () => {
-	it("reads a file with line numbers", async () => {
+	it("reads a file with hashline anchors", async () => {
 		writeFileSync(join(TEST_DIR, "test.txt"), "line1\nline2\nline3\n");
 		const exec = createToolExecutor(TEST_DIR, mockConfig);
 		const result = await exec("read", { path: "test.txt" });
-		expect(result.content).toContain("1→line1");
-		expect(result.content).toContain("2→line2");
-		expect(result.content).toContain("3→line3");
+		// Each line is prefixed with `<LINE>:<HASH>→content`, with an
+		// optional secondary `:HH` slice when two adjacent lines share
+		// the same primary hash. The regex below accepts both forms.
+		expect(result.content).toMatch(/\b1:[0-9a-f]{6}(?::[0-9a-f]{3})?→line1\b/);
+		expect(result.content).toMatch(/\b2:[0-9a-f]{6}(?::[0-9a-f]{3})?→line2\b/);
+		expect(result.content).toMatch(/\b3:[0-9a-f]{6}(?::[0-9a-f]{3})?→line3\b/);
 	});
 
 	it("supports offset and limit", async () => {
 		writeFileSync(join(TEST_DIR, "test.txt"), "a\nb\nc\nd\ne\n");
 		const exec = createToolExecutor(TEST_DIR, mockConfig);
 		const result = await exec("read", { path: "test.txt", offset: 2, limit: 2 });
-		expect(result.content).toContain("2→b");
-		expect(result.content).toContain("3→c");
-		expect(result.content).not.toContain("4→d");
+		expect(result.content).toMatch(/\b2:[0-9a-f]{6}(?::[0-9a-f]{3})?→b\b/);
+		expect(result.content).toMatch(/\b3:[0-9a-f]{6}(?::[0-9a-f]{3})?→c\b/);
+		expect(result.content).not.toMatch(/\b4:[0-9a-f]{6}(?::[0-9a-f]{3})?→d/);
 	});
 
 	it("errors on missing file", async () => {
@@ -196,13 +199,14 @@ describe("read", () => {
 	it("uses a non-tab separator so a tab-indented line's leading tabs stay unambiguous", async () => {
 		// Regression test: a tab separator here would put a gutter tab directly
 		// ahead of the file's own leading tabs with nothing to tell them apart —
-		// e.g. "2" + "\t" + "\t\tconst x" reads back as an indistinguishable run
-		// of 3 tabs, so a model reconstructing oldText for `edit` from this
-		// output can't tell how many of those tabs are real indentation.
+		// so a model reconstructing line content from this output can't tell
+		// how many of those tabs are real indentation. The hashline gutter
+		// already includes a `→` (U+2192) separator that can never appear as
+		// leading whitespace in source, so the same trick still works.
 		writeFileSync(join(TEST_DIR, "tabs.txt"), "if (x) {\n\t\tconst y = 1;\n}\n");
 		const exec = createToolExecutor(TEST_DIR, mockConfig);
 		const result = await exec("read", { path: "tabs.txt" });
-		expect(result.content).toContain("2→\t\tconst y = 1;");
+		expect(result.content).toMatch(/\b2:[0-9a-f]{6}(?::[0-9a-f]{3})?→\t\tconst y = 1;/);
 		expect(result.content).not.toContain("\t\t\tconst y = 1;");
 	});
 
@@ -256,96 +260,209 @@ describe("write", () => {
 // edit
 // ============================================================================
 
+/**
+ * Pull the hashline anchor for a given 1-based line number out of a
+ * previous `read` call's output. Test-only helper — the production path
+ * never re-parses the read result; the model just echoes the anchor it
+ * saw. We only do this here so the tests don't have to embed hand-
+ * computed SHA-1 hexes.
+ */
+function anchorForLine(readContent: string, line: number): string {
+	const re = new RegExp(`(?:^|\\n)${line}:([0-9a-f]{6}(?::[0-9a-f]{3})?)\\u2192`);
+	const match = re.exec(readContent);
+	if (!match) throw new Error(`No anchor for line ${line} in read output:\n${readContent}`);
+	return `${line}:${match[1]}`;
+}
+
 describe("edit", () => {
-	it("replaces text in a file", async () => {
+	it("replaces a single line by anchor", async () => {
 		writeFileSync(join(TEST_DIR, "edit.txt"), "hello world\nfoo bar\n");
 		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const before = await exec("read", { path: "edit.txt" });
 		const result = await exec("edit", {
 			path: "edit.txt",
-			edits: [{ oldText: "hello world", newText: "goodbye world" }],
+			ops: [{ op: "replace", anchor: anchorForLine(before.content, 1), content: "goodbye world" }],
 		});
 		expect(result.isError).toBeFalsy();
-
-		const readResult = await exec("read", { path: "edit.txt" });
-		expect(readResult.content).toContain("goodbye world");
+		const after = readFileSync(join(TEST_DIR, "edit.txt"), "utf-8");
+		expect(after).toBe("goodbye world\nfoo bar\n");
 	});
 
-	it("applies multiple edits", async () => {
-		writeFileSync(join(TEST_DIR, "multi.txt"), "aaa bbb ccc\n");
+	it("replaces a line range using anchor + end_anchor", async () => {
+		writeFileSync(join(TEST_DIR, "range.txt"), "alpha\nbeta\ngamma\ndelta\n");
 		const exec = createToolExecutor(TEST_DIR, mockConfig);
-		await exec("edit", {
-			path: "multi.txt",
-			edits: [
-				{ oldText: "aaa", newText: "111" },
-				{ oldText: "ccc", newText: "333" },
-			],
-		});
-		const readResult = await exec("read", { path: "multi.txt" });
-		expect(readResult.content).toContain("111");
-		expect(readResult.content).toContain("333");
-	});
-
-	it("errors on non-unique oldText", async () => {
-		writeFileSync(join(TEST_DIR, "dup.txt"), "same same same\n");
-		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const before = await exec("read", { path: "range.txt" });
 		const result = await exec("edit", {
-			path: "dup.txt",
-			edits: [{ oldText: "same", newText: "different" }],
-		});
-		expect(result.isError).toBe(true);
-	});
-
-	it("errors when oldText not found", async () => {
-		writeFileSync(join(TEST_DIR, "nope.txt"), "hello\n");
-		const exec = createToolExecutor(TEST_DIR, mockConfig);
-		const result = await exec("edit", {
-			path: "nope.txt",
-			edits: [{ oldText: "nonexistent", newText: "x" }],
-		});
-		expect(result.isError).toBe(true);
-	});
-
-	it("matches uniqueness against the original file, not edits applied so far", async () => {
-		// A replacement can introduce a *new* occurrence of a later edit's
-		// oldText that wasn't there originally — sequential matching against
-		// the progressively-edited string used to make that later edit
-		// spuriously fail as "not unique", even though oldText was unique in
-		// the file the model actually read.
-		writeFileSync(join(TEST_DIR, "chain.txt"), "aaa\nccc\n");
-		const exec = createToolExecutor(TEST_DIR, mockConfig);
-		const result = await exec("edit", {
-			path: "chain.txt",
-			edits: [
-				{ oldText: "aaa", newText: "ccc" }, // introduces a 2nd "ccc"
-				{ oldText: "ccc", newText: "ddd" }, // unique in the original
+			path: "range.txt",
+			ops: [
+				{
+					op: "replace",
+					anchor: anchorForLine(before.content, 2),
+					end_anchor: anchorForLine(before.content, 3),
+					content: "BETA-GAMMA",
+				},
 			],
 		});
 		expect(result.isError).toBeFalsy();
-		expect(readFileSync(join(TEST_DIR, "chain.txt"), "utf-8")).toBe("ccc\nddd\n");
+		const after = readFileSync(join(TEST_DIR, "range.txt"), "utf-8");
+		expect(after).toBe("alpha\nBETA-GAMMA\ndelta\n");
 	});
 
-	it("rejects two edits whose oldText overlaps in the original file", async () => {
-		writeFileSync(join(TEST_DIR, "overlap.txt"), "hello world\n");
+	it("inserts new lines after an anchor", async () => {
+		writeFileSync(join(TEST_DIR, "insert.txt"), "first\nthird\n");
 		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const before = await exec("read", { path: "insert.txt" });
+		const result = await exec("edit", {
+			path: "insert.txt",
+			ops: [
+				{
+					op: "insert_after",
+					anchor: anchorForLine(before.content, 1),
+					content: "second",
+				},
+			],
+		});
+		expect(result.isError).toBeFalsy();
+		const after = readFileSync(join(TEST_DIR, "insert.txt"), "utf-8");
+		expect(after).toBe("first\nsecond\nthird\n");
+	});
+
+	it("replaces the whole file via a write op", async () => {
+		writeFileSync(join(TEST_DIR, "write.txt"), "old content\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("edit", {
+			path: "write.txt",
+			ops: [{ op: "write", content: "entirely new\ncontent here\n" }],
+		});
+		expect(result.isError).toBeFalsy();
+		expect(readFileSync(join(TEST_DIR, "write.txt"), "utf-8")).toBe("entirely new\ncontent here\n");
+	});
+
+	it("reports stale anchors with a fresh-anchor snippet instead of a bare miss", async () => {
+		// Simulate a stale read: read the file, then mutate it externally,
+		// then try to edit using the anchor from the pre-mutation read. The
+		// tool must reject the op and return fresh anchors the model can
+		// paste back in — no manual re-read required.
+		writeFileSync(join(TEST_DIR, "drift.txt"), "alpha\nbeta\ngamma\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const before = await exec("read", { path: "drift.txt" });
+		const stale = anchorForLine(before.content, 2);
+		writeFileSync(join(TEST_DIR, "drift.txt"), "alpha\nBETA\ngamma\n");
+
+		const result = await exec("edit", {
+			path: "drift.txt",
+			ops: [{ op: "replace", anchor: stale, content: "replacement" }],
+		});
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("stale");
+		// Fresh anchors for the post-mutation file must be in the error
+		// message so the model can retry without re-`read`ing.
+		expect(result.content).toMatch(/\b2:[0-9a-f]{6}(?::[0-9a-f]{3})?→BETA\b/);
+		// File must not be partially mutated by the rejected op.
+		expect(readFileSync(join(TEST_DIR, "drift.txt"), "utf-8")).toBe("alpha\nBETA\ngamma\n");
+	});
+
+	it("rejects an anchor past the end of the file", async () => {
+		writeFileSync(join(TEST_DIR, "short.txt"), "only line\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("edit", {
+			path: "short.txt",
+			ops: [{ op: "replace", anchor: "99:deadbe", content: "x" }],
+		});
+		expect(result.isError).toBe(true);
+		expect(result.content).toMatch(/past the end/i);
+	});
+
+	it("rejects the whole batch when one anchor is stale", async () => {
+		// Two ops in one call. The first is valid; the second uses an
+		// anchor from a previous read of a now-different file. The valid
+		// op must not be silently applied.
+		writeFileSync(join(TEST_DIR, "batch.txt"), "alpha\nbeta\ngamma\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const before = await exec("read", { path: "batch.txt" });
+		const validAnchor = anchorForLine(before.content, 1);
+		const staleAnchor = anchorForLine(before.content, 2);
+		writeFileSync(join(TEST_DIR, "batch.txt"), "alpha\nBETA\ngamma\n");
+
+		const result = await exec("edit", {
+			path: "batch.txt",
+			ops: [
+				{ op: "replace", anchor: validAnchor, content: "ALPHA" },
+				{ op: "replace", anchor: staleAnchor, content: "REPLACED" },
+			],
+		});
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("stale");
+		// Atomic rejection: line 1 must still be the original.
+		expect(readFileSync(join(TEST_DIR, "batch.txt"), "utf-8")).toBe("alpha\nBETA\ngamma\n");
+	});
+
+	it("rejects two overlapping replace ranges", async () => {
+		writeFileSync(join(TEST_DIR, "overlap.txt"), "a\nb\nc\nd\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const before = await exec("read", { path: "overlap.txt" });
 		const result = await exec("edit", {
 			path: "overlap.txt",
-			edits: [
-				{ oldText: "hello world", newText: "a" },
-				{ oldText: "world", newText: "b" },
+			ops: [
+				{
+					op: "replace",
+					anchor: anchorForLine(before.content, 1),
+					end_anchor: anchorForLine(before.content, 3),
+					content: "X",
+				},
+				{
+					op: "replace",
+					anchor: anchorForLine(before.content, 3),
+					end_anchor: anchorForLine(before.content, 4),
+					content: "Y",
+				},
 			],
 		});
 		expect(result.isError).toBe(true);
 		expect(result.content.toLowerCase()).toContain("overlap");
+		expect(readFileSync(join(TEST_DIR, "overlap.txt"), "utf-8")).toBe("a\nb\nc\nd\n");
+	});
 
-		// The file must be untouched — an overlap is rejected atomically,
-		// not partially applied.
-		const readResult = await exec("read", { path: "overlap.txt" });
-		expect(readResult.content).toContain("hello world");
+	it("rejects the old edits[] shape with a clear error", async () => {
+		// The shim was dropped: the only accepted shape is ops[] with anchors.
+		// Models trained on other harnesses that still send oldText/newText
+		// get a pointed error so they can reissue with anchors.
+		writeFileSync(join(TEST_DIR, "oldshape.txt"), "hello world\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("edit", {
+			path: "oldshape.txt",
+			edits: [{ oldText: "hello world", newText: "goodbye world" }],
+		});
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("ops[]");
+		expect(readFileSync(join(TEST_DIR, "oldshape.txt"), "utf-8")).toBe("hello world\n");
+	});
+
+	it("rejects unknown op kinds", async () => {
+		writeFileSync(join(TEST_DIR, "badop.txt"), "x\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("edit", {
+			path: "badop.txt",
+			ops: [{ op: "splode", anchor: "1:deadbe", content: "y" }],
+		});
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("Unknown edit op");
+	});
+
+	it("rejects replace without an anchor", async () => {
+		writeFileSync(join(TEST_DIR, "noanchor.txt"), "x\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("edit", {
+			path: "noanchor.txt",
+			ops: [{ op: "replace", content: "y" }],
+		});
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("anchor");
 	});
 
 	it("rejects empty path", async () => {
 		const exec = createToolExecutor(TEST_DIR, mockConfig);
-		const result = await exec("edit", { path: "", edits: [{ oldText: "a", newText: "b" }] });
+		const result = await exec("edit", { path: "", ops: [{ op: "replace", anchor: "1:deadbe", content: "b" }] });
 		expect(result.isError).toBe(true);
 		expect(result.content).toContain("path");
 	});

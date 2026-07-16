@@ -6,6 +6,7 @@ import { getToolDefinitions } from "../src/core/tools.ts";
 
 const PERSONAS_DIR = join(import.meta.dirname, "..", "prompts", "personas");
 const ERROR_HANDLING_FILE = join(import.meta.dirname, "..", "prompts", "error-handling.md");
+const TOOLS_EDIT_FILE = join(import.meta.dirname, "..", "prompts", "tools-edit.md");
 
 describe("listPersonas", () => {
 	it("finds the shipped coding and fiction-writer personas", () => {
@@ -50,7 +51,13 @@ describe("listPersonas", () => {
 		for (const persona of personas) {
 			const idx = persona.systemPrompt.indexOf("## Error Handling");
 			expect(idx).toBeGreaterThan(-1);
-			expect(persona.systemPrompt.slice(idx)).toBe(expected);
+			// Slice up to (but not including) the next shared section, so
+			// the test stays stable as more shared blocks get appended.
+			const after = persona.systemPrompt.slice(idx);
+			const editIdx = after.indexOf("## edit / hashline anchors");
+			const section = editIdx === -1 ? after : after.slice(0, editIdx).trimEnd();
+			expect(section).toBe(expected);
+			expect(persona.systemPrompt).toContain("## edit / hashline anchors");
 		}
 
 		// It must come from prompts/error-handling.md, not be duplicated by hand
@@ -58,6 +65,13 @@ describe("listPersonas", () => {
 		for (const persona of personas) {
 			const raw = readFileSync(join(PERSONAS_DIR, `${persona.name}.md`), "utf-8");
 			expect(raw).not.toContain("## Error Handling");
+			expect(raw).not.toContain("## edit / hashline anchors");
+		}
+
+		// Same shared-source contract for the new tool-guidance block.
+		const toolsExpected = readFileSync(TOOLS_EDIT_FILE, "utf-8").trim();
+		for (const persona of personas) {
+			expect(persona.systemPrompt).toContain(toolsExpected);
 		}
 	});
 });

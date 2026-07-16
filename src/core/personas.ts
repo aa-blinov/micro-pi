@@ -63,6 +63,21 @@ function readSharedErrorHandling(): string {
 }
 
 /**
+ * Mirror of `readSharedErrorHandling` for the hashline `edit` tool. Same
+ * rationale: every persona's "**edit**: each `oldText` must match a unique
+ * region" line was drifting, and the anchor-based contract is the same
+ * regardless of role. The two shared sections are concatenated in
+ * `systemPrompt` so each persona gets the same edit/tool guidance.
+ */
+function readSharedToolGuidance(): string {
+	try {
+		return readFileSync(join(PROMPTS_DIR, "tools-edit.md"), "utf-8").trim();
+	} catch {
+		return "";
+	}
+}
+
+/**
  * Read fresh from prompts/fallback-persona.md, a sibling of prompts/personas/
  * rather than a file inside it — this only ever gets used when
  * prompts/personas/ itself fails to read (a broken/partial install), so it
@@ -83,7 +98,9 @@ const FALLBACK_PERSONA: Persona = {
 	name: DEFAULT_PERSONA,
 	label: "Coding agent",
 	description: "Default persona.",
-	systemPrompt: [readFallbackPersonaPrompt(), readSharedErrorHandling()].filter(Boolean).join("\n\n"),
+	systemPrompt: [readFallbackPersonaPrompt(), readSharedErrorHandling(), readSharedToolGuidance()]
+		.filter(Boolean)
+		.join("\n\n"),
 	source: "builtin",
 	filePath: "",
 	subagents: false,
@@ -109,7 +126,7 @@ function loadPersonaFromFile(filePath: string, source: PersonaSource): Persona |
 		name,
 		label: typeof frontmatter.label === "string" && frontmatter.label ? frontmatter.label : name,
 		description: typeof frontmatter.description === "string" ? frontmatter.description : "",
-		systemPrompt: [body.trimEnd(), readSharedErrorHandling()].filter(Boolean).join("\n\n"),
+		systemPrompt: [body.trimEnd(), readSharedErrorHandling(), readSharedToolGuidance()].filter(Boolean).join("\n\n"),
 		source,
 		filePath,
 		subagents: frontmatter.subagents === true,

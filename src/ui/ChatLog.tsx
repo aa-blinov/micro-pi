@@ -19,45 +19,23 @@ interface ChatLogProps {
 	repaintKey?: number;
 }
 
-/**
- * Line-level churn between two blocks of text. Uses an LCS so the counts
- * reflect the lines that actually changed, not the whole replaced block — a
- * one-line tweak inside a 6-line oldText/newText reads as "+1 -1", not "+6 -6".
- * Falls back to a Set-based comparison for pathologically large edits so the
- * O(m·n) DP can't stall the render.
- */
-export function lineChurn(oldText: string, newText: string): { added: number; removed: number } {
-	const a = oldText.split("\n");
-	const b = newText.split("\n");
-	const m = a.length;
-	const n = b.length;
-	if (m * n > 250_000) {
-		// Pathological size — O(m·n) DP would stall the render. Fall back to
-		// Set-based line comparison: O(m+n), not exact LCS but correctly
-		// reports {0, 0} for identical text (the old block-count fallback
-		// returned {m, n} even when nothing changed).
-		const bSet = new Set(b);
-		const aSet = new Set(a);
-		return {
-			removed: a.filter((l) => !bSet.has(l)).length,
-			added: b.filter((l) => !aSet.has(l)).length,
-		};
-	}
-	const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-	for (let i = m - 1; i >= 0; i--) {
-		for (let j = n - 1; j >= 0; j--) {
-			dp[i]![j] = a[i] === b[j] ? dp[i + 1]![j + 1]! + 1 : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
-		}
-	}
-	const lcs = dp[0]![0]!;
-	return { removed: m - lcs, added: n - lcs };
-}
-
 type ToolSummaryModel =
 	| { kind: "edit"; path: string; added: number; removed: number }
 	| { kind: "read"; path: string; range: string }
 	| { kind: "write"; path: string; lines: number }
 	| { kind: "generic"; text: string };
+
+/**
+ * Parse the leading line number out of a hashline anchor like
+ * `42:abc123` or `42:abc123:1f2`. Returns null for garbage — the
+ * caller already falls back to a generic summary in that case.
+ */
+function anchorLineOf(anchor: unknown): number | null {
+	if (typeof anchor !== "string") return null;
+	const m = /^(\d+):/.exec(anchor);
+	if (!m) return null;
+	return Number.parseInt(m[1]!, 10);
+}
 
 /**
  * Data half of the tool-call summary. edit/write get a readable file + change
@@ -74,17 +52,27 @@ function parseToolSummary(name: string, args: string): ToolSummaryModel {
 		parsed = null;
 	}
 
-	if (parsed && name === "edit" && typeof parsed.path === "string" && Array.isArray(parsed.edits)) {
+	if (parsed && name === "edit" && typeof parsed.path === "string" && Array.isArray(parsed.ops)) {
 		let added = 0;
 		let removed = 0;
-		for (const e of parsed.edits) {
-			if (e && typeof e === "object" && typeof (e as { oldText?: unknown }).oldText === "string") {
-				const churn = lineChurn(
-					(e as { oldText: string }).oldText,
-					String((e as { newText?: unknown }).newText ?? ""),
-				);
-				added += churn.added;
-				removed += churn.removed;
+		for (const op of parsed.ops) {
+			if (!op || typeof op !== "object") continue;
+			const o = op as Record<string, unknown>;
+			if (o.op === "write") continue;
+			const content = typeof o.content === "string" ? o.content : "";
+			if (o.op === "insert_after") {
+				added += content.split("\n").length;
+			} else if (o.op === "replace") {
+				// Approximate line churn from the anchor range. The model
+				// only sends anchors, not the original line text, so we
+				// can't run `lineChurn` here without re-reading the file.
+				// This is UI-only — the underlying tool is exact.
+				const startLine = anchorLineOf(o.anchor);
+				const endLine = o.end_anchor ? anchorLineOf(o.end_anchor) : startLine;
+				if (startLine && endLine) {
+					removed += Math.abs(endLine - startLine) + 1;
+				}
+				added += content.split("\n").length;
 			}
 		}
 		return { kind: "edit", path: parsed.path, added, removed };

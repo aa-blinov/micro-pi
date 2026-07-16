@@ -10,6 +10,7 @@ import { constants, type Dirent } from "node:fs";
 import { access, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import type { AppConfig } from "../config.ts";
+import { hash, secondarySuffix } from "./hashline.ts";
 import { formatSize, resolvePath, type ToolResult } from "./shared.ts";
 
 // ============================================================================
@@ -379,6 +380,9 @@ export async function execGrep(args: Record<string, unknown>, cwd: string, confi
 	}
 
 	const lines = output.trim().split("\n");
+	if (lines.length > 0 && lines[0] !== "") {
+		output = await annotateWithHashes(output, cwd, searchPath);
+	}
 	if (lines.length > config.maxToolOutputLines) {
 		const kept = lines.slice(0, config.maxToolOutputLines);
 		return {
@@ -387,6 +391,79 @@ export async function execGrep(args: Record<string, unknown>, cwd: string, confi
 	}
 
 	return { content: output.trim() || "No matches found" };
+}
+
+/**
+ * Rewrite each `relPath:line:content` line in `output` to
+ * `relPath:line:HASH[:HH]:content` so the model can copy the anchor into
+ * an `edit` call without a separate `read`. Reads each unique file once
+ * and caches the splits — without the cache a busy grep on a project
+ * tree would do N reads for N matches and pay the I/O on every line.
+ */
+async function annotateWithHashes(output: string, cwd: string, searchPath: string): Promise<string> {
+	const fileCache = new Map<string, string[]>();
+	const annotated: string[] = [];
+	for (const rawLine of output.split("\n")) {
+		const parsed = parseGrepLine(rawLine);
+		if (!parsed) {
+			annotated.push(rawLine);
+			continue;
+		}
+		const absPath = resolveGrepPath(parsed.relPath, cwd, searchPath);
+		let fileLines = fileCache.get(absPath);
+		if (!fileLines) {
+			try {
+				const text = await readFile(absPath, "utf-8");
+				fileLines = text.split("\n");
+			} catch {
+				// File became unreadable between rg and us, or rg gave us
+				// a path we can't resolve. Drop the line through unchanged
+				// rather than fabricating a hash we can't defend.
+				annotated.push(rawLine);
+				continue;
+			}
+			fileCache.set(absPath, fileLines);
+		}
+		const content = fileLines[parsed.line - 1] ?? parsed.content;
+		const prev = fileLines[parsed.line - 2] ?? "";
+		const [primary] = hash(parsed.line, content, prev);
+		const suffix = secondarySuffix(parsed.line, content, prev);
+		annotated.push(
+			suffix
+				? `${parsed.relPath}:${parsed.line}:${primary}:${suffix}:${content}`
+				: `${parsed.relPath}:${parsed.line}:${primary}:${content}`,
+		);
+	}
+	return annotated.join("\n");
+}
+
+interface ParsedGrepLine {
+	relPath: string;
+	line: number;
+	content: string;
+}
+
+function parseGrepLine(line: string): ParsedGrepLine | null {
+	// rg's output is `<relPath>:<line>:<content>`. The path is the
+	// leftmost field terminated by a non-`:` colon; the line is the
+	// next; the rest is content (which itself can contain `:`).
+	const firstColon = line.indexOf(":");
+	if (firstColon < 1) return null;
+	const secondColon = line.indexOf(":", firstColon + 1);
+	if (secondColon < 1) return null;
+	const relPath = line.slice(0, firstColon);
+	const lineNo = Number.parseInt(line.slice(firstColon + 1, secondColon), 10);
+	if (!Number.isFinite(lineNo) || lineNo < 1) return null;
+	return { relPath, line: lineNo, content: line.slice(secondColon + 1) };
+}
+
+function resolveGrepPath(relPath: string, cwd: string, searchPath: string): string {
+	// rg prints paths relative to the search root it was given. We
+	// reinstate an absolute path so `readFile` is unambiguous; the relPath
+	// we keep in the model-facing output is unchanged either way.
+	if (relPath.startsWith("/")) return relPath;
+	const base = searchPath && searchPath !== cwd ? searchPath : cwd;
+	return join(base, relPath);
 }
 
 export async function execLs(args: Record<string, unknown>, cwd: string, _config: AppConfig): Promise<ToolResult> {
