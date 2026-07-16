@@ -17,7 +17,7 @@ import {
 } from "../core/project.ts";
 import { getModelsCache } from "../core/readline.ts";
 import { formatRuleInvocation, type Rule } from "../core/rules.ts";
-import { addUsage, createSession, estimateTokens, type SessionState, saveSession } from "../core/session.ts";
+import { addUsage, createSession, type SessionState, saveSession } from "../core/session.ts";
 import {
 	loadSettings,
 	type PermissionMode,
@@ -37,6 +37,7 @@ import {
 	selectSession,
 } from "../pickers/domain.ts";
 import type { Pickers } from "../pickers/types.ts";
+import { abbreviateTokens, formatContextPct } from "./App.tsx";
 import { TUI_KEYBINDINGS } from "./input/keybindings.ts";
 import { getStatusBarSegments, SEGMENT_MAX_WIDTH, type StatusBarSegment } from "./statusbar.tsx";
 import { ALL_THEMES, getActiveTheme, setActiveTheme } from "./themes/index.ts";
@@ -1125,20 +1126,20 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 			showNotice("[No usage yet this session]");
 			return;
 		}
-		const fmtK = (n: number) => (n < 1000 ? String(n) : `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`);
 		const costStr = u.cost > 0 ? ` | $${u.cost.toFixed(2)}` : "";
 		const cacheStr =
 			u.cacheReadTokens > 0 && u.promptTokens > 0
 				? ` | ${Math.round((u.cacheReadTokens / u.promptTokens) * 100)}% cache hit`
 				: "";
-		const subStr = u.subagentTokens > 0 ? ` | ${fmtK(u.subagentTokens)} sub` : "";
-		showNotice(`[Usage: ${fmtK(u.promptTokens)} in / ${fmtK(u.completionTokens)} out${costStr}${cacheStr}${subStr}]`);
+		const subStr = u.subagentTokens > 0 ? ` | ${abbreviateTokens(u.subagentTokens)} sub` : "";
+		showNotice(
+			`[Usage: ${abbreviateTokens(u.promptTokens)} in / ${abbreviateTokens(u.completionTokens)} out${costStr}${cacheStr}${subStr}]`,
+		);
 		return;
 	}
 
 	if (input === "/current") {
 		const u = session.usage;
-		const fmtK = (n: number) => (n < 1000 ? String(n) : `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`);
 		const allSegs = getStatusBarSegments();
 		const cfg = deps.statusBar;
 		// Build ordered list from statusBar.order, then append any new segments
@@ -1161,17 +1162,14 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 				case "model":
 					value = deps.session.model;
 					break;
-				case "context": {
-					const used = estimateTokens(session.messages);
-					const budget = config.contextWindow - config.maxResponseTokens;
-					value =
-						budget > 0
-							? `ctx ${fmtK(used)}/${fmtK(config.contextWindow)} (${Math.round((used / budget) * 100)}%)`
-							: "ctx ?";
+				case "context":
+					value = formatContextPct(session.messages, config);
 					break;
-				}
 				case "usage":
-					value = u && u.totalTokens > 0 ? `${fmtK(u.promptTokens)} in / ${fmtK(u.completionTokens)} out` : "—";
+					value =
+						u && u.totalTokens > 0
+							? `${abbreviateTokens(u.promptTokens)} in / ${abbreviateTokens(u.completionTokens)} out`
+							: "—";
 					break;
 				case "speed":
 					value = agent.lastTurnUsage?.tokensPerSecond
@@ -1182,7 +1180,7 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 					value = agent.elapsedMs > 0 ? `${(agent.elapsedMs / 1000).toFixed(1)}s` : "—";
 					break;
 				case "subagent":
-					value = u && u.subagentTokens > 0 ? `${fmtK(u.subagentTokens)} sub` : "—";
+					value = u && u.subagentTokens > 0 ? `${abbreviateTokens(u.subagentTokens)} sub` : "—";
 					break;
 				default:
 					value = "—";
