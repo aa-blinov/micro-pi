@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Pickers } from "../src/pickers/types.ts";
 
 // Stub the network probe and the settings writer; reconfigureConnection stays
@@ -9,7 +12,13 @@ vi.mock("../src/core/config.ts", async (importOriginal) => {
 });
 vi.mock("../src/core/settings.ts", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../src/core/settings.ts")>();
-	return { ...actual, updateSettings: vi.fn() };
+	return {
+		...actual,
+		// loadSettings stays real (driven by a fake $HOME so the test controls
+		// the existing providers list); updateSettings is a spy so we can assert
+		// exactly what was persisted.
+		updateSettings: vi.fn(),
+	};
 });
 
 const { ensureConnectionAlive } = await import("../src/core/startup.ts");
@@ -18,6 +27,15 @@ const { updateSettings } = await import("../src/core/settings.ts");
 
 const probe = vi.mocked(probeProvider);
 const upd = vi.mocked(updateSettings);
+
+let realHome: string | undefined;
+let fakeHome: string;
+
+function writeSettings(data: Record<string, unknown>): void {
+	const dir = join(fakeHome, ".cast");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "settings.json"), JSON.stringify(data));
+}
 
 const config = () =>
 	({ baseURL: "https://old.example/v1", apiKey: "sk-old" }) as Parameters<typeof ensureConnectionAlive>[0];
@@ -35,6 +53,14 @@ function promptPickers(answers: (string | null)[]): Pickers {
 beforeEach(() => {
 	probe.mockReset();
 	upd.mockReset();
+	realHome = process.env.HOME;
+	fakeHome = mkdtempSync(join(tmpdir(), "cast-ensure-test-"));
+	process.env.HOME = fakeHome;
+});
+
+afterEach(() => {
+	process.env.HOME = realHome;
+	rmSync(fakeHome, { recursive: true, force: true });
 });
 
 describe("ensureConnectionAlive", () => {
@@ -57,9 +83,35 @@ describe("ensureConnectionAlive", () => {
 		expect(changed).toBe(true);
 		expect(cfg.baseURL).toBe("https://new.example/v1");
 		expect(cfg.apiKey).toBe("sk-new");
-		expect(upd).toHaveBeenCalledWith(
-			expect.objectContaining({ providerUrl: "https://new.example/v1", apiKey: "sk-new" }),
-		);
+		// Exact-match: the new providers seeding (added when the multi-provider
+		// feature landed) must land in settings or /provider comes up empty
+		// after reconnection.
+		expect(upd).toHaveBeenCalledWith({
+			providerUrl: "https://new.example/v1",
+			apiKey: "sk-new",
+			providers: [{ name: "default", url: "https://new.example/v1", apiKey: "sk-new" }],
+		});
+	});
+
+	it("preserves existing providers when re-prompting reconnection", async () => {
+		// Regression: a refactor that overwrites providers with a single-entry
+		// default would silently drop the user's openrouter/whatever from the
+		// /provider picker after the first reconnect.
+		writeSettings({
+			providers: [{ name: "openrouter", url: "https://openrouter.example/v1", apiKey: "sk-or" }],
+		});
+		probe.mockResolvedValueOnce("auth").mockResolvedValueOnce("ok");
+		const cfg = config();
+		const changed = await ensureConnectionAlive(cfg, promptPickers(["https://new.example/v1", "sk-new"]));
+		expect(changed).toBe(true);
+		expect(upd).toHaveBeenCalledWith({
+			providerUrl: "https://new.example/v1",
+			apiKey: "sk-new",
+			providers: [
+				{ name: "openrouter", url: "https://openrouter.example/v1", apiKey: "sk-or" },
+				{ name: "default", url: "https://new.example/v1", apiKey: "sk-new" },
+			],
+		});
 	});
 
 	it("keeps looping while the connection stays bad, applying each new key", async () => {
