@@ -1,6 +1,6 @@
 {
 	"name": "cast",
-	"version": "0.6.3",
+	"version": "0.6.4",
 	"description": "Role-based terminal agent harness with 13 built-in personas",
 	"type": "module",
 	"engines": {
