@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSyn
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { AppConfig } from "./config.ts";
+import { formatLocalDate } from "./date-rollover-reminder.ts";
 import type { Message, Usage } from "./llm.ts";
 
 // ============================================================================
@@ -49,6 +50,12 @@ export interface SessionState {
 	 * Per-session on purpose: the mode is task state, and storing it globally
 	 * leaked plan mode from one project into every other one. */
 	mode?: "plan" | "build";
+	/**
+	 * Local calendar date (`YYYY-MM-DD`) last announced to the model via the
+	 * date-rollover `<system-reminder>`. Used so overnight sessions get a
+	 * one-shot notice when the day advances. Optional for older session files.
+	 */
+	lastAnnouncedLocalDate?: string;
 }
 
 /** Fold one turn's usage into the session's running totals. When `opts.subagent`
@@ -575,6 +582,7 @@ export function createSession(model: string, cwd: string): SessionState {
 			subagentTokens: 0,
 		},
 		cwd: resolve(cwd),
+		lastAnnouncedLocalDate: formatLocalDate(),
 	};
 }
 

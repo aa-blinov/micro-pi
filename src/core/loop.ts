@@ -7,6 +7,7 @@ import {
 	reminderStateFromPlan,
 } from "./compaction-reminder.ts";
 import type { AppConfig } from "./config.ts";
+import { type AnnouncedLocalDate, appendDateRolloverReminder } from "./date-rollover-reminder.ts";
 import { matchesToolsAllowlist } from "./frontmatter.ts";
 import { appendInterruptReminder } from "./interrupt-reminder.ts";
 import type { Message, Tool, Usage } from "./llm.ts";
@@ -324,6 +325,8 @@ export type AgentEvent =
 	| { type: "open_work_gate_exhausted"; openSteps: number; maxFires: number }
 	/** Prior turn was aborted mid-stream; a `<system-reminder>` was appended for the model. */
 	| { type: "interrupt_reminder" }
+	/** Session crossed local midnight; a date-rollover `<system-reminder>` was appended. */
+	| { type: "date_rollover"; date: string }
 	| { type: "retry"; attempt: number; maxAttempts: number; reason: string }
 	// generationMs is only set for the main completion's usage — compaction's
 	// own summarization call reports usage too (for cumulative cost tracking)
@@ -413,6 +416,12 @@ export interface LoopConfig {
 	 * active plan on disk (`isOpenWorkGateActive`).
 	 */
 	openWorkGate?: Partial<OpenWorkGateConfig>;
+	/**
+	 * Local calendar date last announced to the model (`YYYY-MM-DD`). When
+	 * set, the loop injects a one-shot date-rollover reminder if today is
+	 * later, and updates `.value` in place. Omit to disable.
+	 */
+	announcedLocalDate?: AnnouncedLocalDate;
 }
 
 // ============================================================================
@@ -660,6 +669,11 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 			if (signal?.aborted) {
 				endAborted();
 				break;
+			}
+
+			// Overnight sessions: one-shot notice when the local calendar day advances.
+			if (loopConfig.announcedLocalDate && appendDateRolloverReminder(messages, loopConfig.announcedLocalDate)) {
+				onEvent({ type: "date_rollover", date: loopConfig.announcedLocalDate.value });
 			}
 
 			// Sync before compaction so it summarizes against the right system prompt.

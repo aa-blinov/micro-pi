@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppConfig } from "../core/config.ts";
+import { initialAnnouncedLocalDate } from "../core/date-rollover-reminder.ts";
 import { describeTurnError, isRetryableStreamError, stripHermesToolCalls } from "../core/llm.ts";
 import { type AgentEvent, runAgentLoop } from "../core/loop.ts";
 import type { McpSetupResult } from "../core/mcp.ts";
@@ -497,6 +498,17 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 			setStreamingActive(true);
 
 			try {
+				if (!session.lastAnnouncedLocalDate) {
+					session.lastAnnouncedLocalDate = initialAnnouncedLocalDate(session);
+				}
+				const announcedLocalDate = {
+					get value() {
+						return session.lastAnnouncedLocalDate!;
+					},
+					set value(next: string) {
+						session.lastAnnouncedLocalDate = next;
+					},
+				};
 				const result = await runAgentLoop(session.messages, {
 					config,
 					model: modelOverride ?? session.model,
@@ -519,6 +531,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 					projectTrusted,
 					sshHosts: params.sshHosts,
 					planState,
+					announcedLocalDate,
 					// Append straight into the display history: warnings fire mid-run
 					// (e.g. vision fallback, before the response streams), so an
 					// append lands chronologically right — after the user message and

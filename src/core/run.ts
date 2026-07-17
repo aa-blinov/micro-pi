@@ -1,5 +1,6 @@
 import { EOL } from "node:os";
 import { noPickers } from "../pickers/no-pickers.ts";
+import { initialAnnouncedLocalDate } from "./date-rollover-reminder.ts";
 import type { AgentEvent } from "./loop.ts";
 import { runAgentLoop } from "./loop.ts";
 import { closeMcpConnections } from "./mcp.ts";
@@ -62,6 +63,17 @@ export async function runNonInteractive(args: ParsedArgs, options: RunOptions): 
 	process.on("SIGINT", onSigint);
 
 	try {
+		if (!session.lastAnnouncedLocalDate) {
+			session.lastAnnouncedLocalDate = initialAnnouncedLocalDate(session);
+		}
+		const announcedLocalDate = {
+			get value() {
+				return session.lastAnnouncedLocalDate!;
+			},
+			set value(next: string) {
+				session.lastAnnouncedLocalDate = next;
+			},
+		};
 		const finalMessages = await runAgentLoop(session.messages, {
 			config,
 			model: session.model,
@@ -79,6 +91,7 @@ export async function runNonInteractive(args: ParsedArgs, options: RunOptions): 
 			disabledTools,
 			projectTrusted: result.projectTrusted,
 			planState,
+			announcedLocalDate,
 			onEvent: (event: AgentEvent) => handleEvent(event, session, options.format),
 		});
 

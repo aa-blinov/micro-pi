@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppConfig } from "../src/core/config.ts";
 import { formatContextFilesForPrompt, resolveNestedContextFiles } from "../src/core/context-files.ts";
+import { formatLocalDate } from "../src/core/date-rollover-reminder.ts";
 import type { Message } from "../src/core/llm.ts";
 import { formatRulesForTurn, loadDirectoryRules, matchAutoRules, unionStickyRules } from "../src/core/rules.ts";
 
@@ -211,6 +212,62 @@ describe("runAgentLoop — abort vs. error", () => {
 				m.content.includes("<system-reminder>"),
 		);
 		expect(reminder).toBeDefined();
+	});
+
+	it("injects a date-rollover reminder when announcedLocalDate is behind today", async () => {
+		const today = formatLocalDate();
+		const d = new Date();
+		const yesterday = formatLocalDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1));
+		const announced = { value: yesterday };
+
+		vi.mocked(streamAndCollect).mockImplementationOnce(async () => ({
+			content: "ok",
+			thinking: "",
+			finishReason: "stop",
+		}));
+
+		const events: AgentEvent[] = [];
+		const messages = await runAgentLoop([{ role: "user", content: "hi" }], {
+			config: testConfig,
+			model: "test-model",
+			cwd: process.cwd(),
+			systemPrompt: "test",
+			announcedLocalDate: announced,
+			onEvent: (event) => events.push(event),
+		});
+
+		expect(events.some((e) => e.type === "date_rollover" && e.date === today)).toBe(true);
+		expect(announced.value).toBe(today);
+		// applyCacheControl may rewrite user content to a text-part array before the request.
+		expect(
+			messages.some((m) => {
+				if (m.role !== "user") return false;
+				const text = contentToText(m.content);
+				return text.includes("calendar date has advanced") && text.includes(today);
+			}),
+		).toBe(true);
+	});
+
+	it("does not inject a date-rollover reminder when the announced date is already today", async () => {
+		const announced = { value: formatLocalDate() };
+
+		vi.mocked(streamAndCollect).mockImplementationOnce(async () => ({
+			content: "ok",
+			thinking: "",
+			finishReason: "stop",
+		}));
+
+		const events: AgentEvent[] = [];
+		await runAgentLoop([{ role: "user", content: "hi" }], {
+			config: testConfig,
+			model: "test-model",
+			cwd: process.cwd(),
+			systemPrompt: "test",
+			announcedLocalDate: announced,
+			onEvent: (event) => events.push(event),
+		});
+
+		expect(events.some((e) => e.type === "date_rollover")).toBe(false);
 	});
 
 	it("does NOT report 'aborted' when the turn finished just before a late abort", async () => {
