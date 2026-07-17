@@ -1,6 +1,13 @@
 # Changelog
 
 All notable user-facing changes to cast, newest first.
+## 0.6.10
+
+### Fixed
+
+- `edit` returns edited regions with fresh anchors on success, so a follow-up edit on the same file no longer needs a re-read after lines shift under prior anchors.
+- `read` output was switched from the two-part `<LINE>:<HASH>→` anchor format to the three-part `<LINE>:<LOCAL>:<CHUNK>→` format (introduced during the 0.6.9 cycle). The three-part form gives finer-grained movement detection when lines shift around, and the stale-anchor error path now returns a fresh anchor instead of failing blind.
+
 
 ## 0.6.9
 
