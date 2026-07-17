@@ -250,9 +250,17 @@ export function buildDisplayMessages(sessionMessages: SessionState["messages"]):
 			// Associate following tool result messages with this assistant turn
 			let next = i + 1;
 			while (next < sessionMessages.length && sessionMessages[next]!.role === "tool") {
-				const tr = sessionMessages[next] as { role: "tool"; content: string; tool_call_id?: string };
+				const tr = sessionMessages[next] as {
+					role: "tool";
+					content: string;
+					tool_call_id?: string;
+					castIsError?: boolean;
+				};
 				const target = toolBlocks.find((t) => t.call.id === tr.tool_call_id);
-				if (target) target.call.result = String(tr.content).slice(0, 4000);
+				if (target) {
+					target.call.result = String(tr.content).slice(0, 4000);
+					if (tr.castIsError) target.call.status = "error";
+				}
 				next++;
 			}
 			// Advance i past the tool results so the for loop doesn't visit them again
@@ -403,9 +411,10 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 	 * the next turn. Most blocks already left the live region as they settled
 	 * (see updateStreaming's drain); this just commits the tail. Promoting from
 	 * the streaming state — not rebuilding from raw session/wire messages — is
-	 * what keeps each tool call's real final status: a role:"tool" message in
-	 * the OpenAI wire format carries no isError flag, so a rebuild could only
-	 * ever guess "ok". Respects Ink's <Static>, which permanently commits
+	 * what keeps each tool call's real final status without waiting on a
+	 * session rebuild. Rebuilds also restore status via castIsError on
+	 * role:"tool" messages (stripped before the provider). Respects Ink's
+	 * <Static>, which permanently commits
 	 * whatever an index held the first time it renders and never revisits it —
 	 * safe here because a tool block only ever leaves streaming once it's no
 	 * longer "running" (both here and in the incremental drain).

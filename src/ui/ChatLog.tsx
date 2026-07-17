@@ -46,7 +46,8 @@ function anchorLineOf(anchor: unknown): number | null {
  * parse (or doesn't match the expected shape) falls back to the raw/generic
  * form — the rich view only kicks in once the call is complete.
  */
-function parseToolSummary(name: string, args: string): ToolSummaryModel {
+/** Exported for unit tests. */
+export function parseToolSummary(name: string, args: string): ToolSummaryModel {
 	let parsed: Record<string, unknown> | null = null;
 	try {
 		parsed = JSON.parse(args) as Record<string, unknown>;
@@ -81,9 +82,11 @@ function parseToolSummary(name: string, args: string): ToolSummaryModel {
 	}
 
 	if (parsed && name === "read" && typeof parsed.path === "string") {
+		// `offset` is 1-indexed (same contract as the read tool). Omitted/0 → line 1.
 		const offset = typeof parsed.offset === "number" ? parsed.offset : 0;
 		const limit = typeof parsed.limit === "number" ? parsed.limit : undefined;
-		const range = limit ? `${offset + 1}-${offset + limit}` : "all";
+		const start = offset > 0 ? offset : 1;
+		const range = limit ? `${start}-${start + limit - 1}` : "all";
 		return { kind: "read", path: parsed.path, range };
 	}
 
@@ -111,7 +114,7 @@ function parseToolSummary(name: string, args: string): ToolSummaryModel {
  * element on [name, args] kept the previous theme's colors on still-visible
  * rows after a /theme switch.
  */
-function ToolSummary({ name, args }: { name: string; args: string }): JSX.Element {
+function ToolSummary({ name, args, compact }: { name: string; args: string; compact?: boolean }): JSX.Element {
 	const model = useMemo(() => parseToolSummary(name, args), [name, args]);
 	if (model.kind === "edit") {
 		return (
@@ -138,9 +141,10 @@ function ToolSummary({ name, args }: { name: string; args: string }): JSX.Elemen
 		);
 	}
 	if (model.kind === "task") {
-		// Full assignment — wrap so the delegated brief stays readable.
+		// Live region: one line so parallel tasks stay visible under the clamp.
+		// History: wrap the full assignment once the turn is committed.
 		return (
-			<Text color={theme().muted} wrap="wrap">
+			<Text color={theme().muted} wrap={compact ? "truncate" : "wrap"}>
 				{model.text}
 			</Text>
 		);
@@ -152,20 +156,30 @@ function ToolSummary({ name, args }: { name: string; args: string }): JSX.Elemen
 	);
 }
 
-function ToolCallView({ call }: { call: ToolCallEntry }): JSX.Element {
+function ToolCallView({ call, compact }: { call: ToolCallEntry; compact?: boolean }): JSX.Element {
 	const statusColor =
 		call.status === "running" ? theme().warning : call.status === "error" ? theme().error : theme().success;
+	const resultColor = call.status === "error" ? theme().error : theme().muted;
+	const showResult = Boolean(call.result) && call.name !== "read" && !isWebTool(call.name);
+	// task: full wrapped report in history so the user can read the child answer;
+	// live/compact stays one truncated line so parallel tasks don't blow the clamp.
+	const taskResultFull = call.name === "task" && !compact && call.result;
 	return (
 		<Box flexDirection="column">
 			<Text>
 				<Text color={theme().tool}>[{call.name}]</Text> <Text color={statusColor}>[{call.status}]</Text>{" "}
-				<ToolSummary name={call.name} args={call.args} />
+				<ToolSummary name={call.name} args={call.args} compact={compact} />
 				{call.result && <WebResultSummary name={call.name} result={call.result} />}
 			</Text>
-			{call.result && call.name !== "read" && !isWebTool(call.name) && (
-				<Text color={call.status === "error" ? theme().error : theme().muted} wrap="truncate">
-					{call.result.slice(0, 500)}
-					{call.result.length > 500 ? " ..." : ""}
+			{showResult && taskResultFull && (
+				<Text color={resultColor} wrap="wrap">
+					{call.result}
+				</Text>
+			)}
+			{showResult && !taskResultFull && (
+				<Text color={resultColor} wrap="truncate">
+					{call.result!.slice(0, 500)}
+					{call.result!.length > 500 ? " ..." : ""}
 				</Text>
 			)}
 		</Box>
@@ -215,7 +229,16 @@ function WebResultSummary({ name, result }: { name: string; result: string }): J
  * history so a turn reads identically before and after it lands — the reason
  * StreamBlock is the single source of truth for row order.
  */
-function BlockView({ block, truncated }: { block: StreamBlock; truncated?: boolean }): JSX.Element {
+function BlockView({
+	block,
+	truncated,
+	compact,
+}: {
+	block: StreamBlock;
+	truncated?: boolean;
+	/** Live streaming region — keep tool rows short for the viewport clamp. */
+	compact?: boolean;
+}): JSX.Element {
 	if (block.kind === "thinking") {
 		return (
 			<Text color={theme().muted} dimColor>
@@ -232,7 +255,7 @@ function BlockView({ block, truncated }: { block: StreamBlock; truncated?: boole
 			</Text>
 		);
 	}
-	return <ToolCallView call={block.call} />;
+	return <ToolCallView call={block.call} compact={compact} />;
 }
 
 /**
@@ -277,8 +300,20 @@ export function clampStreamingBlocks(
 		const block = blocks[i]!;
 		if (used >= budget) break;
 		if (block.kind === "tool") {
+			// Live ToolCallView uses compact truncate for task — charge 1 status
+			// row (+ optional result). Full wrap is only in committed history.
+			// Charging full wrap height hid sibling parallel tasks (only the
+			// newest long assignment fit the budget).
+			const resultRows = block.call.result && block.call.name !== "read" && !isWebTool(block.call.name) ? 1 : 0;
+			const need = 1 + resultRows;
+			if (used + need > budget) {
+				if (out.length > 0) break;
+				out.unshift({ block, truncated: true, index: i });
+				used = budget;
+				break;
+			}
 			out.unshift({ block, truncated: false, index: i });
-			used += 1;
+			used += need;
 			continue;
 		}
 		const prefixLen = block.kind === "thinking" ? "[reasoning] ".length : "[agent] ".length;
@@ -381,7 +416,7 @@ export function ChatLog({ messages, streaming, error, retry, repaintKey }: ChatL
 		}
 		const clamped = clampStreamingBlocks(streaming.blocks, process.stdout.rows || 24, process.stdout.columns || 80);
 		for (const { block, truncated, index } of clamped) {
-			streamingParts.push(<BlockView key={blockKey(block, index)} block={block} truncated={truncated} />);
+			streamingParts.push(<BlockView key={blockKey(block, index)} block={block} truncated={truncated} compact />);
 		}
 		liveParts.push(
 			<Box key="streaming" flexDirection="column">

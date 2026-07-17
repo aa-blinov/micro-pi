@@ -35,13 +35,14 @@ import { isStreamingActive, isTerminalSuspended } from "../core/stdin-manager.ts
  *       to query the real cursor row. After Ink draws, the cursor sits at
  *       the bottom of the viewport (row == terminal height). If the user
  *       scrolled up, the cursor drops below the visible area and DECXCPR
- *       reports row > height. The response also reaches the other stdin
- *       consumers (Ink's own parser maps a CSI-R final to a bare f3 key,
- *       the composer's parser drops unmatched CSI sequences), so it needs
- *       no exclusive claim on stdin — pausing the stream wouldn't work
- *       anyway while Ink holds a 'readable' listener, which makes
- *       stdin.pause() a documented no-op. A 500 ms interval keeps the
- *       flag fresh.
+ *       reports row > height. While streaming with a *short* live region
+ *       (CUU fits the screen — e.g. a few parallel `[running]` rows), polls
+ *       stay on so trackpad inertia can arm the guard. While the live region
+ *       is taller than the viewport, row > height is normal terminal scroll,
+ *       not user scroll — polling then would false-positive, swallow Ink
+ *       frames, and scramble scrollback order. The response also reaches the
+ *       other stdin consumers (Ink maps a CSI-R final to a bare f3 key; the
+ *       composer drops unmatched CSI). A 500 ms interval keeps the flag fresh.
  *
  *    Either signal triggers the guard: cursor/erase writes are swallowed
  *    until the user scrolls back to the bottom.
@@ -127,14 +128,14 @@ export function useTerminalResync(onResync: (preserveScrollback: boolean) => voi
 
 		// --- scroll guard state (shared by both detection layers) ---
 		let scrollUp = false;
-		// scrollUp is refreshed only by the DECXCPR poll, and the poll is
-		// disabled during streaming and terminal suspension — so right after
-		// either ends the flag is stale. A resync must not trust a stale
-		// "not scrolled": the user may have scrolled up with the trackpad
-		// mid-generation, and clearing in the ~200-700ms window before the
-		// first fresh poll would yank them to the top of the replayed history.
-		// Set stale while streaming/suspended; cleared by every completed poll
-		// (which only runs outside both).
+		// Last Ink frame's CUU distance fit the viewport. Tall streaming frames
+		// make DECXCPR row>height meaningless (natural overflow); short frames
+		// (spinner / parallel task lines) make it a real user-scroll signal.
+		let liveFits = true;
+		// scrollUp is refreshed by the DECXCPR poll. Polls skip while suspended,
+		// and while streaming with a tall live region. Right after those end the
+		// flag can be stale — a resync must not trust a stale "not scrolled".
+		// Set stale while streaming/suspended; cleared by every completed poll.
 		let scrollUpStale = false;
 
 		// --- resize: debounce a settle, then hard reset ---
@@ -143,10 +144,10 @@ export function useTerminalResync(onResync: (preserveScrollback: boolean) => voi
 
 		// One-shot cleanup repaint after a streaming turn — but only when the live
 		// area outgrew the viewport mid-stream, the condition under which Ink's
-		// in-place spinner/frame redraw can stack into scrollback (and which the
-		// scroll guard can't catch, since DECXCPR polling is off while streaming).
-		// Gating on real evidence means an ordinary turn whose frames fit triggers
-		// no clear/replay at all — the full repaint is never paid speculatively.
+		// in-place spinner/frame redraw can stack into scrollback (scroll guard
+		// swallows cursor/erase while scrolled, but tall frames can still leave
+		// stacked artifacts once the turn settles). Gating on real evidence means
+		// an ordinary turn whose frames fit triggers no clear/replay at all.
 		const desyncTracker = createDesyncTracker(isStreamingActive());
 		// Last known size, to drop no-op SIGWINCH events (tmux pane focus,
 		// VS Code panel toggles) that fire "resize" without changing anything —
@@ -274,12 +275,21 @@ export function useTerminalResync(onResync: (preserveScrollback: boolean) => voi
 				// Ink handles that by letting the terminal scroll naturally. Only
 				// DECXCPR (layer b) can reliably detect *user*-initiated scroll,
 				// so never latch scrollUp from the CUU heuristic alone.
-				const cuuFits = (Number(m[1]) || 1) <= (out.rows || 24);
-				if (cuuFits && !decxprActive) scrollUp = false;
+				const cuuN = Number(m[1]) || 1;
+				const rows = out.rows || 24;
+				const cuuFits = cuuN <= rows;
+				const streamingNow = isStreamingActive();
+				liveFits = cuuFits;
+				// Never clear scrollUp from CUU while streaming: a short spinner
+				// frame (cuuFits) would unlock Ink redraws while the user is still
+				// scrolled into history — trackpad inertia then fights CUU and the
+				// viewport jumps to the top. Idle clears stay DECXCPR-driven too
+				// when a poll is in flight; only clear here when idle + no poll.
+				if (cuuFits && !decxprActive && !streamingNow) scrollUp = false;
 				// A live area taller than the viewport while streaming is when
 				// spinner/frame redraws can stack. Remember it; the cleanup repaint
 				// happens once the turn settles (see checkDeferredResync).
-				desyncTracker.noteFrame(cuuFits, isStreamingActive());
+				desyncTracker.noteFrame(cuuFits, streamingNow);
 			}
 
 			if (scrollUp && CURSOR_OR_ERASE_RE.test(s)) {
@@ -312,9 +322,11 @@ export function useTerminalResync(onResync: (preserveScrollback: boolean) => voi
 		function startQuery() {
 			if (!process.stdin.isTTY) return;
 			if (isTerminalSuspended()) return;
-			// Skip during streaming — the live region is managed by Ink, not
-			// the user, so the answer would be meaningless anyway.
-			if (isStreamingActive()) return;
+			// Tall live region while streaming: cursor sits below the viewport by
+			// design — DECXCPR would false-positive scrollUp, swallow Ink frames,
+			// and scramble scrollback (looks like "broken message order").
+			// Short live region (fits): poll so trackpad inertia mid-run can latch.
+			if (isStreamingActive() && !liveFits) return;
 			// Previous query still unanswered (its own timeout will clean it
 			// up before the next tick) — don't stack listeners.
 			if (decxprActive) return;
@@ -331,9 +343,11 @@ export function useTerminalResync(onResync: (preserveScrollback: boolean) => voi
 				cancelActiveQuery = null;
 				if (queryTimeout) clearTimeout(queryTimeout);
 				process.stdin.off("data", onStdin);
-				scrollUp = scrolled;
-				// This poll only runs outside streaming/suspension, so its answer
-				// is fresh — deferred resyncs may trust the flag again.
+				// Belt-and-suspenders: never latch scrollUp from a poll that raced
+				// into a tall streaming frame after startQuery was allowed.
+				const streamingNow = isStreamingActive();
+				scrollUp = scrolled && streamingNow && !liveFits ? false : scrolled;
+				// Fresh DECXCPR answer — deferred resyncs may trust the flag again.
 				scrollUpStale = false;
 			}
 

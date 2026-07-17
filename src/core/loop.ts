@@ -936,7 +936,15 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 
 					// Track new tool result messages and extract context files
 					for (const r of executedToolBatch) {
-						const toolMsg: Message = { role: "tool", tool_call_id: r.id, content: r.result.content };
+						// castIsError is stripped in sanitizeMessages before the API —
+						// kept on the wire copy so UI rebuilds (resume/compaction) can
+						// show [error] instead of always painting [ok].
+						const toolMsg = {
+							role: "tool" as const,
+							tool_call_id: r.id,
+							content: r.result.content,
+							...(r.result.isError ? { castIsError: true } : {}),
+						} as Message;
 						messages.push(toolMsg);
 
 						// Propagate subagent usage to the main session, tagged so the UI

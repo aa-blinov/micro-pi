@@ -85,4 +85,22 @@ describe("clampStreamingBlocks", () => {
 		const out = clampStreamingBlocks(blocks, 20, 40); // budget 12
 		expect(out[0]!.truncated).toBe(true);
 	});
+
+	it("keeps multiple parallel long task tools visible (1 row each while live)", () => {
+		const long = "Explore the module tree in great detail and report structure. ".repeat(12);
+		const task = (id: string): StreamBlock =>
+			({
+				kind: "tool",
+				call: {
+					id,
+					name: "task",
+					args: JSON.stringify({ subagent: "explore", assignment: long }),
+					status: "running",
+				},
+			}) as StreamBlock;
+		const blocks = [task("a"), task("b"), task("c")];
+		const out = clampStreamingBlocks(blocks, 24, 80); // budget 16
+		expect(out).toHaveLength(3);
+		expect(out.map((e) => (e.block.kind === "tool" ? e.block.call.id : ""))).toEqual(["a", "b", "c"]);
+	});
 });

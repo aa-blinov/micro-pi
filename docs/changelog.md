@@ -12,6 +12,14 @@ All notable user-facing changes to cast, newest first.
 - Overnight sessions get a one-shot `<system-reminder>` when the local calendar date advances past the last announced day (persisted per session).
 - Built-in `explore` and `review` subagents for `task` (read-oriented tool allowlists). `coder-with-subagents` steers mapping to `explore` and validation to `review`; `worker` remains the default catch-all for everything else.
 
+### Fixed
+
+- `read` tool rows show the correct 1-indexed line range (was off-by-one when `offset` was set).
+- Live-region `task` rows stay one-line (truncate) while streaming so parallel tasks remain visible; full wrapped assignment still shows once promoted to history.
+- Committed `task` tool rows show the full subagent report (wrapped), not a 500-char truncated line.
+- Session rebuild/resume restores tool `[error]` via persisted `castIsError` on tool results (was always `[ok]`).
+- Trackpad scroll during an active agent turn no longer fights Ink redraws: while the live region fits the screen, cursor-position polling stays on (and short CUU frames cannot clear the scroll-up guard); tall streaming frames skip that poll so a false scroll latch cannot swallow redraws and scramble scrollback.
+
 ### Changed
 
 - `task` UI shows the delegated assignment text (not raw JSON `key=value` args). Non-default subagent names are prefixed (`explore · …`).

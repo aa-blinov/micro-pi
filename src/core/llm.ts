@@ -193,6 +193,11 @@ export const EMPTY_ASSISTANT_PLACEHOLDER = "(no response)";
  */
 function sanitizeMessages(messages: Message[]): Message[] {
 	return messages.map((m) => {
+		// Drop cast-only UI metadata before it reaches the provider.
+		if (m.role === "tool" && m && typeof m === "object" && "castIsError" in m) {
+			const tool = m as { role: "tool"; tool_call_id: string; content: string; castIsError?: boolean };
+			return { role: "tool", tool_call_id: tool.tool_call_id, content: tool.content };
+		}
 		if (m.role !== "assistant") return m;
 		const hasToolCalls = "tool_calls" in m && Array.isArray(m.tool_calls) && m.tool_calls.length > 0;
 		const hasContent = typeof m.content === "string" ? m.content.length > 0 : Boolean(m.content);

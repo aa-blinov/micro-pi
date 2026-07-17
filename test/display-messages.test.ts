@@ -92,6 +92,34 @@ describe("buildDisplayMessages", () => {
 		]);
 	});
 
+	it("restores [error] status from castIsError on tool results", () => {
+		const out = build([
+			{
+				role: "assistant",
+				content: null,
+				tool_calls: [{ id: "e1", type: "function", function: { name: "bash", arguments: "{}" } }],
+			},
+			{
+				role: "tool",
+				tool_call_id: "e1",
+				content: "Error: command failed",
+				castIsError: true,
+			},
+		]);
+		expect(out[0]!.blocks).toEqual([
+			{
+				kind: "tool",
+				call: {
+					id: "e1",
+					name: "bash",
+					args: "{}",
+					status: "error",
+					result: "Error: command failed",
+				},
+			},
+		]);
+	});
+
 	it("keeps assistant text before its tool calls (content block first, then tools)", () => {
 		const out = build([
 			{

@@ -5,3 +5,4 @@ dist/
 .DS_Store
 qa/
 qa-nfr/
+test/__test_tmp__/
