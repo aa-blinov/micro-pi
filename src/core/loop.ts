@@ -1,5 +1,11 @@
 import { setMaxListeners } from "node:events";
 import { basename, join } from "node:path";
+import {
+	formatPostCompactReminder,
+	injectPostCompactReminder,
+	type PostCompactReminderState,
+	reminderStateFromPlan,
+} from "./compaction-reminder.ts";
 import type { AppConfig } from "./config.ts";
 import { matchesToolsAllowlist } from "./frontmatter.ts";
 import type { Message, Tool, Usage } from "./llm.ts";
@@ -21,7 +27,7 @@ import {
 	TERMINAL_TOOL_NAMES,
 } from "./plan.ts";
 import { promptsDir, readRequiredPrompt } from "./prompts.ts";
-import { compactMessages, estimateTokens, shouldCompact } from "./session.ts";
+import { compactMessages, estimateTokens, fileTagsFromCompactionSummary, shouldCompact } from "./session.ts";
 import type { SshHost } from "./ssh.ts";
 import type { SubagentPrompt } from "./subagents.ts";
 import { type ConfirmBash, createToolExecutor, getToolDefinitions, type ToolResult } from "./tools.ts";
@@ -171,6 +177,8 @@ export async function compactSessionMessages(
 	/** Extra mode-specific summarization guidance (e.g. plan mode: keep
 	 * exploration findings not yet written into the plan file). */
 	extraInstructions?: string,
+	/** Live session state to preserve in a post-compact `<system-reminder>`. */
+	reminderState?: PostCompactReminderState,
 ): Promise<CompactSessionResult> {
 	const client = createClient(config);
 	try {
@@ -208,6 +216,16 @@ export async function compactSessionMessages(
 		// messagesCompacted === 0 means compactMessages found no safe cut point
 		// yet (see session.ts's safeCutIndex) and left messages untouched.
 		if (result.summary.messagesCompacted > 0) {
+			// Grok-build shape: reminder is a separate trailing message, never
+			// embedded in the summary. Omit entirely when nothing actionable.
+			const fileTags = fileTagsFromCompactionSummary(result.summary.summary);
+			injectPostCompactReminder(
+				result.messages,
+				formatPostCompactReminder({
+					...reminderState,
+					modifiedFiles: reminderState?.modifiedFiles ?? fileTags.modifiedFiles,
+				}),
+			);
 			return {
 				messages: result.messages,
 				compacted: true,
@@ -621,6 +639,7 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 					(attempt, maxAttempts, reason) => onEvent({ type: "retry", attempt, maxAttempts, reason }),
 					(usage) => onEvent({ type: "usage", usage }),
 					loopConfig.planState?.enabled ? PLAN_COMPACTION_PROMPT : undefined,
+					reminderStateFromPlan(loopConfig.planState),
 				);
 				if (result.compacted) {
 					messages.length = 0;
@@ -748,6 +767,7 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 							(attempt, maxAttempts, reason) => onEvent({ type: "retry", attempt, maxAttempts, reason }),
 							(usage) => onEvent({ type: "usage", usage }),
 							loopConfig.planState?.enabled ? PLAN_COMPACTION_PROMPT : undefined,
+							reminderStateFromPlan(loopConfig.planState),
 						);
 						if (result.compacted) {
 							messages.length = 0;

@@ -336,6 +336,54 @@ export function planChecklistState(content: string): { unchecked: number; checke
 	return { unchecked, checked };
 }
 
+/** Unchecked checklist item texts (checkbox marker stripped). Fence-aware. */
+export function listUncheckedPlanSteps(content: string): string[] {
+	const lines = content.split("\n");
+	const fenced = fencedLineMask(lines);
+	const steps: string[] = [];
+	for (let i = 0; i < lines.length; i++) {
+		if (fenced[i]) continue;
+		const match = lines[i]!.match(/^\s*[-*]\s+\[ \]\s+(.*)$/);
+		if (match) steps.push(match[1]!.trim());
+	}
+	return steps;
+}
+
+/**
+ * Open work items for post-compact TODO reminder (cast's stand-in for
+ * grok-build's todo list). Prefer `- [ ]` checkboxes — that's the plan-mode
+ * contract. When a plan authors Steps as `### N. …` headings instead (common
+ * in real sessions), fall back to those direct child headings under `## Steps`
+ * so compaction still surfaces remaining work.
+ */
+export function listOpenPlanSteps(content: string): string[] {
+	const unchecked = listUncheckedPlanSteps(content);
+	if (unchecked.length > 0) return unchecked;
+	return listHeadingStepsUnderSteps(content);
+}
+
+/** `###` (one level below `## Steps`) headings inside the Steps section. */
+function listHeadingStepsUnderSteps(content: string): string[] {
+	const sections = parseSections(content);
+	// Real plans sometimes emit a duplicate empty `## Steps` above the real one
+	// (email-tool.md). Prefer the Steps section that actually has ### children.
+	const candidates = sections.filter(
+		(s) => s.level === 2 && (s.heading.toLowerCase() === "steps" || s.heading.toLowerCase().startsWith("steps")),
+	);
+	let best: string[] = [];
+	for (const stepsSection of candidates) {
+		const childLevel = stepsSection.level + 1;
+		const steps: string[] = [];
+		for (const s of sections) {
+			if (s.startLine <= stepsSection.startLine) continue;
+			if (s.startLine >= stepsSection.bodyEndLine) break;
+			if (s.level === childLevel) steps.push(s.heading);
+		}
+		if (steps.length > best.length) best = steps;
+	}
+	return best;
+}
+
 // ============================================================================
 // Plan section extraction (for plan_edit)
 // ============================================================================

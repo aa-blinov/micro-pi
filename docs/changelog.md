@@ -2,6 +2,12 @@
 
 All notable user-facing changes to cast, newest first.
 
+## Unreleased
+
+### Added
+
+- After compaction (auto or `/compact`), cast injects a separate trailing `<system-reminder>` user message (grok-build shape) with edited files and a TODO list of open plan steps. Steps come from `- [ ]` checkboxes when present, otherwise from `###` headings under `## Steps` (common in real plans). Omitted when there is nothing actionable; summary text stays reminder-free.
+
 ## 0.6.12
 
 ### Changed

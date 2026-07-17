@@ -1223,6 +1223,101 @@ describe("compactSessionMessages — extraInstructions", () => {
 		await compactSessionMessages(history(), testConfig, "test-model");
 		expect(promptText).not.toContain("PLAN_MODE_EXTRA_INSTRUCTIONS");
 	});
+
+	it("injects a separate trailing user reminder (not inside the summary marker)", async () => {
+		vi.mocked(streamAndCollect).mockImplementationOnce(async () => ({
+			content: "summary of work",
+			thinking: "",
+			finishReason: "stop",
+		}));
+
+		const result = await compactSessionMessages(
+			history(),
+			testConfig,
+			"test-model",
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			{
+				mode: "build",
+				planName: "ship",
+				openSteps: ["wire reminder"],
+				openStepsTotal: 1,
+			},
+		);
+		expect(result.compacted).toBe(true);
+		const marker = result.messages.find(
+			(m) => m.role === "system" && typeof m.content === "string" && m.content.startsWith("[Compacted context"),
+		);
+		expect(marker).toBeDefined();
+		expect(marker!.content as string).not.toContain("<system-reminder>");
+		expect(marker!.content as string).toContain("summary of work");
+
+		const last = result.messages[result.messages.length - 1]!;
+		expect(last.role).toBe("user");
+		expect(last.content as string).toContain("<system-reminder>");
+		expect(last.content as string).toContain("Active plan: `ship`");
+		expect(last.content as string).toContain("## TODO List");
+		expect(last.content as string).toContain("- [pending] wire reminder");
+	});
+
+	it("omits the reminder when there is no actionable state", async () => {
+		vi.mocked(streamAndCollect).mockImplementationOnce(async () => ({
+			content: "summary of work",
+			thinking: "",
+			finishReason: "stop",
+		}));
+
+		const result = await compactSessionMessages(history(), testConfig, "test-model");
+		expect(result.compacted).toBe(true);
+		expect(
+			result.messages.some((m) => typeof m.content === "string" && m.content.includes("<system-reminder>")),
+		).toBe(false);
+	});
+
+	it("surfaces edited files from compacted tool calls in the trailing reminder", async () => {
+		vi.mocked(streamAndCollect).mockImplementationOnce(async () => ({
+			content: "summary of work",
+			thinking: "",
+			finishReason: "stop",
+		}));
+
+		const withEdits: Message[] = [
+			{ role: "system", content: "persona" },
+			{ role: "user", content: "fix auth" },
+			{
+				role: "assistant",
+				content: null,
+				tool_calls: [
+					{
+						id: "t1",
+						type: "function",
+						function: { name: "edit", arguments: JSON.stringify({ path: "src/auth.ts" }) },
+					},
+				],
+			},
+			{ role: "tool", tool_call_id: "t1", content: "ok" },
+			{ role: "user", content: "q1" },
+			{ role: "assistant", content: "a1" },
+			{ role: "user", content: "q2" },
+			{ role: "assistant", content: "a2" },
+			{ role: "user", content: "q3" },
+			{ role: "assistant", content: "a3" },
+		];
+
+		const result = await compactSessionMessages(withEdits, testConfig, "test-model");
+		expect(result.compacted).toBe(true);
+		const marker = result.messages.find(
+			(m) => m.role === "system" && typeof m.content === "string" && m.content.startsWith("[Compacted context"),
+		);
+		expect(marker!.content as string).toContain("<modified-files>");
+		expect(marker!.content as string).not.toContain("<system-reminder>");
+		const last = result.messages[result.messages.length - 1]!;
+		expect(last.role).toBe("user");
+		expect(last.content as string).toContain("## Files Edited This Session");
+		expect(last.content as string).toContain("src/auth.ts");
+	});
 });
 
 // ============================================================================

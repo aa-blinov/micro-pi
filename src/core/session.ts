@@ -234,6 +234,11 @@ function parseFileTagsFromSummary(text: string): { readFiles: string[]; modified
 	};
 }
 
+/** Public alias for post-compact reminder assembly. */
+export function fileTagsFromCompactionSummary(text: string): { readFiles: string[]; modifiedFiles: string[] } {
+	return parseFileTagsFromSummary(text);
+}
+
 const COMPACTION_MARKER_PREFIX = "[Compacted context";
 
 /**

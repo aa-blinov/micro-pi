@@ -1,5 +1,6 @@
 import { execFileSync, execSync } from "node:child_process";
 import { homedir } from "node:os";
+import { reminderStateFromPlan } from "../core/compaction-reminder.ts";
 import { type AppConfig, probeProvider, runOnboardingCheck } from "../core/config.ts";
 import { formatContextFilesForPrompt, loadProjectContextFiles } from "../core/context-files.ts";
 import { compactSessionMessages, PLAN_COMPACTION_PROMPT } from "../core/loop.ts";
@@ -372,6 +373,8 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 	if (input === "/compact") {
 		showNotice("[Compacting...]");
 		try {
+			const planState = createPlanState(session.id);
+			planState.enabled = deps.planMode;
 			const result = await compactSessionMessages(
 				session.messages,
 				config,
@@ -380,6 +383,7 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 				(attempt, maxAttempts, reason) => showNotice(`[Retry ${attempt}/${maxAttempts}: ${reason}]`),
 				(usage) => addUsage(session, usage),
 				deps.planMode ? PLAN_COMPACTION_PROMPT : undefined,
+				reminderStateFromPlan(planState),
 			);
 			if (result.compacted) {
 				session.messages = result.messages;
