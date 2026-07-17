@@ -150,6 +150,7 @@ describe("runAgentLoop — abort vs. error", () => {
 		// exactly what made the UI show the literal word "error" instead of
 		// "Aborted" (see useAgentSession.ts's "end" case).
 		expect(events.some((e) => e.type === "error")).toBe(false);
+		expect(events.some((e) => e.type === "interrupt_reminder")).toBe(true);
 	});
 
 	it("reports 'aborted' when a mid-stream abort ends the stream cleanly (no exception)", async () => {
@@ -181,6 +182,35 @@ describe("runAgentLoop — abort vs. error", () => {
 		// The partial turn must not have been committed as a finished assistant
 		// message (no turn_end) — it ends as an abort, not a normal stop.
 		expect(events.some((e) => e.type === "turn_end")).toBe(false);
+		expect(events.some((e) => e.type === "interrupt_reminder")).toBe(true);
+	});
+
+	it("appends an interrupt system-reminder into messages on mid-stream abort", async () => {
+		const controller = new AbortController();
+		vi.mocked(streamAndCollect).mockImplementationOnce(async () => {
+			controller.abort();
+			return { content: "half", thinking: "", finishReason: "stop", interrupted: true };
+		});
+
+		const events: AgentEvent[] = [];
+		const messages = await runAgentLoop([{ role: "user", content: "hi" }], {
+			config: testConfig,
+			model: "test-model",
+			cwd: process.cwd(),
+			systemPrompt: "test",
+			signal: controller.signal,
+			onEvent: (event) => events.push(event),
+		});
+
+		expect(events.some((e) => e.type === "interrupt_reminder")).toBe(true);
+		const reminder = messages.find(
+			(m) =>
+				m.role === "user" &&
+				typeof m.content === "string" &&
+				m.content.includes("[Request interrupted by user]") &&
+				m.content.includes("<system-reminder>"),
+		);
+		expect(reminder).toBeDefined();
 	});
 
 	it("does NOT report 'aborted' when the turn finished just before a late abort", async () => {
@@ -207,6 +237,7 @@ describe("runAgentLoop — abort vs. error", () => {
 		const endEvent = events.find((e) => e.type === "end");
 		expect(endEvent).toEqual({ type: "end", reason: "stop" });
 		expect(events.some((e) => e.type === "turn_end")).toBe(true);
+		expect(events.some((e) => e.type === "interrupt_reminder")).toBe(false);
 	});
 
 	it("reports 'disconnected' when the stream is silently truncated (no finish, no usage, no abort)", async () => {

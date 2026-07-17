@@ -8,6 +8,7 @@ import {
 } from "./compaction-reminder.ts";
 import type { AppConfig } from "./config.ts";
 import { matchesToolsAllowlist } from "./frontmatter.ts";
+import { appendInterruptReminder } from "./interrupt-reminder.ts";
 import type { Message, Tool, Usage } from "./llm.ts";
 import {
 	applyCacheControl,
@@ -321,6 +322,8 @@ export type AgentEvent =
 	| { type: "open_work_gate"; fires: number; openSteps: number }
 	/** Gate hit its per-prompt cap and allowed the turn to end. */
 	| { type: "open_work_gate_exhausted"; openSteps: number; maxFires: number }
+	/** Prior turn was aborted mid-stream; a `<system-reminder>` was appended for the model. */
+	| { type: "interrupt_reminder" }
 	| { type: "retry"; attempt: number; maxAttempts: number; reason: string }
 	// generationMs is only set for the main completion's usage — compaction's
 	// own summarization call reports usage too (for cumulative cost tracking)
@@ -636,6 +639,14 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 		onEvent({ type: "assistant_message", content, thinking });
 	};
 
+	/** Abort end: optional interrupt reminder for the next model turn, then settle. */
+	const endAborted = () => {
+		if (appendInterruptReminder(messages)) {
+			onEvent({ type: "interrupt_reminder" });
+		}
+		onEvent({ type: "end", reason: "aborted" });
+	};
+
 	// Accumulate partial content so aborted/disconnected turns can be
 	// persisted into session history (the catch block can't read
 	// streamAndCollect's locals after it throws).
@@ -647,7 +658,7 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 		let overflowCompacted = false;
 		outer: while (true) {
 			if (signal?.aborted) {
-				onEvent({ type: "end", reason: "aborted" });
+				endAborted();
 				break;
 			}
 
@@ -824,7 +835,7 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 				// committed normally instead of being mislabeled aborted.
 				if (completion.interrupted) {
 					persistPartialAssistant(completion.content, completion.thinking);
-					onEvent({ type: "end", reason: "aborted" });
+					endAborted();
 					return;
 				}
 
@@ -849,7 +860,11 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 					};
 					messages.push(assistantMsg);
 					onEvent({ type: "turn_end", toolResults: [] });
-					onEvent({ type: "end", reason: completion.finishReason });
+					if (completion.finishReason === "aborted") {
+						endAborted();
+					} else {
+						onEvent({ type: "end", reason: "error" });
+					}
 					return;
 				}
 
@@ -1015,7 +1030,7 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 		// generic message this catch produces) instead of "aborted".
 		if (signal?.aborted) {
 			persistPartialAssistant(partialContent, partialThinking);
-			onEvent({ type: "end", reason: "aborted" });
+			endAborted();
 			return;
 		}
 		onEvent({ type: "error", message: describeTurnError(error) });
