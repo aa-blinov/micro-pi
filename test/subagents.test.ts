@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AppConfig } from "../src/core/config.ts";
@@ -6,6 +6,8 @@ import type { Message } from "../src/core/llm.ts";
 import type { LoopConfig } from "../src/core/loop.ts";
 import { findSubagentPrompt, loadSubagentPrompts, type SubagentPrompt } from "../src/core/subagents.ts";
 import { execTask } from "../src/core/tools/task.ts";
+
+const HARNESS_DISCIPLINE_FILE = join(import.meta.dirname, "..", "prompts", "harness-discipline.md");
 
 const testConfig = {
 	baseURL: "http://localhost",
@@ -81,9 +83,16 @@ describe("loadSubagentPrompts", () => {
 		expect(worker).toBeDefined();
 		expect(worker!.label).toBe("Worker");
 		expect(worker!.systemPrompt.length).toBeGreaterThan(0);
-		// Same shared file-tool contract as personas — not role-specific.
+		// Same shared file-tool + discipline contract as personas — not role-specific.
 		expect(worker!.systemPrompt).toContain("## File tools / hashline anchors");
 		expect(worker!.systemPrompt).toContain("## Error Handling");
+		const disciplineExpected = readFileSync(HARNESS_DISCIPLINE_FILE, "utf-8").trim();
+		expect(worker!.systemPrompt).toContain(disciplineExpected);
+		const errIdx = worker!.systemPrompt.indexOf("## Error Handling");
+		const editIdx = worker!.systemPrompt.indexOf("## File tools / hashline anchors");
+		const discIdx = worker!.systemPrompt.indexOf("## Agent discipline");
+		expect(editIdx).toBeGreaterThan(errIdx);
+		expect(discIdx).toBeGreaterThan(editIdx);
 	});
 
 	it("each prompt has name, label, description, systemPrompt", () => {

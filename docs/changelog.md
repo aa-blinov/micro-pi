@@ -17,6 +17,7 @@ All notable user-facing changes to cast, newest first.
 - Subagent final-answer extraction ignores empty placeholder turns (`(no response)`); the worker prompt requires a standalone closing report.
 - Sync `task` subagents now receive the same environment grounding as the parent: Current System State (cwd/date/platform/model), always-apply + lazy rules, skills catalog, MCP server list, and SSH hosts.
 - `coder-with-subagents` (and the `task` tool description) steers harder on user cues like “parallel” / “independently”: split into same-turn multi-`task` calls instead of solo exploration.
+- Shared prompt append adds Agent discipline (action safety, parallel tool calls, preamble-with-tools, prompt secrecy) for all personas and subagents.
 
 ## 0.6.12
 
