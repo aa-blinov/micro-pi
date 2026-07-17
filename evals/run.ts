@@ -16,6 +16,7 @@
 
 import { resolve } from "node:path";
 import { basicCases } from "./cases/basic.ts";
+import { hashlineCases } from "./cases/hashline.ts";
 import { cleanupFixtures } from "./fixtures.ts";
 import { type EvalCase, printReport, type RunnerOptions, runSuite, saveResults } from "./runner.ts";
 
@@ -23,7 +24,7 @@ import { type EvalCase, printReport, type RunnerOptions, runSuite, saveResults }
 // Collect all cases
 // ============================================================================
 
-const allCases: EvalCase[] = [...basicCases];
+const allCases: EvalCase[] = [...basicCases, ...hashlineCases];
 
 // Fixture files live under a per-process temp dir (see evals/fixtures.ts) — wipe
 // it on every exit path (success, --list, error, Ctrl+C) so runs don't leave
@@ -38,6 +39,8 @@ async function main(): Promise<void> {
 	const args = process.argv.slice(2);
 
 	let model: string | undefined;
+	let provider: string | undefined;
+	let persona: string | undefined;
 	let caseFilter: string | undefined;
 	let verbose = false;
 	let savePath: string | undefined;
@@ -49,6 +52,14 @@ async function main(): Promise<void> {
 			case "--model":
 			case "-m":
 				model = args[++i];
+				break;
+			case "--provider":
+			case "-p":
+				provider = args[++i];
+				break;
+			case "--persona":
+			case "-P":
+				persona = args[++i];
 				break;
 			case "--cases":
 			case "-c":
@@ -108,9 +119,11 @@ async function main(): Promise<void> {
 	}
 
 	const cwd = resolve(".");
-	const options: RunnerOptions & { concurrency: number } = { model, cwd, verbose, concurrency };
+	const options: RunnerOptions & { concurrency: number } = { model, cwd, verbose, concurrency, provider, persona };
 
-	console.log(`\nRunning ${cases.length} eval cases with model: ${model} (concurrency: ${concurrency})\n`);
+	console.log(
+		`\nRunning ${cases.length} eval cases with model: ${model}${provider ? ` (provider: ${provider})` : ""}${persona ? ` (persona: ${persona})` : ""} (concurrency: ${concurrency})\n`,
+	);
 
 	const suite = await runSuite(cases, options);
 
@@ -136,6 +149,8 @@ Usage:
 
 Options:
   --model, -m <model>    Model to use (required)
+  --provider, -p <name>  Provider entry from settings providers[] (default: active provider)
+  --persona, -P <name>   Persona system prompt to run with (default: senior)
   --cases, -c <filter>   Run only cases matching this prefix
   --verbose, -v          Show per-case output
   --concurrency, -j <n>  Parallel case execution (default: 10)

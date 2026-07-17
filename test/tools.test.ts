@@ -371,10 +371,10 @@ describe("edit", () => {
 		expect(result.content).toMatch(/past the end/i);
 	});
 
-	it("suggests the shifted anchor when the line merely moved", async () => {
+	it("auto-recovers an anchor whose line merely moved, noting it in the reply", async () => {
 		// Read, then insert a line above externally: the anchored line's
-		// content is intact but lives one line lower. The stale error must
-		// hand back the exact anchor to retry with, and that retry must work.
+		// content is intact but lives one line lower. The edit must apply
+		// at the new position in one call, with a note saying so.
 		writeFileSync(join(TEST_DIR, "shifted.txt"), "one\ntwo\nthree\n");
 		const exec = createToolExecutor(TEST_DIR, mockConfig);
 		const before = await exec("read", { path: "shifted.txt" });
@@ -385,17 +385,60 @@ describe("edit", () => {
 			path: "shifted.txt",
 			ops: [{ op: "replace", anchor: oldAnchor, content: "TWO" }],
 		});
-		expect(result.isError).toBe(true);
-		expect(result.content).toContain("shifted to line 3");
-		const suggested = /Retry with anchor "(\d+:[a-z]+:[a-z]+)"/.exec(result.content);
-		expect(suggested).not.toBeNull();
-
-		const retry = await exec("edit", {
-			path: "shifted.txt",
-			ops: [{ op: "replace", anchor: suggested![1]!, content: "TWO" }],
-		});
-		expect(retry.isError).toBeFalsy();
+		expect(result.isError).toBeFalsy();
+		expect(result.content).toContain("shifted from line 2 to line 3");
 		expect(readFileSync(join(TEST_DIR, "shifted.txt"), "utf-8")).toBe("inserted\none\nTWO\nthree\n");
+	});
+
+	it("auto-recovers an anchor whose chunk drifted but line is intact", async () => {
+		writeFileSync(join(TEST_DIR, "drifted.txt"), "a\nb\nc\nd\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const before = await exec("read", { path: "drifted.txt" });
+		const target = anchorForLine(before.content, 3); // "c"
+		// External edit to a neighbour in the same chunk; "c" untouched.
+		writeFileSync(join(TEST_DIR, "drifted.txt"), "a\nB\nc\nd\n");
+
+		const result = await exec("edit", {
+			path: "drifted.txt",
+			ops: [{ op: "replace", anchor: target, content: "C" }],
+		});
+		expect(result.isError).toBeFalsy();
+		expect(result.content).toContain("nearby lines changed");
+		expect(readFileSync(join(TEST_DIR, "drifted.txt"), "utf-8")).toBe("a\nB\nC\nd\n");
+	});
+
+	it("still rejects a stale anchor when the content is genuinely gone", async () => {
+		writeFileSync(join(TEST_DIR, "gone.txt"), "a\nb\nc\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const before = await exec("read", { path: "gone.txt" });
+		const target = anchorForLine(before.content, 2); // "b"
+		writeFileSync(join(TEST_DIR, "gone.txt"), "a\nREWRITTEN\nc\n");
+
+		const result = await exec("edit", {
+			path: "gone.txt",
+			ops: [{ op: "replace", anchor: target, content: "B" }],
+		});
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("stale");
+		expect(readFileSync(join(TEST_DIR, "gone.txt"), "utf-8")).toBe("a\nREWRITTEN\nc\n");
+	});
+
+	it("still rejects a stale anchor when several nearby lines match it", async () => {
+		writeFileSync(join(TEST_DIR, "ambig.txt"), "x\ndup\ny\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const before = await exec("read", { path: "ambig.txt" });
+		const target = anchorForLine(before.content, 2); // "dup"
+		// External edit replaces the original and adds two copies nearby —
+		// the anchor's content now matches multiple lines.
+		writeFileSync(join(TEST_DIR, "ambig.txt"), "dup\nx\nchanged\ny\ndup\n");
+
+		const result = await exec("edit", {
+			path: "ambig.txt",
+			ops: [{ op: "replace", anchor: target, content: "DUP" }],
+		});
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("multiple nearby lines match");
+		expect(readFileSync(join(TEST_DIR, "ambig.txt"), "utf-8")).toBe("dup\nx\nchanged\ny\ndup\n");
 	});
 
 	it("echoes the edited region with fresh anchors on success", async () => {

@@ -13,7 +13,6 @@ import {
 	findShifted,
 	formatAnchorSnippet,
 	parseAnchor,
-	renderAnchor,
 	renderAnchoredLine,
 	validateAnchor,
 } from "./hashline.ts";
@@ -178,7 +177,10 @@ export async function execEdit(args: Record<string, unknown>, cwd: string): Prom
 	// over ready-to-use anchors for the follow-up edit. Same feedback
 	// grok-build's hashline_edit gives on success.
 	const snippet = postEditSnippet(bucketResult.ops, mutated);
-	return { content: `Updated ${ops.length} block(s) in ${filePath}. Result (with fresh anchors):\n\n${snippet}` };
+	const notes = bucketResult.notes.map((n) => `Note: ${n}`).join("\n");
+	return {
+		content: `Updated ${ops.length} block(s) in ${filePath}.${notes ? `\n${notes}` : ""} Result (with fresh anchors):\n\n${snippet}`,
+	};
 }
 
 const SNIPPET_CONTEXT_LINES = 2;
@@ -327,6 +329,8 @@ interface BucketFailure {
 interface BucketSuccess {
 	ok: true;
 	ops: BucketedOp[];
+	/** Auto-recovery notes (shifted/drifted anchors) to surface in the reply. */
+	notes: string[];
 }
 
 function bucketOps(
@@ -336,6 +340,7 @@ function bucketOps(
 	filePath: string,
 ): BucketSuccess | BucketFailure {
 	const result: BucketedOp[] = [];
+	const notes: string[] = [];
 	for (let i = 0; i < ops.length; i++) {
 		const op = ops[i]!;
 		if (op.kind === "write") continue;
@@ -349,22 +354,24 @@ function bucketOps(
 			const endAnchor = endStr ? parseAnchor(endStr) : undefined;
 			if (endStr && !endAnchor)
 				return failBucket(`end_anchor "${endStr}" is malformed. Expected "<line>:<local>:<chunk>".`);
-			const startLine = anchor.line;
-			const endLine = endAnchor ? endAnchor.line : startLine;
-			if (startLine < 1 || startLine > lines.length) {
-				return anchorNotFound(op.anchorStr, lines, hashes);
-			}
-			if (endLine < startLine || endLine > lines.length) {
-				return anchorNotFound(endAnchor ? renderParsedAnchor(endAnchor) : "EOF", lines, hashes);
-			}
-			// Validate each touched line against the stored hash; the model
-			// might have edited a single line or a range — every anchor
-			// matters.
-			const startCheck = checkAnchor(anchor, lines, hashes, startLine);
+			// Validate (and possibly auto-recover) each anchor against the
+			// current file; the resolved lines — not the anchors' own line
+			// numbers — define the range.
+			const startCheck = checkAnchor(anchor, lines, hashes, anchor.line);
 			if (!startCheck.ok) return startCheck.failure;
+			if (startCheck.note) notes.push(startCheck.note);
+			const startLine = startCheck.line;
+			let endLine = startLine;
 			if (endAnchor) {
-				const endCheck = checkAnchor(endAnchor, lines, hashes, endLine);
+				const endCheck = checkAnchor(endAnchor, lines, hashes, endAnchor.line);
 				if (!endCheck.ok) return endCheck.failure;
+				if (endCheck.note) notes.push(endCheck.note);
+				endLine = endCheck.line;
+			}
+			if (endLine < startLine) {
+				return failBucket(
+					`Range is inverted: end_anchor resolves to line ${endLine}, above anchor line ${startLine}. Re-read the file and pass the range top-down.`,
+				);
 			}
 			result.push({
 				kind: "replace",
@@ -392,13 +399,14 @@ function bucketOps(
 				);
 			const check = checkAnchor(anchor, lines, hashes, anchor.line);
 			if (!check.ok) return check.failure;
+			if (check.note) notes.push(check.note);
 			// Both insert flavours normalise to the same bucketed shape: the
 			// 0-based line whose *end* is the splice point. insert_before N
 			// is just insert_after N-1, with the anchor still validated
 			// against line N itself.
 			result.push({
 				kind: "insert",
-				line: anchor.line - (op.before ? 2 : 1),
+				line: check.line - (op.before ? 2 : 1),
 				textLinesToInsert: splitContent(op.content),
 				anchorStr: op.anchorStr,
 			});
@@ -433,17 +441,34 @@ function bucketOps(
 			}
 		}
 	}
-	return { ok: true, ops: result };
+	return { ok: true, ops: result, notes };
 }
 
 interface AnchorCheckOk {
 	ok: true;
+	/** 1-based line the anchor resolved to (may differ from the anchor's own line after recovery). */
+	line: number;
+	/** Present when the anchor was auto-recovered — surfaced in the success reply. */
+	note?: string;
 }
 interface AnchorCheckFail {
 	ok: false;
 	failure: BucketFailure;
 }
 
+/**
+ * Resolve an anchor against the current file, recovering automatically
+ * where the answer is unambiguous instead of bouncing an error back:
+ *
+ * - line content matches at the anchored line, only the chunk drifted
+ *   (a neighbour was edited) → accept at the same line;
+ * - line content matches exactly one line within the search window
+ *   (content shifted, e.g. lines inserted above) → accept at that line.
+ *
+ * Both recoveries are reported via `note` so the model sees what
+ * happened. Genuinely ambiguous or unmatchable anchors still fail — the
+ * tool must never guess between candidates.
+ */
 function checkAnchor(
 	anchor: ReturnType<typeof parseAnchor>,
 	lines: string[],
@@ -452,15 +477,37 @@ function checkAnchor(
 ): AnchorCheckOk | AnchorCheckFail {
 	if (!anchor) return { ok: false, failure: failBucket("Malformed anchor.") };
 	const anchorStr = renderParsedAnchor(anchor);
-	if (targetLine < 1 || targetLine > lines.length) {
+
+	const inRange = targetLine >= 1 && targetLine <= lines.length;
+	if (inRange) {
+		const verdict = validateAnchor({ ...anchor, line: targetLine }, hashes);
+		if (verdict === "valid") return { ok: true, line: targetLine };
+		// Chunk drift: the anchored line itself is byte-for-byte what the
+		// model saw; only its neighbourhood changed. Editing it is exactly
+		// the model's intent.
+		const [currentLocal] = hashes[targetLine - 1] ?? ["", ""];
+		if (currentLocal === anchor.localHash) {
+			return {
+				ok: true,
+				line: targetLine,
+				note: `anchor "${anchorStr}": nearby lines changed since your last read; the anchored line itself was unchanged and the edit was applied to it.`,
+			};
+		}
+	}
+	// Shift recovery: the content moved. A unique match within the search
+	// window is accepted; anything else is the model's call to make.
+	const shift = findShifted({ ...anchor, line: targetLine }, hashes);
+	if (shift?.kind === "found") {
+		return {
+			ok: true,
+			line: shift.newLine,
+			note: `anchor "${anchorStr}": content had shifted from line ${targetLine} to line ${shift.newLine}; the edit was applied there.`,
+		};
+	}
+	if (!inRange) {
 		return { ok: false, failure: anchorNotFound(anchorStr, lines, hashes) };
 	}
-	const verdict = validateAnchor({ ...anchor, line: targetLine }, hashes);
-	if (verdict === "valid") return { ok: true };
-	if (verdict === "out_of_range") {
-		return { ok: false, failure: anchorNotFound(anchorStr, lines, hashes) };
-	}
-	return { ok: false, failure: staleAnchor(anchor, lines, hashes, targetLine) };
+	return { ok: false, failure: staleAnchor(anchor, lines, hashes, targetLine, shift) };
 }
 
 function renderParsedAnchor(anchor: NonNullable<ReturnType<typeof parseAnchor>>): string {
@@ -493,31 +540,12 @@ function staleAnchor(
 	lines: string[],
 	hashes: Array<[string, string]>,
 	targetLine: number,
+	shift: ReturnType<typeof findShifted>,
 ): BucketFailure {
+	// Unique matches never reach this point — checkAnchor auto-recovers
+	// them. What's left is genuinely ambiguous or gone.
 	const badAnchor = renderParsedAnchor(anchor);
 	const snippet = formatAnchorSnippet(lines, hashes, targetLine - 1, 5);
-	// Commonest drift: the line itself is intact but a neighbour in the
-	// same chunk changed, so only the chunk component went stale. The
-	// fresh anchor lives at the same line number.
-	const [currentLocal] = hashes[targetLine - 1] ?? ["", ""];
-	if (currentLocal === anchor.localHash) {
-		const fresh = renderAnchor(targetLine, hashes[targetLine - 1] ?? ["", ""]);
-		return failBucket(
-			`Anchor "${badAnchor}" is stale at line ${targetLine} — the line itself is unchanged but nearby lines were edited. ` +
-				`Retry with anchor "${fresh}".\n\nSnippet around the requested line:\n${snippet}`,
-		);
-	}
-	// The local hash survives line moves, so a stale anchor often just
-	// means the content shifted. A unique nearby match gets handed back
-	// as a ready-to-retry anchor — no re-read needed.
-	const shift = findShifted({ ...anchor, line: targetLine }, hashes);
-	if (shift?.kind === "found") {
-		const fresh = renderAnchor(shift.newLine, hashes[shift.newLine - 1] ?? ["", ""]);
-		return failBucket(
-			`Anchor "${badAnchor}" is stale at line ${targetLine} — the content appears to have shifted to line ${shift.newLine}. ` +
-				`Retry with anchor "${fresh}".\n\nSnippet around the requested line:\n${snippet}`,
-		);
-	}
 	if (shift?.kind === "ambiguous") {
 		return failBucket(
 			`Anchor "${badAnchor}" is stale at line ${targetLine}, and multiple nearby lines match it (lines ${shift.candidates.join(", ")}). ` +

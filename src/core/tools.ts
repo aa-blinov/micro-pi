@@ -119,7 +119,7 @@ export function getToolDefinitions(
 					"'insert_after' / 'insert_before' (add new lines after/before an anchored line), 'write' (replace the whole file). " +
 					"Multiple ops in one call are validated against the pre-edit file and applied atomically. " +
 					"A successful edit returns the edited regions with fresh anchors — verify them before the next op. " +
-					"Stale-anchor errors include fresh anchors (and, when content merely moved, the exact shifted anchor to retry with) so a re-read is usually unnecessary.",
+					"Anchors whose content merely moved or whose neighbourhood changed are recovered automatically (a Note in the reply says where the edit landed); errors occur only for ambiguous or vanished anchors, and include fresh anchors so a re-read is usually unnecessary.",
 				parameters: {
 					type: "object",
 					properties: {

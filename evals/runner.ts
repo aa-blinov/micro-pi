@@ -10,10 +10,12 @@
  * - Timeout
  */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
-import { loadConfig } from "../src/config.ts";
-import { type AgentEvent, runAgentLoop } from "../src/loop.ts";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { loadConfig } from "../src/core/config.ts";
+import { type AgentEvent, runAgentLoop } from "../src/core/loop.ts";
+import { findPersona } from "../src/core/personas.ts";
 
 // ============================================================================
 // Case definition
@@ -130,10 +132,39 @@ export interface RunnerOptions {
 	model: string;
 	cwd: string;
 	verbose?: boolean;
+	/** Named entry from settings `providers[]`; defaults to the active provider. */
+	provider?: string;
+	/** Persona whose system prompt the agent runs with; defaults to "senior". */
+	persona?: string;
+}
+
+/**
+ * Provider connection for eval runs — the user's own cast settings.
+ * With no name, the active `providerUrl`/`apiKey` pair is used; with a
+ * name, the matching entry from `providers[]` is picked.
+ */
+function loadConnection(providerName?: string): { baseURL: string; apiKey: string } {
+	const settings = JSON.parse(readFileSync(join(homedir(), ".cast", "settings.json"), "utf-8")) as {
+		providerUrl?: string;
+		apiKey?: string;
+		providers?: Array<{ name: string; url: string; apiKey: string }>;
+	};
+	if (providerName) {
+		const p = settings.providers?.find((x) => x.name === providerName);
+		if (!p) {
+			const known = settings.providers?.map((x) => x.name).join(", ") || "none";
+			throw new Error(`Provider "${providerName}" not found in ~/.cast/settings.json (known: ${known})`);
+		}
+		return { baseURL: p.url, apiKey: p.apiKey };
+	}
+	if (!settings.providerUrl || !settings.apiKey) {
+		throw new Error("evals need providerUrl and apiKey in ~/.cast/settings.json");
+	}
+	return { baseURL: settings.providerUrl, apiKey: settings.apiKey };
 }
 
 export async function runCase(evalCase: EvalCase, options: RunnerOptions): Promise<RunResult> {
-	const config = loadConfig();
+	const config = loadConfig(loadConnection(options.provider));
 	const model = evalCase.model ?? options.model;
 	const timeout = evalCase.timeout ?? 60_000;
 
@@ -153,11 +184,22 @@ export async function runCase(evalCase: EvalCase, options: RunnerOptions): Promi
 	try {
 		await evalCase.setup?.();
 
+		// Use a real persona prompt so evals exercise the same system prompt
+		// (including the shared tools-edit guidance) the shipping agent gets —
+		// a bare stub here silently unplugged prompts/tools-edit.md from every
+		// eval run. The persona is selectable so results can be compared
+		// across personas; an unknown name fails loudly rather than silently
+		// benchmarking the wrong prompt.
+		const personaName = options.persona ?? "senior";
+		const personaPrompt = findPersona(personaName)?.systemPrompt;
+		if (!personaPrompt) {
+			throw new Error(`Persona "${personaName}" not found — check prompts/personas/ and ~/.cast/personas/.`);
+		}
 		await runAgentLoop([{ role: "user", content: evalCase.prompt }], {
 			config,
 			model,
 			cwd: options.cwd,
-			systemPrompt: "You are a coding agent. Use tools to help the user. Be concise.",
+			systemPrompt: personaPrompt,
 			signal: ac.signal,
 			onEvent: (event) => {
 				events.push(event);
