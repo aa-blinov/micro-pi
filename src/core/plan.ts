@@ -350,11 +350,11 @@ export function listUncheckedPlanSteps(content: string): string[] {
 }
 
 /**
- * Open work items for post-compact TODO reminder (cast's stand-in for
- * grok-build's todo list). Prefer `- [ ]` checkboxes — that's the plan-mode
- * contract. When a plan authors Steps as `### N. …` headings instead (common
- * in real sessions), fall back to those direct child headings under `## Steps`
- * so compaction still surfaces remaining work.
+ * Open work items for post-compact TODO reminder and the turn-end open-work
+ * gate. Prefer `- [ ]` checkboxes — that's the plan-mode contract. When a plan
+ * authors Steps as `### N. …` headings instead (common in real sessions), fall
+ * back to those direct child headings under `## Steps` so remaining work is
+ * still visible.
  */
 export function listOpenPlanSteps(content: string): string[] {
 	const unchecked = listUncheckedPlanSteps(content);

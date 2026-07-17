@@ -1177,6 +1177,356 @@ describe("runAgentLoop — plan mode", () => {
 });
 
 // ============================================================================
+// runAgentLoop — open-work gate (turn-end continuation)
+// ============================================================================
+
+describe("runAgentLoop — open-work gate", () => {
+	const openPlan = "# Plan\n\n## Steps\n- [ ] do the work\n- [ ] verify\n";
+
+	it("nudges on content-only stop when build mode has open checklist steps", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "cast-owg-nudge-"));
+		writeFileSync(join(dir, "feature.md"), openPlan, "utf-8");
+		try {
+			let secondCallMessages: Message[] | undefined;
+			vi.mocked(streamAndCollect)
+				.mockImplementationOnce(async () => ({
+					content: "I'll stop early.",
+					thinking: "",
+					finishReason: "stop",
+				}))
+				.mockImplementationOnce(async (_c, _m, msgs) => {
+					secondCallMessages = msgs as Message[];
+					return {
+						content: "",
+						thinking: "",
+						finishReason: "stop",
+						toolCalls: [
+							{
+								id: "t1",
+								name: "plan_check",
+								arguments: JSON.stringify({ item: "do the work" }),
+							},
+							{
+								id: "t2",
+								name: "plan_check",
+								arguments: JSON.stringify({ item: "verify" }),
+							},
+						],
+					};
+				})
+				.mockImplementationOnce(async () => ({
+					content: "done after tools",
+					thinking: "",
+					finishReason: "stop",
+				}));
+
+			const events: AgentEvent[] = [];
+			await runAgentLoop([{ role: "user", content: "implement" }], {
+				config: testConfig,
+				model: "test-model",
+				cwd: dir,
+				systemPrompt: "BASE",
+				planState: { enabled: false, plansDir: dir },
+				onEvent: (e) => events.push(e),
+			});
+
+			const gateEvents = events.filter((e) => e.type === "open_work_gate");
+			expect(gateEvents).toHaveLength(1);
+			expect(gateEvents[0]).toMatchObject({ type: "open_work_gate", fires: 1, openSteps: 2 });
+			expect(vi.mocked(streamAndCollect)).toHaveBeenCalledTimes(3);
+			// applyCacheControl may rewrite user content to a text-part array before
+			// the next request — flatten before asserting on the reminder body.
+			const reminderText = (secondCallMessages ?? [])
+				.filter((m) => m.role === "user")
+				.map((m) => contentToText(m.content))
+				.find((t) => t.includes("outstanding plan steps"));
+			expect(reminderText).toBeDefined();
+			expect(reminderText).toContain("<system-reminder>");
+			expect(reminderText).toContain("do the work");
+		} finally {
+			vi.mocked(streamAndCollect).mockReset();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("caps at max fires then emits open_work_gate_exhausted and stops", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "cast-owg-cap-"));
+		writeFileSync(join(dir, "feature.md"), openPlan, "utf-8");
+		try {
+			let calls = 0;
+			vi.mocked(streamAndCollect).mockImplementation(async () => {
+				calls++;
+				return { content: `text-only ${calls}`, thinking: "", finishReason: "stop" };
+			});
+
+			const events: AgentEvent[] = [];
+			await runAgentLoop([{ role: "user", content: "implement" }], {
+				config: testConfig,
+				model: "test-model",
+				cwd: dir,
+				systemPrompt: "BASE",
+				planState: { enabled: false, plansDir: dir },
+				onEvent: (e) => events.push(e),
+			});
+
+			const gates = events.filter((e) => e.type === "open_work_gate");
+			const exhausted = events.filter((e) => e.type === "open_work_gate_exhausted");
+			expect(gates).toHaveLength(2);
+			expect(exhausted).toHaveLength(1);
+			expect(exhausted[0]).toMatchObject({ type: "open_work_gate_exhausted", maxFires: 2, openSteps: 2 });
+			// 1 initial + 2 gate continues + stop after exhaust (no 4th forced call)
+			expect(calls).toBe(3);
+			expect(events.filter((e) => e.type === "end")).toEqual([{ type: "end", reason: "stop" }]);
+		} finally {
+			vi.mocked(streamAndCollect).mockReset();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("does not fire when all checklist items are done", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "cast-owg-empty-"));
+		writeFileSync(join(dir, "feature.md"), "# Plan\n\n## Steps\n- [x] done already\n", "utf-8");
+		try {
+			vi.mocked(streamAndCollect).mockImplementationOnce(async () => ({
+				content: "all done",
+				thinking: "",
+				finishReason: "stop",
+			}));
+
+			const events: AgentEvent[] = [];
+			await runAgentLoop([{ role: "user", content: "status" }], {
+				config: testConfig,
+				model: "test-model",
+				cwd: dir,
+				systemPrompt: "BASE",
+				planState: { enabled: false, plansDir: dir },
+				onEvent: (e) => events.push(e),
+			});
+
+			expect(events.filter((e) => e.type === "open_work_gate")).toHaveLength(0);
+			expect(events.filter((e) => e.type === "open_work_gate_exhausted")).toHaveLength(0);
+			expect(vi.mocked(streamAndCollect)).toHaveBeenCalledTimes(1);
+			expect(events.find((e) => e.type === "end")).toEqual({ type: "end", reason: "stop" });
+		} finally {
+			vi.mocked(streamAndCollect).mockReset();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("does not fire in plan mode even with open steps", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "cast-owg-planmode-"));
+		writeFileSync(join(dir, "feature.md"), openPlan, "utf-8");
+		try {
+			vi.mocked(streamAndCollect).mockImplementationOnce(async () => ({
+				content: "planning",
+				thinking: "",
+				finishReason: "stop",
+			}));
+
+			const events: AgentEvent[] = [];
+			await runAgentLoop([{ role: "user", content: "plan it" }], {
+				config: testConfig,
+				model: "test-model",
+				cwd: dir,
+				systemPrompt: "BASE",
+				planState: { enabled: true, plansDir: dir },
+				onEvent: (e) => events.push(e),
+			});
+
+			expect(events.filter((e) => e.type === "open_work_gate")).toHaveLength(0);
+			expect(vi.mocked(streamAndCollect)).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.mocked(streamAndCollect).mockReset();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("does not fire when there is no active plan on disk", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "cast-owg-noplan-"));
+		try {
+			vi.mocked(streamAndCollect).mockImplementationOnce(async () => ({
+				content: "ok",
+				thinking: "",
+				finishReason: "stop",
+			}));
+
+			const events: AgentEvent[] = [];
+			await runAgentLoop([{ role: "user", content: "hi" }], {
+				config: testConfig,
+				model: "test-model",
+				cwd: dir,
+				systemPrompt: "BASE",
+				planState: { enabled: false, plansDir: dir },
+				onEvent: (e) => events.push(e),
+			});
+
+			expect(events.filter((e) => e.type === "open_work_gate")).toHaveLength(0);
+			expect(vi.mocked(streamAndCollect)).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.mocked(streamAndCollect).mockReset();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("fires for ### heading steps under ## Steps (no checklist)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "cast-owg-heading-"));
+		writeFileSync(join(dir, "feature.md"), "# Plan\n\n## Steps\n\n### Implement stub\n\n### Verify\n", "utf-8");
+		try {
+			vi.mocked(streamAndCollect)
+				.mockImplementationOnce(async () => ({
+					content: "stopping",
+					thinking: "",
+					finishReason: "stop",
+				}))
+				.mockImplementationOnce(async () => ({
+					content: "ok",
+					thinking: "",
+					finishReason: "stop",
+				}));
+
+			const events: AgentEvent[] = [];
+			await runAgentLoop([{ role: "user", content: "go" }], {
+				config: testConfig,
+				model: "test-model",
+				cwd: dir,
+				systemPrompt: "BASE",
+				planState: { enabled: false, plansDir: dir },
+				// Cap at 1 so we don't need three content-only turns.
+				openWorkGate: { maxFiresPerPrompt: 1 },
+				onEvent: (e) => events.push(e),
+			});
+
+			expect(events.filter((e) => e.type === "open_work_gate")).toHaveLength(1);
+			expect(events.some((e) => e.type === "open_work_gate_exhausted")).toBe(true);
+		} finally {
+			vi.mocked(streamAndCollect).mockReset();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("does not run the gate after a successful terminal tool", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "cast-owg-terminal-"));
+		writeFileSync(join(dir, "feature.md"), openPlan, "utf-8");
+		try {
+			let calls = 0;
+			vi.mocked(streamAndCollect).mockImplementation(async () => {
+				calls++;
+				return {
+					content: "",
+					thinking: "",
+					finishReason: "stop",
+					toolCalls: [
+						{
+							id: `t${calls}`,
+							name: "plan_enter",
+							arguments: JSON.stringify({ reason: "switch to plan" }),
+						},
+					],
+				};
+			});
+
+			const events: AgentEvent[] = [];
+			await runAgentLoop([{ role: "user", content: "switch" }], {
+				config: testConfig,
+				model: "test-model",
+				cwd: dir,
+				systemPrompt: "BASE",
+				planState: { enabled: false, plansDir: dir },
+				onEvent: (e) => events.push(e),
+			});
+
+			expect(calls).toBe(1);
+			expect(events.filter((e) => e.type === "open_work_gate")).toHaveLength(0);
+			expect(events.find((e) => e.type === "end")).toEqual({ type: "end", reason: "stop" });
+		} finally {
+			vi.mocked(streamAndCollect).mockReset();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("resets the fire counter after a follow-up inject", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "cast-owg-followup-"));
+		writeFileSync(join(dir, "feature.md"), openPlan, "utf-8");
+		const followUpQueue = new MessageQueue();
+		try {
+			let calls = 0;
+			vi.mocked(streamAndCollect).mockImplementation(async () => {
+				calls++;
+				// After the first outer cycle exhausts (3 content-only turns),
+				// the follow-up already queued below restarts a fresh cycle.
+				if (calls === 1) {
+					followUpQueue.enqueue({ role: "user", content: "please continue" });
+				}
+				return { content: `text ${calls}`, thinking: "", finishReason: "stop" };
+			});
+
+			const events: AgentEvent[] = [];
+			await runAgentLoop([{ role: "user", content: "implement" }], {
+				config: testConfig,
+				model: "test-model",
+				cwd: dir,
+				systemPrompt: "BASE",
+				planState: { enabled: false, plansDir: dir },
+				followUpQueue,
+				onEvent: (e) => events.push(e),
+			});
+
+			expect(events.some((e) => e.type === "followup_injected")).toBe(true);
+			const gates = events.filter((e) => e.type === "open_work_gate");
+			// First prompt: fires 1+2; after follow-up reset: fire 1 (+ maybe 2)
+			expect(gates.length).toBeGreaterThanOrEqual(3);
+			expect(gates.filter((e) => e.type === "open_work_gate" && e.fires === 1).length).toBeGreaterThanOrEqual(2);
+			expect(events.filter((e) => e.type === "open_work_gate_exhausted").length).toBeGreaterThanOrEqual(2);
+		} finally {
+			vi.mocked(streamAndCollect).mockReset();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("re-reads the plan after plan_check clears the last open item", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "cast-owg-check-"));
+		writeFileSync(join(dir, "feature.md"), "# Plan\n\n## Steps\n- [ ] only step\n", "utf-8");
+		try {
+			vi.mocked(streamAndCollect)
+				.mockImplementationOnce(async () => ({
+					content: "",
+					thinking: "",
+					finishReason: "stop",
+					toolCalls: [
+						{
+							id: "t1",
+							name: "plan_check",
+							arguments: JSON.stringify({ item: "only step" }),
+						},
+					],
+				}))
+				.mockImplementationOnce(async () => ({
+					content: "finished",
+					thinking: "",
+					finishReason: "stop",
+				}));
+
+			const events: AgentEvent[] = [];
+			await runAgentLoop([{ role: "user", content: "finish" }], {
+				config: testConfig,
+				model: "test-model",
+				cwd: dir,
+				systemPrompt: "BASE",
+				planState: { enabled: false, plansDir: dir },
+				onEvent: (e) => events.push(e),
+			});
+
+			expect(events.filter((e) => e.type === "open_work_gate")).toHaveLength(0);
+			expect(vi.mocked(streamAndCollect)).toHaveBeenCalledTimes(2);
+			expect(events.find((e) => e.type === "end")).toEqual({ type: "end", reason: "stop" });
+		} finally {
+			vi.mocked(streamAndCollect).mockReset();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+// ============================================================================
 // compactSessionMessages — plan-mode extra instructions
 // ============================================================================
 

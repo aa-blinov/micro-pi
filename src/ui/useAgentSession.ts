@@ -672,6 +672,16 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 									`[doom loop] ${event.tool} blocked after ${event.attempts} identical calls`,
 								);
 								break;
+							case "open_work_gate":
+								pendingDoomWarningsRef.current.push(
+									`[open work] continuing — ${event.openSteps} plan step(s) still open (nudge ${event.fires})`,
+								);
+								break;
+							case "open_work_gate_exhausted":
+								pendingDoomWarningsRef.current.push(
+									`[open work] stopped after ${event.maxFires} nudge(s) — ${event.openSteps} plan step(s) still open`,
+								);
+								break;
 							case "retry":
 								setRetry({ attempt: event.attempt, maxAttempts: event.maxAttempts, reason: event.reason });
 								clearRetryOnNextChunk.current = true;

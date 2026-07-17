@@ -18,6 +18,14 @@ import {
 	streamAndCollect,
 } from "./llm.ts";
 import type { McpToolHandle } from "./mcp.ts";
+import {
+	buildOpenWorkGateExhaustedReminder,
+	collectOpenWorkSteps,
+	defaultOpenWorkGateConfig,
+	evaluateOpenWorkGate,
+	isOpenWorkGateActive,
+	type OpenWorkGateConfig,
+} from "./open-work-gate.ts";
 import type { Persona } from "./personas.ts";
 import {
 	checkReadOnlyCommand,
@@ -309,6 +317,10 @@ export type AgentEvent =
 	| { type: "compaction"; messagesCompacted: number; tokensBefore: number }
 	| { type: "compaction_failed"; reason: string }
 	| { type: "doom_loop"; tool: string; attempts: number }
+	/** Turn-end gate forced another sampling round because plan steps remain open. */
+	| { type: "open_work_gate"; fires: number; openSteps: number }
+	/** Gate hit its per-prompt cap and allowed the turn to end. */
+	| { type: "open_work_gate_exhausted"; openSteps: number; maxFires: number }
 	| { type: "retry"; attempt: number; maxAttempts: number; reason: string }
 	// generationMs is only set for the main completion's usage — compaction's
 	// own summarization call reports usage too (for cumulative cost tracking)
@@ -392,6 +404,12 @@ export interface LoopConfig {
 	contextFiles?: string[];
 	/** Configured SSH hosts — when non-empty, the `ssh` tool is registered. */
 	sshHosts?: SshHost[];
+	/**
+	 * Turn-end open-work gate. When omitted, defaults to enabled with
+	 * `DEFAULT_OPEN_WORK_GATE_MAX_FIRES`. Still requires build mode + an
+	 * active plan on disk (`isOpenWorkGateActive`).
+	 */
+	openWorkGate?: Partial<OpenWorkGateConfig>;
 }
 
 // ============================================================================
@@ -450,6 +468,13 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 	// (name + serialized args). When the same call appears that many times in
 	// a row we refuse to execute it and tell the model to try something else.
 	const recentToolCalls: Array<{ name: string; argsKey: string }> = [];
+
+	const openWorkGateConfig: OpenWorkGateConfig = {
+		...defaultOpenWorkGateConfig(),
+		...loopConfig.openWorkGate,
+	};
+	// Cap is per outer-loop user prompt; reset when follow-up injects.
+	let openWorkGateFires = 0;
 
 	const builtinExecuteTool = createToolExecutor(
 		cwd,
@@ -927,6 +952,38 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 					return;
 				}
 
+				// Turn-end open-work gate: content-only stop with open plan steps
+				// → inject a system-reminder and keep sampling (capped).
+				if (
+					(!toolCalls || toolCalls.length === 0) &&
+					isOpenWorkGateActive(loopConfig.planState, openWorkGateConfig)
+				) {
+					const openSteps = collectOpenWorkSteps(loopConfig.planState);
+					const decision = evaluateOpenWorkGate({ openSteps });
+					if (decision.type === "nudge") {
+						if (openWorkGateFires < openWorkGateConfig.maxFiresPerPrompt) {
+							openWorkGateFires += 1;
+							onEvent({
+								type: "open_work_gate",
+								fires: openWorkGateFires,
+								openSteps: openSteps.length,
+							});
+							messages.push({ role: "user", content: decision.reminder });
+							hasMoreToolCalls = true;
+						} else {
+							messages.push({
+								role: "user",
+								content: buildOpenWorkGateExhaustedReminder(openWorkGateConfig.maxFiresPerPrompt),
+							});
+							onEvent({
+								type: "open_work_gate_exhausted",
+								openSteps: openSteps.length,
+								maxFires: openWorkGateConfig.maxFiresPerPrompt,
+							});
+						}
+					}
+				}
+
 				// re-poll steering at end of inner iteration
 				pendingMessages = steeringQueue.drain();
 			}
@@ -941,6 +998,7 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 				overflowCompacted = false;
 				// Same as steering: a new user message resets the doom-loop window.
 				recentToolCalls.length = 0;
+				openWorkGateFires = 0;
 				continue;
 			}
 
