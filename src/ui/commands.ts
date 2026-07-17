@@ -4,7 +4,7 @@ import { reminderStateFromPlan } from "../core/compaction-reminder.ts";
 import { type AppConfig, probeProvider, runOnboardingCheck } from "../core/config.ts";
 import { formatContextFilesForPrompt, loadProjectContextFiles } from "../core/context-files.ts";
 import { compactSessionMessages, PLAN_COMPACTION_PROMPT } from "../core/loop.ts";
-import { closeMcpConnections, formatMcpForPrompt, type McpSetupResult } from "../core/mcp.ts";
+import { closeMcpConnections, formatMcpForPrompt, type McpSetupResult, mcpServerToolBlurbs } from "../core/mcp.ts";
 import { findPersona, type LoadPersonasOptions, type Persona } from "../core/personas.ts";
 import { createPlanState, readActivePlan } from "../core/plan.ts";
 import {
@@ -56,7 +56,7 @@ import {
 	selectSession,
 	selectSkills,
 } from "../pickers/domain.ts";
-import type { Pickers } from "../pickers/types.ts";
+import type { Pickers, PickOption } from "../pickers/types.ts";
 import { abbreviateTokens } from "./App.tsx";
 import { TUI_KEYBINDINGS } from "./input/keybindings.ts";
 import { getStatusBarSegments, SEGMENT_MAX_WIDTH, type SegmentContext, type StatusBarSegment } from "./statusbar.tsx";
@@ -406,10 +406,13 @@ async function uninstallPluginInteractive(deps: CommandDeps): Promise<void> {
 		return;
 	}
 	const picked = await deps.pickers.pickOption(
-		installed.map((p) => ({
-			value: p.id,
-			label: `${p.id}${p.enabled ? "" : " (disabled)"}${p.description ? ` — ${p.description}` : ""}`,
-		})),
+		[...installed]
+			.sort((a, b) => a.id.localeCompare(b.id))
+			.map((p) => ({
+				value: p.id,
+				label: `${p.id}${p.enabled ? "" : " (disabled)"}`,
+				description: p.description?.trim() || undefined,
+			})),
 		{ title: "Uninstall which plugin?" },
 	);
 	if (!picked) {
@@ -432,8 +435,10 @@ async function applySkillUninstall(deps: CommandDeps, skill: Skill): Promise<voi
 }
 
 async function uninstallSkillInteractive(deps: CommandDeps): Promise<void> {
-	const removable = discoverSkillsForCwd(deps.projectDeps, deps.cwd, deps.projectTrusted).filter(isUninstallableSkill);
-	if (removable.length === 0) {
+	const discovered = discoverSkillsForCwd(deps.projectDeps, deps.cwd, deps.projectTrusted);
+	const removable = discovered.filter(isUninstallableSkill);
+	const pluginSkills = discovered.filter((s) => s.source === "plugin");
+	if (removable.length === 0 && pluginSkills.length === 0) {
 		deps.agent.addDisplayMessage({
 			role: "warning",
 			content:
@@ -442,19 +447,34 @@ async function uninstallSkillInteractive(deps: CommandDeps): Promise<void> {
 		return;
 	}
 	const disabled = new Set(loadSettings().disabledSkills ?? []);
-	const picked = await deps.pickers.pickOption(
-		removable.map((s) => ({
+	const options: PickOption<string>[] = [
+		...removable.map((s) => ({
 			value: s.name,
-			label: `${s.name} (${s.source}${disabled.has(s.name) ? ", disabled" : ""}) — ${s.description}`,
+			label: `${s.name} (${s.source}${disabled.has(s.name) ? ", disabled" : ""})`,
+			description: s.description,
 		})),
-		{ title: "Uninstall which skill?" },
-	);
+		...pluginSkills.map((s) => ({
+			value: s.name,
+			label: `${s.name} (plugin · ${s.pluginId ?? "pack"})`,
+			description: `Remove the pack with /plugin uninstall. ${s.description}`.trim(),
+			muted: true,
+			locked: true,
+		})),
+	].sort((a, b) => a.value.localeCompare(b.value));
+	const firstSelectable = options.findIndex((o) => !o.locked);
+	const picked = await deps.pickers.pickOption(options, {
+		title: "Uninstall which skill?",
+		defaultIndex: firstSelectable >= 0 ? firstSelectable : 0,
+	});
 	if (!picked) {
 		deps.showNotice("[Cancelled]");
 		return;
 	}
 	const skill = removable.find((s) => s.name === picked);
-	if (!skill) return;
+	if (!skill) {
+		deps.showNotice(`[Skill "${picked}" comes from a plugin — use /plugin uninstall]`);
+		return;
+	}
 	if (
 		!(await confirmUninstall(
 			deps,
@@ -496,12 +516,14 @@ function formatSkillsList(deps: CommandDeps): string {
 		return "No skills found. See --skill <path>, /plugin install, .cast/skills/, .agents/skills/";
 	}
 	const disabled = new Set(loadSettings().disabledSkills ?? []);
-	const lines = discovered.map((s) => {
-		const packOff = s.source === "plugin" && s.pluginEnabled === false;
-		const meta = formatSkillPickLabel(s, disabled.has(s.name));
-		const state = packOff ? "lock" : disabled.has(s.name) ? "off" : "on ";
-		return `${state} ${meta.label} — ${s.description}`;
-	});
+	const lines = [...discovered]
+		.sort((a, b) => a.name.localeCompare(b.name))
+		.map((s) => {
+			const packOff = s.source === "plugin" && s.pluginEnabled === false;
+			const meta = formatSkillPickLabel(s, disabled.has(s.name));
+			const state = packOff ? "lock" : disabled.has(s.name) ? "off" : "on ";
+			return `${state} ${meta.label} — ${s.description}`;
+		});
 	return `Skills\n${lines.join("\n")}`;
 }
 
@@ -628,12 +650,19 @@ async function uninstallMcpInteractive(deps: CommandDeps): Promise<void> {
 	const disabled = new Set(loadSettings().disabledMcpServers ?? []);
 	const toolCounts: Record<string, number> = {};
 	for (const c of deps.mcpResult.connections) toolCounts[c.serverName] = c.toolCount;
+	const blurbs = mcpServerToolBlurbs(deps.mcpResult);
 	const picked = await deps.pickers.pickOption(
-		removable.map((s) => {
-			const count = toolCounts[s.name];
-			const status = disabled.has(s.name) ? "disabled" : count !== undefined ? `${count} tools` : "disconnected";
-			return { value: s.name, label: `${s.name} (${s.origin}, ${status})` };
-		}),
+		[...removable]
+			.sort((a, b) => a.name.localeCompare(b.name))
+			.map((s) => {
+				const count = toolCounts[s.name];
+				const status = disabled.has(s.name) ? "disabled" : count !== undefined ? `${count} tools` : "disconnected";
+				return {
+					value: s.name,
+					label: `${s.name} (${s.origin}, ${status})`,
+					description: blurbs[s.name] || (status === "disconnected" ? "Not connected" : undefined),
+				};
+			}),
 		{ title: "Uninstall which MCP server?" },
 	);
 	if (!picked) {
@@ -671,12 +700,14 @@ function formatMcpList(deps: CommandDeps): string {
 	const toolCounts: Record<string, number> = {};
 	for (const c of deps.mcpResult.connections) toolCounts[c.serverName] = c.toolCount;
 	const ownership = new Map(listUninstallableMcpServers(deps.cwd, deps.projectTrusted).map((s) => [s.name, s.origin]));
-	const lines = allNames.map((name) => {
-		const count = toolCounts[name];
-		const origin = ownership.get(name) ?? "cli";
-		const status = disabled.has(name) ? "disabled" : count !== undefined ? `${count} tools` : "disconnected";
-		return `${disabled.has(name) ? "off" : "on "} ${name} (${origin}, ${status})`;
-	});
+	const lines = [...allNames]
+		.sort((a, b) => a.localeCompare(b))
+		.map((name) => {
+			const count = toolCounts[name];
+			const origin = ownership.get(name) ?? "cli";
+			const status = disabled.has(name) ? "disabled" : count !== undefined ? `${count} tools` : "disconnected";
+			return `${disabled.has(name) ? "off" : "on "} ${name} (${origin}, ${status})`;
+		});
 	return `MCP\n${lines.join("\n")}`;
 }
 
@@ -701,7 +732,13 @@ async function handleMcpCommand(input: string, deps: CommandDeps): Promise<void>
 		const disabledNames = settings.disabledMcpServers ?? [];
 		const toolCounts: Record<string, number> = {};
 		for (const c of deps.mcpResult.connections) toolCounts[c.serverName] = c.toolCount;
-		const enabledNames = await selectMcpServers(deps.pickers, allNames, disabledNames, toolCounts);
+		const enabledNames = await selectMcpServers(
+			deps.pickers,
+			allNames,
+			disabledNames,
+			toolCounts,
+			mcpServerToolBlurbs(deps.mcpResult),
+		);
 		if (enabledNames === null) {
 			showNotice("[Cancelled]");
 			return;
@@ -783,9 +820,9 @@ async function handlePluginCommand(input: string, deps: CommandDeps): Promise<vo
 				});
 				return;
 			}
-			const lines = installed.map(
-				(p) => `${p.enabled ? "on " : "off"} ${p.id}${p.description ? ` — ${p.description}` : ""}`,
-			);
+			const lines = [...installed]
+				.sort((a, b) => a.id.localeCompare(b.id))
+				.map((p) => `${p.enabled ? "on " : "off"} ${p.id}${p.description ? ` — ${p.description}` : ""}`);
 			deps.agent.addDisplayMessage({ role: "warning", content: `Plugins\n${lines.join("\n")}` });
 			return;
 		}
@@ -847,7 +884,9 @@ async function handlePluginCommand(input: string, deps: CommandDeps): Promise<vo
 			if (sub === "list") {
 				if (subArgs) {
 					const catalog = getMarketplaceCatalog(subArgs);
-					const lines = catalog.plugins.map((p) => `${p.name}${p.description ? ` — ${p.description}` : ""}`);
+					const lines = [...catalog.plugins]
+						.sort((a, b) => a.name.localeCompare(b.name))
+						.map((p) => `${p.name}${p.description ? ` — ${p.description}` : ""}`);
 					deps.agent.addDisplayMessage({
 						role: "warning",
 						content: `Marketplace ${catalog.name} (${catalog.plugins.length})\n${lines.join("\n") || "(empty)"}`,

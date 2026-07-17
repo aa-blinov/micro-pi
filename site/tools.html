@@ -425,6 +425,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 			<a href="tools.html" class="active">Tools</a>
 			<a href="personas.html">Personas</a>
 			<a href="skills.html">Skills</a>
+			<a href="plugins.html">Plugins</a>
 			<a href="rules.html">Rules</a>
 			<a href="mcp-servers.html">MCP Servers</a>
 			<a href="context-files.html">Context Files</a>
@@ -458,7 +459,8 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 { &quot;op&quot;: &quot;replace&quot;, &quot;anchor&quot;: &quot;10:def:rst&quot;, &quot;end_anchor&quot;: &quot;12:ghi:rst&quot;, &quot;content&quot;: &quot;block of three lines\nspanning multiple\nlines&quot; }
 </code></pre>
 </li>
-<li><code>insert_after</code> — add new lines after the anchor. The new lines go between the anchored line and what was originally the next line; existing content is preserved.<pre><code class="language-json">{ &quot;op&quot;: &quot;insert_after&quot;, &quot;anchor&quot;: &quot;42:abc:rst&quot;, &quot;content&quot;: &quot;new line one\nnew line two&quot; }
+<li><code>insert_after</code> — add new lines after the anchor. The new lines go between the anchored line and what was originally the next line; existing content is preserved. Special anchors: <code>&quot;0:&quot;</code> inserts at the top of the file; <code>&quot;EOF&quot;</code> appends at the end.<pre><code class="language-json">{ &quot;op&quot;: &quot;insert_after&quot;, &quot;anchor&quot;: &quot;42:abc:rst&quot;, &quot;content&quot;: &quot;new line one\nnew line two&quot; }
+{ &quot;op&quot;: &quot;insert_after&quot;, &quot;anchor&quot;: &quot;EOF&quot;, &quot;content&quot;: &quot;## Usage\n\n…&quot; }
 </code></pre>
 </li>
 <li><code>insert_before</code> — add new lines above the anchored line. Same semantics as <code>insert_after</code> on the previous line, but the anchor names the line the text goes above — handy at section boundaries (headings, function starts).<pre><code class="language-json">{ &quot;op&quot;: &quot;insert_before&quot;, &quot;anchor&quot;: &quot;42:abc:rst&quot;, &quot;content&quot;: &quot;// explanatory comment&quot; }
@@ -472,9 +474,9 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 <p>A successful edit replies with the edited regions rendered with fresh anchors (±2 lines of context, overlapping windows merged, capped at 60 lines), so the result of the edit is immediately visible and follow-up ops can reuse the returned anchors without a re-<code>read</code>.</p>
 <p>Anchors are self-healing where the answer is unambiguous: if the anchored content merely moved (lines inserted above it), or a neighbour in the same chunk changed while the anchored line itself is intact, the edit is applied automatically and the reply carries a <code>Note:</code> describing the recovery. The tool never guesses — a stale anchor whose content is gone, or one that matches several nearby lines, is still an error, and that error returns fresh anchors plus a snippet around the target line so a re-<code>read</code> is usually unnecessary.</p>
 <h4>Hashline anchors</h4>
-<p>Every line <code>read</code> and <code>grep</code> returns carries a two-part hash (the <code>chunk</code> anchor scheme from <code>xai-org/grok-build</code>): <code>LOCAL</code> fingerprints the line&#39;s own content, whitespace-normalized, so formatter-only edits don&#39;t invalidate anchors and a line that merely moved keeps its local hash; <code>CHUNK</code> fingerprints the 8-line chunk around the line, so nearby edits mark the anchor stale even when the line itself is untouched. To <code>edit</code> a line, copy the full <code>&lt;line&gt;:&lt;local&gt;:&lt;chunk&gt;</code> prefix into the <code>anchor</code> field of the op — do not re-type the line text.</p>
+<p>Every line <code>read</code> and <code>grep</code> returns carries a two-part hash (the <code>chunk</code> anchor scheme): <code>LOCAL</code> fingerprints the line&#39;s own content, whitespace-normalized, so formatter-only edits don&#39;t invalidate anchors and a line that merely moved keeps its local hash; <code>CHUNK</code> fingerprints the 8-line chunk around the line, so nearby edits mark the anchor stale even when the line itself is untouched. To <code>edit</code> a line, copy the full <code>&lt;line&gt;:&lt;local&gt;:&lt;chunk&gt;</code> prefix into the <code>anchor</code> field of the op — do not re-type the line text. Pasting the whole gutter (<code>22:abc:rst→…</code>) or ASCII <code>-&gt;</code> is fine. If the model omits the line number and sends only <code>local:chunk</code>, <code>edit</code> recovers it when that pair is unique in the file.</p>
 <h2>Search Tools</h2>
-<h3><code>find</code></h3>
+<h3><code>glob</code></h3>
 <p>Search for files by glob pattern.</p>
 <div class="table-wrap"><table><thead><tr><th>Parameter</th><th>Required</th><th>Description</th></tr></thead><tbody><tr><td><code>pattern</code></td><td>Yes</td><td>Glob pattern (e.g. <code>*.ts</code>, <code>**/*.json</code>, <code>src/**/*.spec.ts</code>)</td></tr><tr><td><code>path</code></td><td>No</td><td>Directory to search (default: cwd)</td></tr><tr><td><code>limit</code></td><td>No</td><td>Maximum results (default: 1000)</td></tr></tbody></table></div><h3><code>grep</code></h3>
 <p>Search file contents by regex pattern.</p>
@@ -524,7 +526,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 <div class="table-wrap"><table><thead><tr><th>Parameter</th><th>Required</th><th>Description</th></tr></thead><tbody><tr><td><code>url</code></td><td>Yes</td><td>URL to fetch</td></tr><tr><td><code>maxChars</code></td><td>No</td><td>Maximum characters (default: 12,000)</td></tr></tbody></table></div><h2>Task Tool</h2>
 <h3><code>task</code></h3>
 <p>Delegate a task to a sub-agent with an isolated context. The sub-agent runs independently — its intermediate tool calls don&#39;t appear in the main context. Only the final result is returned.</p>
-<div class="table-wrap"><table><thead><tr><th>Parameter</th><th>Required</th><th>Description</th></tr></thead><tbody><tr><td><code>assignment</code></td><td>Yes</td><td>Complete, self-contained task description</td></tr><tr><td><code>subagent</code></td><td>No</td><td>Sub-agent name (e.g. <code>worker</code>)</td></tr></tbody></table></div><p>The <code>task</code> tool is only available when the current persona has <code>subagents: true</code> (e.g. the <code>coder-with-subagents</code> persona).</p>
+<div class="table-wrap"><table><thead><tr><th>Parameter</th><th>Required</th><th>Description</th></tr></thead><tbody><tr><td><code>assignment</code></td><td>Yes</td><td>Complete, self-contained task description</td></tr><tr><td><code>subagent</code></td><td>No</td><td>Sub-agent name (<code>explore</code>, <code>review</code>, or <code>worker</code>; default <code>worker</code>)</td></tr></tbody></table></div><p>The <code>task</code> tool is only available when the current persona has <code>subagents: true</code> (e.g. the <code>coder-with-subagents</code> persona).</p>
 <p>Use for:</p>
 <ul>
 <li>Parallel exploration (multiple sub-agents searching different parts of the codebase)</li>
@@ -536,20 +538,20 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 <div class="table-wrap"><table><thead><tr><th>Tool</th><th>Mode</th><th>Description</th></tr></thead><tbody><tr><td><code>plan_write</code></td><td>Plan</td><td>Write or replace a named plan file</td></tr><tr><td><code>plan_edit</code></td><td>Plan</td><td>Edit a section of the active plan by heading</td></tr><tr><td><code>plan_read</code></td><td>Both</td><td>Read a plan&#39;s content and headings (switches the active plan only in plan mode)</td></tr><tr><td><code>plan_done</code></td><td>Plan</td><td>Signal that the plan is ready for review</td></tr><tr><td><code>plan_discard</code></td><td>Plan</td><td>Delete a plan from the session</td></tr><tr><td><code>plan_enter</code></td><td>Build</td><td>Suggest switching to plan mode</td></tr><tr><td><code>plan_check</code></td><td>Build</td><td>Mark a checklist item as done</td></tr></tbody></table></div><h2>Subagent System</h2>
 <p>The <code>task</code> tool delegates work to isolated sub-agents. Each sub-agent has:</p>
 <ul>
-<li><strong>Own system prompt</strong> — loaded from <code>prompts/subagents/</code> (currently a <code>worker</code> prompt)</li>
+<li><strong>Own system prompt</strong> — loaded from <code>prompts/subagents/</code> (<code>worker</code>, <code>explore</code>, <code>review</code>)</li>
 <li><strong>Isolated context</strong> — the parent agent sees only the final result, not intermediate tool calls</li>
-<li><strong>Built-in tools</strong> — by default the full builtin set except <code>task</code> (sub-agents can&#39;t delegate further). Frontmatter <code>tools:</code> on the subagent file can allowlist builtins (exact names or <code>*</code>-globs); MCP tools are not filtered by that list</li>
+<li><strong>Built-in tools</strong> — by default the full builtin set except <code>task</code> (sub-agents can&#39;t delegate further). Frontmatter <code>tools:</code> on the subagent file can allowlist builtins (exact names or <code>*</code>-globs); MCP tools are not filtered by that list. Built-in <code>explore</code> / <code>review</code> allowlist read/search/bash only (no <code>write</code>/<code>edit</code>)</li>
 <li><strong>AGENTS.md</strong> — injected into the child system prompt by default (<code>agentsMd: true</code>); set <code>agentsMd: false</code> in the subagent frontmatter to skip</li>
 <li><strong>Optional model override</strong> — <code>/subagent-model</code> sets a different model for sub-agents</li>
 </ul>
-<p>Sub-agent tokens are tracked separately in usage reporting (<code>/usage</code> status bar shows <code>sub</code> count).</p>
+<div class="table-wrap"><table><thead><tr><th>Name</th><th>Role</th></tr></thead><tbody><tr><td><code>worker</code></td><td>Default catch-all (edits, mixed work, or unclear fit)</td></tr><tr><td><code>explore</code></td><td>Read-oriented mapping/research</td></tr><tr><td><code>review</code></td><td>Independent validation; reports findings, does not patch</td></tr></tbody></table></div><p>Sub-agent tokens are tracked separately in usage reporting (<code>/usage</code> status bar shows <code>sub</code> count).</p>
 <p>The <code>task</code> tool is only available when the current persona has <code>subagents: true</code> (e.g. <code>coder-with-subagents</code>). Other personas can&#39;t see or invoke it.</p>
-<p>Subagent frontmatter example (<code>prompts/subagents/explorer.md</code>):</p>
+<p>Subagent frontmatter example (<code>prompts/subagents/explore.md</code>):</p>
 <pre><code class="language-markdown">---
-name: explorer
-label: Explorer
+name: explore
+label: Explore
 description: Read-only codebase exploration
-tools: [read, grep, find, ls]
+tools: [read, grep, glob, ls, bash]
 agentsMd: true
 ---
 

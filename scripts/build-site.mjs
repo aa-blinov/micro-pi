@@ -14,6 +14,7 @@ const NAV_ORDER = [
 	{ file: "tools.md", label: "Tools" },
 	{ file: "personas.md", label: "Personas" },
 	{ file: "skills.md", label: "Skills" },
+	{ file: "plugins.md", label: "Plugins" },
 	{ file: "rules.md", label: "Rules" },
 	{ file: "mcp-servers.md", label: "MCP Servers" },
 	{ file: "context-files.md", label: "Context Files" },

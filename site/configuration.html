@@ -425,6 +425,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 			<a href="tools.html">Tools</a>
 			<a href="personas.html">Personas</a>
 			<a href="skills.html">Skills</a>
+			<a href="plugins.html">Plugins</a>
 			<a href="rules.html">Rules</a>
 			<a href="mcp-servers.html">MCP Servers</a>
 			<a href="context-files.html">Context Files</a>
@@ -445,7 +446,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 <h2>Settings File</h2>
 <p>User settings are persisted to <code>~/.cast/settings.json</code>. This file is loaded on startup and saved after changes (model switch, reasoning change, persona change, etc.).</p>
 <h3>Settings Schema</h3>
-<div class="table-wrap"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>model</code></td><td>string</td><td>Last used model</td></tr><tr><td><code>subagentModel</code></td><td>string</td><td>Model for sub-agents (falls back to <code>model</code>)</td></tr><tr><td><code>planModel</code></td><td>string</td><td>Model used while plan mode is active (falls back to <code>model</code>)</td></tr><tr><td><code>reasoningLevel</code></td><td>string</td><td>Last used reasoning level</td></tr><tr><td><code>persona</code></td><td>string</td><td>Last used persona name</td></tr><tr><td><code>providerUrl</code></td><td>string</td><td>Active provider endpoint URL</td></tr><tr><td><code>apiKey</code></td><td>string</td><td>Active provider API key</td></tr><tr><td><code>providers</code></td><td>Provider[]</td><td>Saved providers (name, url, apiKey) — use <code>/provider</code> to manage</td></tr><tr><td><code>cwd</code></td><td>string</td><td>Last working directory</td></tr><tr><td><code>permissionMode</code></td><td><code>&quot;default&quot;</code> | <code>&quot;bypass&quot;</code></td><td>Bash confirmation mode</td></tr><tr><td><code>projectTrust</code></td><td>Record&lt;string, boolean&gt;</td><td>Per-project trust decisions</td></tr><tr><td><code>theme</code></td><td>string</td><td>Active color theme id</td></tr><tr><td><code>webTools</code></td><td>boolean</td><td>Whether web tools are enabled (default: <code>false</code> — use <code>/web</code> to enable)</td></tr><tr><td><code>disabledMcpServers</code></td><td>string[]</td><td>MCP server names disabled via <code>/mcp</code> toggle</td></tr><tr><td><code>statusBar</code></td><td>object</td><td>Status bar segment config (<code>visible</code>, <code>order</code>, <code>sides</code>) — use <code>/statusbar</code> to configure</td></tr><tr><td><code>updatedAt</code></td><td>string</td><td>Auto-updated timestamp</td></tr></tbody></table></div><p>Settings are written atomically (temp file + rename) to prevent corruption from crashes mid-write.</p>
+<div class="table-wrap"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>model</code></td><td>string</td><td>Last used model</td></tr><tr><td><code>subagentModel</code></td><td>string</td><td>Model for sub-agents (falls back to <code>model</code>)</td></tr><tr><td><code>planModel</code></td><td>string</td><td>Model used while plan mode is active (falls back to <code>model</code>)</td></tr><tr><td><code>reasoningLevel</code></td><td>string</td><td>Last used reasoning level</td></tr><tr><td><code>persona</code></td><td>string</td><td>Last used persona name</td></tr><tr><td><code>providerUrl</code></td><td>string</td><td>Active provider endpoint URL</td></tr><tr><td><code>apiKey</code></td><td>string</td><td>Active provider API key</td></tr><tr><td><code>providers</code></td><td>Provider[]</td><td>Saved providers (name, url, apiKey) — use <code>/provider</code> to manage</td></tr><tr><td><code>cwd</code></td><td>string</td><td>Last working directory</td></tr><tr><td><code>permissionMode</code></td><td><code>&quot;default&quot;</code> | <code>&quot;bypass&quot;</code></td><td>Bash confirmation mode</td></tr><tr><td><code>projectTrust</code></td><td>Record&lt;string, boolean&gt;</td><td>Per-project trust decisions</td></tr><tr><td><code>theme</code></td><td>string</td><td>Active color theme id</td></tr><tr><td><code>webTools</code></td><td>boolean</td><td>Whether web tools are enabled (default: <code>false</code> — use <code>/web</code> to enable)</td></tr><tr><td><code>disabledMcpServers</code></td><td>string[]</td><td>MCP server names disabled via <code>/mcp</code> toggle</td></tr><tr><td><code>disabledSkills</code></td><td>string[]</td><td>Skill names disabled via <code>/skills</code> toggle</td></tr><tr><td><code>enabledPlugins</code></td><td>Record&lt;string, boolean&gt;</td><td>Marketplace plugins keyed by <code>name@marketplace</code></td></tr><tr><td><code>statusBar</code></td><td>object</td><td>Status bar segment config (<code>visible</code>, <code>order</code>, <code>sides</code>) — use <code>/statusbar</code> to configure</td></tr><tr><td><code>updatedAt</code></td><td>string</td><td>Auto-updated timestamp</td></tr></tbody></table></div><p>Settings are written atomically (temp file + rename) to prevent corruption from crashes mid-write.</p>
 <h2>Environment Variables</h2>
 <div class="table-wrap"><table><thead><tr><th>Variable</th><th>Description</th></tr></thead><tbody><tr><td><code>PROVIDER_BASE_URL</code></td><td>OpenAI-compatible endpoint URL</td></tr><tr><td><code>PROVIDER_API_KEY</code></td><td>API key</td></tr><tr><td><code>CAST_CWD</code></td><td>Override working directory</td></tr><tr><td><code>CAST_VERSION</code></td><td>Pin install version (installer only)</td></tr></tbody></table></div><p>Environment variables are an alternative to the settings file for provider configuration.</p>
 <h2>.cast/ Directory Structure</h2>
@@ -456,18 +457,23 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   sessions/             # Saved sessions (per-project subdirs)
   plans/                # Plan files (per-session subdirs)
   skills/               # Global skills
+  plugins/              # Marketplace catalogs + installed plugins (see plugins.md)
   rules/                # Global rules
   personas/             # Global personas
+
+~/.config/agents/skills/   # skills.sh universal global (also ~/.agents/skills/)
 
 &lt;project&gt;/.cast/
   skills/               # Project-local skills
   rules/                # Project-local rules
   personas/             # Project-local personas
   mcp.json              # Project-local MCP config
+
+&lt;project&gt;/.agents/skills/  # skills.sh universal project (npx skills add -a universal)
 </code></pre>
 <h2>Project Trust</h2>
-<p>A single trust decision gates all project-local resources: skills, MCP servers, context files, and personas in <code>.cast/</code>. cast asks once per project; the decision is saved in <code>settings.json</code> under <code>projectTrust</code>.</p>
-<p>Global resources (<code>~/.cast/</code>) always load without a trust check — you put them there yourself.</p>
+<p>A single trust decision gates all project-local resources: skills (<code>.cast/skills/</code> and <code>.agents/skills/</code>), MCP servers, context files, and personas in <code>.cast/</code>. cast asks once per project; the decision is saved in <code>settings.json</code> under <code>projectTrust</code>.</p>
+<p>Global resources (<code>~/.cast/</code>, <code>~/.config/agents/skills/</code>) always load without a trust check — you put them there yourself.</p>
 <h2>Permission Modes</h2>
 <div class="table-wrap"><table><thead><tr><th>Mode</th><th>Behavior</th></tr></thead><tbody><tr><td><code>default</code></td><td>Dangerous bash commands require confirmation</td></tr><tr><td><code>bypass</code></td><td>All bash commands run without confirmation</td></tr></tbody></table></div><p>Change with:</p>
 <ul>

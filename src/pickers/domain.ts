@@ -416,13 +416,20 @@ export async function selectMcpServers(
 	allServerNames: string[],
 	disabledNames: string[],
 	toolCounts: Record<string, number>,
+	/** Focused-row blurb (usually tool names). */
+	descriptions: Record<string, string> = {},
 ): Promise<string[] | null> {
 	const disabledSet = new Set(disabledNames);
 	const names = [...allServerNames].sort((a, b) => a.localeCompare(b));
 	const options: PickOption<string>[] = names.map((name) => {
 		const count = toolCounts[name];
 		const status = disabledSet.has(name) ? "disabled" : count !== undefined ? `${count} tools` : "disconnected";
-		return { value: name, label: `${name} (${status})` };
+		const blurb = descriptions[name];
+		return {
+			value: name,
+			label: `${name} (${status})`,
+			description: blurb || (status === "disconnected" ? "Not connected" : undefined),
+		};
 	});
 	const initialSelected = names.filter((n) => !disabledSet.has(n));
 	const picked = await pickers.pickMulti(options, {
@@ -434,6 +441,7 @@ export async function selectMcpServers(
 
 export interface SkillPickItem {
 	name: string;
+	description?: string;
 	source: string;
 	disableModelInvocation: boolean;
 	pluginId?: string;
@@ -461,9 +469,15 @@ export function formatSkillPickLabel(
 	if (skill.disableModelInvocation) bits.push("manual-only");
 	if (packOff) bits.push("pack off");
 	else if (disabled) bits.push("disabled");
+	const body = skill.description?.trim();
+	const description = packOff
+		? body
+			? `Enable this pack with /plugin first. ${body}`
+			: "Enable this pack with /plugin first"
+		: body || undefined;
 	return {
 		label: `${skill.name} (${bits.join(", ")})`,
-		description: packOff ? "Enable this pack with /plugin first" : undefined,
+		description,
 		muted: packOff,
 		locked: packOff,
 	};
@@ -511,7 +525,8 @@ export async function selectPlugins(
 	const sorted = [...plugins].sort((a, b) => a.id.localeCompare(b.id));
 	const options: PickOption<string>[] = sorted.map((p) => ({
 		value: p.id,
-		label: `${p.id}${p.enabled ? "" : " (disabled)"}${p.description ? ` — ${p.description}` : ""}`,
+		label: `${p.id}${p.enabled ? "" : " (disabled)"}`,
+		description: p.description?.trim() || undefined,
 	}));
 	const initialSelected = sorted.filter((p) => p.enabled).map((p) => p.id);
 	return pickers.pickMulti(options, {

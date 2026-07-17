@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Architecture — cast</title>
-<meta name="description" content="Architecture documentation for cast, a role-based terminal agent harness.">
+<title>Plugins — cast</title>
+<meta name="description" content="Plugins documentation for cast, a role-based terminal agent harness.">
 <style>
 :root {
 	/* cast palette — cyan→violet gradient */
@@ -425,7 +425,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 			<a href="tools.html">Tools</a>
 			<a href="personas.html">Personas</a>
 			<a href="skills.html">Skills</a>
-			<a href="plugins.html">Plugins</a>
+			<a href="plugins.html" class="active">Plugins</a>
 			<a href="rules.html">Rules</a>
 			<a href="mcp-servers.html">MCP Servers</a>
 			<a href="context-files.html">Context Files</a>
@@ -435,101 +435,64 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 			<a href="configuration.html">Configuration</a>
 			<a href="themes.html">Themes</a>
 			<a href="non-interactive-mode.html">Non-Interactive Mode</a>
-			<a href="architecture.html" class="active">Architecture</a>
+			<a href="architecture.html">Architecture</a>
 			<a href="changelog.html">Changelog</a>
 	</div>
 </nav>
 
 <main class="main">
 	<article class="content">
-		<h1>Architecture</h1>
-<p>An overview of cast&#39;s source layout and key design decisions. For contributors and the curious.</p>
-<h2>Source Layout</h2>
-<pre><code>src/
-  core/               Agent logic (no UI dependency)
-    loop.ts           Agent loop — streaming, tool dispatch, compaction
-    tools.ts          17 tool definitions + executors
-    tools/
-      bash.ts         Shell execution
-      files.ts        Read/write/edit
-      search.ts       Find/grep/ls
-      web.ts          web_search (DuckDuckGo), web_fetch (Jina Reader)
-      task.ts         Sub-agent delegation
-      shared.ts       Shared types (ToolResult, ConfirmBash)
-    llm.ts            LLM interaction, streaming, retry, prompt caching
-    session.ts        Session persistence, token estimation, compaction
-    mcp.ts            MCP server connection (stdio + streamable HTTP)
-    personas.ts       Persona loading (project &gt; global &gt; builtin)
-    rules.ts          Cursor-compatible rule system (always/auto/lazy/manual)
-    skills.ts         Agent Skills spec implementation
-    plugins.ts        Marketplace catalogs + plugin install (skills)
-    config.ts         AppConfig, model validation, onboarding
-    context-files.ts  AGENTS.md / CLAUDE.md discovery
-    project.ts        System prompt assembly, trust gating
-    startup.ts        Unified startup orchestration
-    runner.ts         Queue management (steering, follow-ups)
-    run.ts            Non-interactive runner (cast run)
-    vendors.ts        Reasoning metadata, think-block parsing
-    upgrade.ts        Self-update via GitHub releases
-    permissions.ts    Dangerous bash command detection
-    plan.ts           Plan mode state, file I/O, read-only bash gate
-    frontmatter.ts    Minimal YAML frontmatter parser
-    prompts.ts        Prompt file loading
-    readline.ts       Readline utilities, models cache
-    settings.ts       User settings persistence
-    stdin-manager.ts  Stdin ownership between Ink and child processes
-    subagents.ts      Sub-agent prompt loading
-    help.ts           Banner, help text, changelog
-    ...
-  ui/                 Ink TUI components
-    App.tsx           Top-level layout
-    Composer.tsx      Input with autocomplete, image paste
-    ChatLog.tsx       Message rendering
-    commands.ts       Slash command handlers
-    themes/           Color theme registry and definitions
-    input/            Keybindings, input handling
-    ...
-  pickers/            Onboarding pickers (model, persona, reasoning)
-  index.ts            CLI entry point
+		<h1>Plugins &amp; Marketplaces</h1>
+<p>Install reusable skill packs from catalogs — same <code>name@marketplace</code> shape as Claude Code / Grok Build.</p>
+<p>MVP scope: plugins contribute <strong>skills</strong> (loaded into the agent catalog). MCP/hooks/agents inside plugins are not wired yet.</p>
+<h2>Quick start</h2>
+<p>On the first <code>/plugin</code> (or marketplace/install) cast seeds three default catalogs when missing:</p>
+<div class="table-wrap"><table><thead><tr><th>Label</th><th>Source</th></tr></thead><tbody><tr><td>Codex</td><td><code>openai/plugins</code></td></tr><tr><td>Claude</td><td><code>anthropics/claude-plugins-official</code></td></tr><tr><td>Grok</td><td><code>xai-org/plugin-marketplace</code></td></tr></tbody></table></div><p>Then:</p>
+<pre><code>/plugin marketplace list
+/plugin marketplace list xai-official
+/plugin install superpowers@xai-official
+/skills
 </code></pre>
-<h2>Key Design Decisions</h2>
-<h3>Single OpenAI-Compatible Provider</h3>
-<p>cast speaks one API: the OpenAI chat completions format. Any provider that implements this API works — OpenRouter, OpenAI, Ollama, vLLM, LiteLLM, Azure OpenAI. No provider-specific code paths.</p>
-<h3>Parallel Tool Execution</h3>
-<p>Tool calls within one assistant message run concurrently via <code>Promise.all</code>. If the model requests <code>bash</code>, <code>read</code>, and <code>grep</code> in a single response, all three execute simultaneously.</p>
-<h3>Hashline LRU Cache</h3>
-<p><code>read</code>, <code>edit</code>, and <code>grep</code> share a process-local LRU (20 entries, ~4 MB worst case) keyed by absolute path. On hit, the file&#39;s mtime is re-stated and a mismatch drops the entry; on miss the file is read once and per-line sha1s are computed in a single pass. <code>write</code> and <code>edit</code> invalidate the entry on success, so a follow-up read never sees a stale snapshot. This is invisible to the model — it just means a <code>read → edit</code> round trip (and a re-<code>grep</code> over the same files) skips both the file I/O and the per-line hashing.</p>
-<h3>Context Compaction</h3>
-<p>When the conversation exceeds ~75% of the context window, older messages are summarized by the LLM. The split is ~60/40 (old/recent), snapped to turn boundaries so tool calls and results stay together. File paths are extracted deterministically from tool calls and appended to the summary.</p>
-<h3>MCP Integration</h3>
-<p>MCP tools are namespaced as <code>mcp_&lt;server&gt;_&lt;tool&gt;</code> and converted to the same <code>Tool</code>/<code>ToolResult</code> shapes the built-in tools use. The rest of the codebase doesn&#39;t need to know MCP tools are different.</p>
-<h3>Trust Gating</h3>
-<p>A single trust decision per project gates all local resources (skills, MCP, context files, personas). Global resources (<code>~/.cast/</code>) always load. Asked once, remembered in settings.json.</p>
-<h3>Plan Mode</h3>
-<p>Plan mode is a restricted agent state: read-only bash, read tool, plan tools. The read-only bash gate uses a curated allowlist of inspection binaries. Plan files persist as markdown with checkbox tracking.</p>
-<h2>Development</h2>
-<pre><code class="language-bash">npm install --ignore-scripts
-npm start               # Run from source (tsx)
-npm run check           # Type check + lint (tsc + biome)
-npm test                # Unit tests (vitest)
-npm run build           # Bundle into dist/index.js (esbuild)
-npm run format          # Auto-format (biome)
+<p>Or a local catalog (for testing / private plugins):</p>
+<pre><code>/plugin marketplace add ./my-marketplace
+/plugin install ponytail@ponytail
 </code></pre>
-<h3>Testing</h3>
+<p>Seed runs once (<code>~/.cast/plugins/defaults-seeded.json</code>). Removed defaults are not re-added; failed clones (offline) retry until at least one succeeds.</p>
+<h2>Hot-reload</h2>
+<p><code>/plugin install</code>, <code>uninstall</code>, <code>enable</code> / <code>disable</code>, bare <code>/plugin</code> toggle, and <code>marketplace remove</code> reload the skill catalog <strong>in the current session</strong>. No <code>/reload</code> and no new session.</p>
+<p><code>/reload</code> is only for skills/rules/MCP/personas you added or edited as files outside these commands. See <a href="interactive-commands.html#hot-reload-vs-reload">Interactive commands</a>.</p>
+<h2>Commands</h2>
+<p>Type <code>/plugin</code> in the composer — the palette lists every subcommand (install, marketplace list, …) with a short hint. Pick a row, then fill args if needed.</p>
+<div class="table-wrap"><table><thead><tr><th>Command</th><th>What it does</th></tr></thead><tbody><tr><td><code>/plugin</code></td><td>Toggle installed plugins on/off (same picker UX as <code>/mcp</code> / <code>/skills</code>)</td></tr><tr><td><code>/plugin install &lt;name&gt;@&lt;marketplace&gt;</code></td><td>Fetch plugin, enable it, reload skills</td></tr><tr><td><code>/plugin uninstall</code></td><td>Interactive: pick installed plugin, confirm, remove</td></tr><tr><td><code>/plugin uninstall &lt;name&gt;@&lt;marketplace&gt;</code></td><td>Remove by ref (no picker)</td></tr><tr><td><code>/plugin enable</code> / <code>disable &lt;name&gt;@&lt;marketplace&gt;</code></td><td>Toggle one plugin without the picker</td></tr><tr><td><code>/plugin list</code></td><td>Installed plugins (text list)</td></tr><tr><td><code>/plugin marketplace add &lt;owner/repo|url|path&gt;</code></td><td>Register a catalog</td></tr><tr><td><code>/plugin marketplace list [name]</code></td><td>Known catalogs, or plugins in one</td></tr><tr><td><code>/plugin marketplace update &lt;name&gt;</code></td><td><code>git pull</code> / refresh checkout</td></tr><tr><td><code>/plugin marketplace remove &lt;name&gt;</code></td><td>Drop catalog, installs, <code>enabledPlugins</code> keys; reload skills</td></tr></tbody></table></div><h2>Layout on disk</h2>
+<pre><code>~/.cast/plugins/
+  known_marketplaces.json
+  installed.json
+  marketplaces/&lt;name&gt;/          # catalog checkout
+  installs/&lt;marketplace&gt;/&lt;plugin&gt;/
+</code></pre>
+<p>Enabled state is stored in <code>~/.cast/settings.json</code> under <code>enabledPlugins</code> (<code>&quot;name@marketplace&quot;: true|false</code>).</p>
+<h2>Marketplace format</h2>
+<p>Cast reads any of:</p>
 <ul>
-<li>Framework: vitest</li>
-<li>One <code>test/&lt;module&gt;.test.ts</code> per <code>src/&lt;module&gt;.ts</code></li>
-<li>No real LLM/API calls — mock configs with fake <code>baseURL</code>/<code>apiKey</code></li>
-<li>MCP tests are the exception: they spawn a real local test-fixture server</li>
-<li>Tool tests use <code>test/__test_tmp__/</code>, created in <code>beforeEach</code>, removed in <code>afterEach</code></li>
+<li><code>.cast-plugin/marketplace.json</code></li>
+<li><code>.grok-plugin/marketplace.json</code></li>
+<li><code>.claude-plugin/marketplace.json</code></li>
 </ul>
-<h3>Build</h3>
-<p>The bundle step (esbuild) produces a single <code>dist/index.js</code> file — self-contained, no <code>node_modules</code> needed at runtime.</p>
+<p>Compatible with Grok/Claude entries: relative <code>./plugins/foo</code>, <code>{ &quot;source&quot;: &quot;url&quot;, &quot;url&quot;, &quot;sha&quot;, &quot;path&quot; }</code>, <code>{ &quot;source&quot;: &quot;git-subdir&quot;, … }</code>, <code>{ &quot;type&quot;: &quot;local&quot;, &quot;path&quot; }</code>.</p>
+<h2>Skill discovery from a plugin</h2>
+<ol>
+<li>If <code>&lt;pluginRoot&gt;/skills/</code> exists → load that directory  </li>
+<li>Else → load <code>&lt;pluginRoot&gt;</code> itself (skill-only repos)</li>
+</ol>
+<p>Priority vs other skills: project &gt; global &gt; <strong>plugin</strong> &gt; builtin &gt; <code>--skill</code> paths.</p>
+<p>A pack may contribute several skills; each is labeled with <code>plugin · name@marketplace</code> in <code>/skills</code>. Disabling a pack with <code>/plugin</code> keeps those skills visible but locked until the pack is re-enabled — they leave the agent catalog immediately.</p>
+<p>On a name collision between two enabled plugins, the first id in sorted <code>name@marketplace</code> order wins.</p>
+<p><code>--no-skills</code> skips plugin skill dirs as well (same as project/global/builtin); <code>--skill</code> paths still load.</p>
 
 	</article>
 		<nav class="doc-nav">
-			<a href="non-interactive-mode.html" class="doc-nav-prev">← Non-Interactive Mode</a>
-			<a href="changelog.html" class="doc-nav-next">Changelog →</a>
+			<a href="skills.html" class="doc-nav-prev">← Skills</a>
+			<a href="rules.html" class="doc-nav-next">Rules →</a>
 		</nav>
 </main>
 

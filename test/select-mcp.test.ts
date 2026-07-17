@@ -70,11 +70,14 @@ describe("selectMcpServers", () => {
 			},
 			log: () => {},
 		};
-		await selectMcpServers(pickers, allNames, ["github"], toolCounts);
+		await selectMcpServers(pickers, allNames, ["github"], toolCounts, {
+			context7: "resolve-library-id, query-docs",
+			"local-tools": "run",
+		});
 		expect(capturedOptions).toEqual([
-			{ value: "context7", label: "context7 (5 tools)" },
-			{ value: "github", label: "github (disabled)" },
-			{ value: "local-tools", label: "local-tools (3 tools)" },
+			{ value: "context7", label: "context7 (5 tools)", description: "resolve-library-id, query-docs" },
+			{ value: "github", label: "github (disabled)", description: undefined },
+			{ value: "local-tools", label: "local-tools (3 tools)", description: "run" },
 		]);
 	});
 
@@ -91,7 +94,11 @@ describe("selectMcpServers", () => {
 		};
 		await selectMcpServers(pickers, allNames, [], toolCounts);
 		// github has no toolCount and is not disabled → disconnected
-		expect(capturedOptions![1]).toEqual({ value: "github", label: "github (disconnected)" });
+		expect(capturedOptions![1]).toEqual({
+			value: "github",
+			label: "github (disconnected)",
+			description: "Not connected",
+		});
 	});
 
 	it("handles global + project servers (merged by name, no duplicates)", async () => {
@@ -116,9 +123,9 @@ describe("selectMcpServers", () => {
 		await selectMcpServers(pickers, merged, ["db-admin"], counts);
 		// Options are sorted alphabetically by name.
 		expect(capturedOptions).toEqual([
-			{ value: "context7", label: "context7 (5 tools)" },
-			{ value: "db-admin", label: "db-admin (disabled)" },
-			{ value: "github", label: "github (disconnected)" },
+			{ value: "context7", label: "context7 (5 tools)", description: undefined },
+			{ value: "db-admin", label: "db-admin (disabled)", description: undefined },
+			{ value: "github", label: "github (disconnected)", description: "Not connected" },
 		]);
 		// db-admin disabled → only context7 and github initially selected (alpha order)
 		expect(capturedInitial).toEqual(["context7", "github"]);

@@ -42,6 +42,7 @@ export function ModalPicker<T>(props: {
 			return;
 		}
 		if (key.return) {
+			if (props.options[idx]?.locked) return;
 			props.onSelect(props.options[idx]!.value);
 			return;
 		}
@@ -77,6 +78,7 @@ export function ModalPicker<T>(props: {
 			{visible.map((o, vi) => {
 				const i = scroll + vi;
 				const selected = i === idx;
+				const rowColor = o.muted || o.locked ? theme().muted : selected ? theme().accent : "white";
 				return (
 					// Keyed by absolute index: options are static for the modal's
 					// lifetime, and labels can repeat. Rows are hard-truncated to one
@@ -86,12 +88,12 @@ export function ModalPicker<T>(props: {
 					<Box key={i} flexDirection="column">
 						<Text wrap="truncate">
 							<Text color={selected ? theme().accent : theme().muted}>{selected ? ">" : " "}</Text>{" "}
-							<Text color={selected ? theme().accent : "white"} bold={selected}>
+							<Text color={rowColor} bold={selected && !o.muted && !o.locked}>
 								{o.label}
 							</Text>
 						</Text>
 						{selected && o.description && (
-							<Text color={theme().muted} wrap="truncate">
+							<Text color={theme().muted} wrap="wrap">
 								{" "}
 								{o.description}
 							</Text>
@@ -234,7 +236,8 @@ export function MultiSelectPicker<T>(props: {
 				const i = scroll + vi;
 				const focused = i === idx;
 				const checked = selected.has(i);
-				const rowColor = o.muted || o.locked ? theme().warning : focused ? theme().accent : "white";
+				// Pack-off / locked rows stay muted even when focused — accent is only the caret.
+				const rowColor = o.muted || o.locked ? theme().muted : focused ? theme().accent : "white";
 				return (
 					<Box key={i} flexDirection="column">
 						<Text wrap="truncate">
@@ -247,7 +250,7 @@ export function MultiSelectPicker<T>(props: {
 							</Text>
 						</Text>
 						{focused && o.description && (
-							<Text color={theme().muted} wrap="truncate">
+							<Text color={theme().muted} wrap="wrap">
 								{" "}
 								{o.description}
 							</Text>

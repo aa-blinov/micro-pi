@@ -20,7 +20,8 @@ All notable user-facing changes to cast, newest first.
 - Uniform `/skills` / `/mcp` / `/plugin` surface: `list`, `enable`/`disable`, `help`; toggle cancel shows `[Cancelled]`; no-op toggle skips reload; typed uninstall confirms; `/plugin marketplace remove` cleans settings + reloads skills.
 - Skill discovery loads skills.sh universal paths: `.agents/skills/` (project, trust-gated) and `~/.config/agents/skills/` / `~/.agents/skills/` (global), so `npx skills add … -a universal` works without copying into `.cast/skills/`.
 - `/skills`, `/mcp`, and `/plugin` pickers/lists sort entries alphabetically by name (skills were previously discovery-order, so plugin skills clustered at the bottom).
-- `/skills` labels plugin skills with their pack id (`plugin · name@marketplace`). Skills from a disabled pack stay visible but locked (warning color) until `/plugin` re-enables the pack.
+- `/skills` labels plugin skills with their pack id (`plugin · name@marketplace`). Skills from a disabled pack stay visible but locked (muted) until `/plugin` re-enables the pack.
+- `/skills uninstall` lists plugin skills as muted/locked (remove the pack via `/plugin uninstall`); Enter on those rows is ignored.
 
 ### Fixed
 
@@ -34,6 +35,7 @@ All notable user-facing changes to cast, newest first.
 ### Changed
 
 - Docs spell out hot-reload vs `/reload`: `/skills` / `/mcp` / `/plugin` toggle and install/uninstall apply in-session; `/reload` is only for on-disk file drops/edits (same chat, no restart).
+- `/skills` / `/mcp` / `/plugin` pickers put the full description on the focused second line (wrap), not truncated into the label.
 - `task` UI shows the delegated assignment text (not raw JSON `key=value` args). Non-default subagent names are prefixed (`explore · …`).
 - Subagent final-answer extraction ignores empty placeholder turns (`(no response)`); the worker prompt requires a standalone closing report.
 - Sync `task` subagents now receive the same environment grounding as the parent: Current System State (cwd/date/platform/model), always-apply + lazy rules, skills catalog, MCP server list, and SSH hosts.

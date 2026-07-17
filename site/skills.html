@@ -425,6 +425,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 			<a href="tools.html">Tools</a>
 			<a href="personas.html">Personas</a>
 			<a href="skills.html" class="active">Skills</a>
+			<a href="plugins.html">Plugins</a>
 			<a href="rules.html">Rules</a>
 			<a href="mcp-servers.html">MCP Servers</a>
 			<a href="context-files.html">Context Files</a>
@@ -446,16 +447,23 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 <h2>How Skills Work</h2>
 <p>The agent sees a list of available skills (name + description) in its system prompt. When a task matches a skill&#39;s description, the agent reads the skill file using the <code>read</code> tool to get full instructions. Skills with <code>disable-model-invocation: true</code> are hidden from the agent and can only be invoked manually via <code>/skill:&lt;name&gt;</code>.</p>
 <h2>Built-in Skills</h2>
-<p>Skills ship with cast in <code>prompts/skills/</code>. Use <code>/skills</code> to see what&#39;s loaded.</p>
+<p>Skills ship with cast in <code>prompts/skills/</code>. Use <code>/skills list</code> to see what&#39;s loaded; bare <code>/skills</code> toggles them on/off.</p>
 <h2>Loading Priority</h2>
 <p>Skills are discovered from multiple locations. On a name collision, the first-loaded skill wins:</p>
 <ol>
-<li><strong>Project</strong> — <code>.cast/skills/</code> (trust-gated)</li>
-<li><strong>Global</strong> — <code>~/.cast/skills/</code> (always loaded)</li>
+<li><strong>Project (cast)</strong> — <code>.cast/skills/</code> (trust-gated)</li>
+<li><strong>Project (agents)</strong> — <code>.agents/skills/</code> (trust-gated; skills.sh / <code>npx skills add</code> universal path)</li>
+<li><strong>Global (cast)</strong> — <code>~/.cast/skills/</code> (always loaded)</li>
+<li><strong>Global (agents)</strong> — <code>~/.config/agents/skills/</code> then <code>~/.agents/skills/</code> (skills.sh universal global)</li>
+<li><strong>Plugin</strong> — skills from enabled <code>/plugin install name@marketplace</code> packages</li>
 <li><strong>Builtin</strong> — <code>prompts/skills/</code> (ships with cast)</li>
 <li><strong>Extra paths</strong> — <code>--skill &lt;path&gt;</code> flags (loaded even with <code>--no-skills</code>)</li>
 </ol>
-<p>Use <code>--no-skills</code> to skip discovery of project, global, and builtin skills. Extra paths still load.</p>
+<p>Use <code>--no-skills</code> to skip auto-discovery (including <code>.agents/skills</code>). Extra paths (<code>--skill</code>) still load.</p>
+<h3>skills.sh / <code>npx skills add</code></h3>
+<pre><code class="language-bash">npx -y skills add mattpocock/skills --skill grill-me -a universal
+</code></pre>
+<p>Installs into <code>.agents/skills/</code> (project) or <code>~/.config/agents/skills/</code> (global). Cast loads those automatically after <code>/reload</code> (or on next start). Invoke with <code>/skill:grill-me</code> (not <code>/grill-me</code>).</p>
 <h2>Creating a Skill</h2>
 <h3>Directory Structure</h3>
 <p>A skill is a directory containing a <code>SKILL.md</code> file:</p>
@@ -496,6 +504,14 @@ Always check `templates/` for reference material.
 <p>Names that violate these rules generate a warning but still load.</p>
 <h3>Relative Paths</h3>
 <p>When a skill file references relative paths (templates, examples, configs), resolve them against the skill&#39;s directory. The system prompt tells the agent: <em>&quot;When a skill file references a relative path, resolve it against the skill directory.&quot;</em></p>
+<h2>Enabling / disabling</h2>
+<div class="table-wrap"><table><thead><tr><th>Command</th><th>Description</th></tr></thead><tbody><tr><td><code>/skills</code></td><td>Toggle on/off (multi-select picker, like <code>/mcp</code>)</td></tr><tr><td><code>/skills list</code></td><td>Read-only catalog (source + on/off)</td></tr><tr><td><code>/skills enable</code> / <code>disable &lt;name&gt;</code></td><td>Toggle one skill without the picker</td></tr><tr><td><code>/skills uninstall</code></td><td>Remove a global/project skill (picker + confirm, or typed name)</td></tr><tr><td><code>/skills help</code></td><td>Cheat sheet</td></tr></tbody></table></div><p>Disabled names are stored in <code>~/.cast/settings.json</code> as <code>disabledSkills</code>. <code>/skill:&lt;name&gt;</code> only works for enabled skills.</p>
+<p>Plugin skills show their pack id in the picker/list (<code>plugin · name@marketplace</code>). If the pack is disabled via <code>/plugin</code>, the skill stays visible but locked (muted, Space ignored) until you re-enable the pack — it is not added to <code>disabledSkills</code>.</p>
+<p><code>/skills uninstall</code> deletes a <strong>global</strong>, <strong>project</strong>, or <strong>agents</strong> (<code>.agents/skills</code>) skill from disk. Builtin, plugin, and <code>--skill</code> paths are not removable here — use <code>/plugin uninstall</code> for marketplace packs.</p>
+<p>Whole marketplace packs can be toggled with bare <code>/plugin</code> (see <a href="plugins.html">Plugins</a>).</p>
+<h3>Hot-reload</h3>
+<p><code>/skills</code> toggle / <code>enable</code> / <code>disable</code> / <code>uninstall</code> and <code>/plugin install</code> / enable / uninstall update the skill catalog <strong>in the current session</strong> — no <code>/reload</code>, no restart.</p>
+<p>Use <code>/reload</code> only after dropping or editing skill files on disk yourself (e.g. <code>npx skills add</code>, copy into <code>.cast/skills/</code>). See <a href="interactive-commands.html#hot-reload-vs-reload">Interactive commands</a>.</p>
 <h2>Invoking Skills</h2>
 <h3>Automatic</h3>
 <p>The agent reads a skill when the user&#39;s task matches its description. No special syntax needed.</p>
@@ -506,7 +522,7 @@ Always check `templates/` for reference material.
 </code></pre>
 <p>The <code>/skill:&lt;name&gt;</code> command reads the skill&#39;s full content and submits it to the agent as context, followed by any additional arguments.</p>
 <h2>CLI Flags</h2>
-<div class="table-wrap"><table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody><tr><td><code>--skill &lt;path&gt;</code></td><td>Load an extra skill file or directory (repeatable)</td></tr><tr><td><code>--no-skills</code></td><td>Skip global/project/builtin skill discovery</td></tr></tbody></table></div><pre><code class="language-bash">cast --skill ./my-project-skill.md
+<div class="table-wrap"><table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody><tr><td><code>--skill &lt;path&gt;</code></td><td>Load an extra skill file or directory (repeatable)</td></tr><tr><td><code>--no-skills</code></td><td>Skip project/agents/global/plugin/builtin skill discovery</td></tr></tbody></table></div><pre><code class="language-bash">cast --skill ./my-project-skill.md
 cast --no-skills --skill ~/.cast/skills/arxiv/SKILL.md
 </code></pre>
 <p>Extra paths (<code>--skill</code>) work even with <code>--no-skills</code> — they&#39;re explicit additions, not auto-discovery.</p>
@@ -521,7 +537,7 @@ cast --no-skills --skill ~/.cast/skills/arxiv/SKILL.md
 	</article>
 		<nav class="doc-nav">
 			<a href="personas.html" class="doc-nav-prev">← Personas</a>
-			<a href="rules.html" class="doc-nav-next">Rules →</a>
+			<a href="plugins.html" class="doc-nav-next">Plugins →</a>
 		</nav>
 </main>
 

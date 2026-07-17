@@ -263,6 +263,23 @@ function escapeXml(s: string): string {
 	return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/** Tool-name blurbs for the `/mcp` picker description line (connected servers only). */
+export function mcpServerToolBlurbs(result: McpSetupResult): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const c of result.connections) {
+		const prefix = `[${c.serverName}] `;
+		const marker = `mcp_${sanitizeToolNamePart(c.serverName)}_`;
+		const names: string[] = [];
+		for (const t of result.toolDefinitions) {
+			if (!t.function.description?.startsWith(prefix)) continue;
+			const fn = t.function.name;
+			names.push(fn.startsWith(marker) ? fn.slice(marker.length) : fn);
+		}
+		if (names.length > 0) out[c.serverName] = names.join(", ");
+	}
+	return out;
+}
+
 /** Format connected MCP servers for the system prompt as <available_mcp>.
  * Only currently enabled servers appear — disabled ones are excluded entirely.
  * If a server is configured in mcp.json but missing here, the user has

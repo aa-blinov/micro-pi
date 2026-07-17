@@ -128,7 +128,7 @@ Instructions the model reads when this skill is invoked...
 - `description` is required (shown to the model)
 - `disable-model-invocation: true` — skill is hidden from model, only usable via `/skill:name`
 - `/skills` — multi-select toggle; also `list`, `enable`/`disable <name>`, `uninstall`, `help`
-- `/skills uninstall` — delete cast/agents skill from disk (picker or name + confirm); not builtin/plugin/`--skill`
+- `/skills uninstall` — delete cast/agents skill from disk (picker or name + confirm); plugin skills show locked → `/plugin uninstall`
 - Plugin skills are labeled `plugin · name@marketplace`; if the pack is off, they stay visible but locked until `/plugin` re-enables the pack
 - On name collision: `.cast` project > `.agents` project > `.cast` global > `.agents` global > plugin > builtin
 
@@ -176,7 +176,7 @@ Plugins are installable packs (usually skills) from catalogs — same `name@mark
 /skills                              # toggle
 ```
 
-Install hot-reloads the skill catalog. Prefer plugins that ship a `skills/` directory (packs with only `commands/` / `agents/` contribute nothing in cast yet). Disabling a pack via `/plugin` locks its skills in `/skills` (warning color) until the pack is on again.
+Install hot-reloads the skill catalog. Prefer plugins that ship a `skills/` directory (packs with only `commands/` / `agents/` contribute nothing in cast yet). Disabling a pack via `/plugin` locks its skills in `/skills` (muted) until the pack is on again.
 
 Layout: `~/.cast/plugins/` (marketplaces, installs, `known_marketplaces.json`). State: `enabledPlugins` in `settings.json`.
 

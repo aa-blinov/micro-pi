@@ -248,6 +248,7 @@ describe("formatSkillPickLabel", () => {
 		const locked = formatSkillPickLabel(
 			{
 				name: "pony",
+				description: "A pony skill.",
 				source: "plugin",
 				pluginId: "ponytail@ponytail",
 				pluginEnabled: false,
@@ -258,11 +259,12 @@ describe("formatSkillPickLabel", () => {
 		expect(locked.label).toBe("pony (plugin · ponytail@ponytail, pack off)");
 		expect(locked.locked).toBe(true);
 		expect(locked.muted).toBe(true);
-		expect(locked.description).toMatch(/\/plugin/);
+		expect(locked.description).toBe("Enable this pack with /plugin first. A pony skill.");
 
 		const on = formatSkillPickLabel(
 			{
 				name: "pony",
+				description: "A pony skill.",
 				source: "plugin",
 				pluginId: "ponytail@ponytail",
 				pluginEnabled: true,
@@ -271,6 +273,7 @@ describe("formatSkillPickLabel", () => {
 			true,
 		);
 		expect(on.label).toBe("pony (plugin · ponytail@ponytail, disabled)");
+		expect(on.description).toBe("A pony skill.");
 		expect(on.locked).toBe(false);
 	});
 });

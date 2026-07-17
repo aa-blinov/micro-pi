@@ -106,9 +106,9 @@ When a skill file references relative paths (templates, examples, configs), reso
 
 Disabled names are stored in `~/.cast/settings.json` as `disabledSkills`. `/skill:<name>` only works for enabled skills.
 
-Plugin skills show their pack id in the picker/list (`plugin · name@marketplace`). If the pack is disabled via `/plugin`, the skill stays visible but locked (warning color, Space ignored) until you re-enable the pack — it is not added to `disabledSkills`.
+Plugin skills show their pack id in the picker/list (`plugin · name@marketplace`). If the pack is disabled via `/plugin`, the skill stays visible but locked (muted, Space ignored) until you re-enable the pack — it is not added to `disabledSkills`.
 
-`/skills uninstall` deletes a **global**, **project**, or **agents** (`.agents/skills`) skill from disk. Builtin, plugin, and `--skill` paths are not removable here — use `/plugin uninstall` for marketplace packs.
+`/skills uninstall` deletes a **global**, **project**, or **agents** (`.agents/skills`) skill from disk. Plugin skills appear in the picker muted/locked (Enter ignored) — remove the pack with `/plugin uninstall`. Builtin and `--skill` paths are omitted.
 
 Whole marketplace packs can be toggled with bare `/plugin` (see [Plugins](plugins.md)).
 

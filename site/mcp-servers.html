@@ -425,6 +425,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 			<a href="tools.html">Tools</a>
 			<a href="personas.html">Personas</a>
 			<a href="skills.html">Skills</a>
+			<a href="plugins.html">Plugins</a>
 			<a href="rules.html">Rules</a>
 			<a href="mcp-servers.html" class="active">MCP Servers</a>
 			<a href="context-files.html">Context Files</a>
@@ -444,7 +445,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 		<h1>MCP Servers</h1>
 <p>cast supports <a href="https://modelcontextprotocol.io">Model Context Protocol</a> servers — local (stdio) or remote (streamable HTTP). Their tools appear alongside the built-in ones, no special syntax needed to call them.</p>
 <h2>Configuration</h2>
-<p>MCP servers are configured in JSON files using the same <code>mcpServers</code> shape as Claude Desktop and Cursor:</p>
+<p>MCP servers are configured in JSON files using the common <code>mcpServers</code> shape:</p>
 <div class="table-wrap"><table><thead><tr><th>Location</th><th>Scope</th><th>Trust</th></tr></thead><tbody><tr><td><code>~/.cast/mcp.json</code></td><td>Global (all projects)</td><td>Always loaded</td></tr><tr><td><code>.cast/mcp.json</code></td><td>Project-local</td><td>Trust-gated</td></tr></tbody></table></div><h3>Local Server (stdio)</h3>
 <pre><code class="language-json">{
   &quot;mcpServers&quot;: {
@@ -490,7 +491,11 @@ cast --no-mcp --mcp ~/.cast/mcp.json
 </code></pre>
 <p>Extra paths (<code>--mcp</code>) work even with <code>--no-mcp</code>.</p>
 <h2>Commands</h2>
-<div class="table-wrap"><table><thead><tr><th>Command</th><th>Description</th></tr></thead><tbody><tr><td><code>/mcp</code></td><td>Toggle MCP servers on/off (multi-select picker)</td></tr><tr><td><code>/reload</code></td><td>Reconnect MCP servers (re-reads config files)</td></tr></tbody></table></div><h3>Toggling Servers</h3>
+<div class="table-wrap"><table><thead><tr><th>Command</th><th>Description</th></tr></thead><tbody><tr><td><code>/mcp</code></td><td>Toggle MCP servers on/off (multi-select picker)</td></tr><tr><td><code>/mcp list</code></td><td>Read-only list (origin + tools/status)</td></tr><tr><td><code>/mcp enable</code> / <code>disable &lt;name&gt;</code></td><td>Toggle one server without the picker</td></tr><tr><td><code>/mcp uninstall</code></td><td>Remove a server from global/project <code>mcp.json</code> (picker + confirm, or typed name)</td></tr><tr><td><code>/mcp help</code></td><td>Cheat sheet</td></tr><tr><td><code>/reload</code></td><td>Reconnect MCP servers (re-reads config files)</td></tr></tbody></table></div><p><code>/mcp uninstall</code> edits the owning config file (project wins over global for the same name). CLI <code>--mcp</code> paths are not removable here.</p>
+<h3>Hot-reload</h3>
+<p><code>/mcp</code> toggle / <code>enable</code> / <code>disable</code> / <code>uninstall</code> reconnect servers <strong>in the current session</strong> — no <code>/reload</code>, no restart.</p>
+<p>Use <code>/reload</code> after editing <code>~/.cast/mcp.json</code> or <code>.cast/mcp.json</code> by hand (or adding a new server entry outside <code>/mcp</code>). See <a href="interactive-commands.html#hot-reload-vs-reload">Interactive commands</a>.</p>
+<h3>Toggling Servers</h3>
 <p><code>/mcp</code> opens an interactive multi-select picker showing all configured servers (global + project). Use <strong>up/down</strong> to navigate, <strong>Space</strong> to toggle a server on/off, and <strong>Enter</strong> to confirm.</p>
 <p>Disabled servers:</p>
 <ul>

@@ -425,6 +425,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 			<a href="tools.html">Tools</a>
 			<a href="personas.html">Personas</a>
 			<a href="skills.html">Skills</a>
+			<a href="plugins.html">Plugins</a>
 			<a href="rules.html">Rules</a>
 			<a href="mcp-servers.html">MCP Servers</a>
 			<a href="context-files.html">Context Files</a>
@@ -443,6 +444,57 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 	<article class="content">
 		<h1>Changelog</h1>
 <p>All notable user-facing changes to cast, newest first.</p>
+<h2>Unreleased</h2>
+<h3>Added</h3>
+<ul>
+<li>After compaction (auto or <code>/compact</code>), cast injects a separate trailing <code>&lt;system-reminder&gt;</code> user message with edited files and a TODO list of open plan steps. Steps come from <code>- [ ]</code> checkboxes when present, otherwise from <code>###</code> headings under <code>## Steps</code> (common in real plans). Omitted when there is nothing actionable; summary text stays reminder-free.</li>
+<li>Turn-end open-work gate in build mode with an active plan: if the model stops without tool calls while plan steps remain open, cast injects a <code>&lt;system-reminder&gt;</code> and continues sampling (up to 2 times per user prompt, then falls through with an exhausted notice).</li>
+<li>After a mid-stream <code>/abort</code> (Esc) with no tool-result abort signal, cast appends a <code>&lt;system-reminder&gt;</code> (<code>[Request interrupted by user]</code>) so the next turn’s model sees that the prior turn was cut off.</li>
+<li>Overnight sessions get a one-shot <code>&lt;system-reminder&gt;</code> when the local calendar date advances past the last announced day (persisted per session).</li>
+<li>Built-in <code>explore</code> and <code>review</code> subagents for <code>task</code> (read-oriented tool allowlists). <code>coder-with-subagents</code> steers mapping to <code>explore</code> and validation to <code>review</code>; <code>worker</code> remains the default catch-all for everything else.</li>
+<li>Marketplace plugins (Grok/Claude-shaped): <code>/plugin marketplace add</code>, <code>/plugin install name@marketplace</code> — installs contribute skills from <code>~/.cast/plugins/</code>.</li>
+<li><code>/skills</code> and bare <code>/plugin</code> open multi-select toggles (same UX as <code>/mcp</code>); disabled skill names persist in <code>disabledSkills</code>.</li>
+<li>Default marketplaces auto-seeded once: Codex (<code>openai/plugins</code>), Claude (<code>anthropics/claude-plugins-official</code>), Grok (<code>xai-org/plugin-marketplace</code>).</li>
+<li><code>/plugin</code> slash palette lists install / marketplace / toggle subcommands; builtin <code>cast</code> skill documents plugins + toggles.</li>
+<li>Bare <code>/plugin uninstall</code> opens a picker + confirm (typed <code>name@marketplace</code> still works).</li>
+<li><code>/skills uninstall</code> and <code>/mcp uninstall</code> — interactive picker + confirm (or typed name); removes global/project skills and mcp.json entries, clears matching disable flags, hot-reloads.</li>
+<li>Uniform <code>/skills</code> / <code>/mcp</code> / <code>/plugin</code> surface: <code>list</code>, <code>enable</code>/<code>disable</code>, <code>help</code>; toggle cancel shows <code>[Cancelled]</code>; no-op toggle skips reload; typed uninstall confirms; <code>/plugin marketplace remove</code> cleans settings + reloads skills.</li>
+<li>Skill discovery loads skills.sh universal paths: <code>.agents/skills/</code> (project, trust-gated) and <code>~/.config/agents/skills/</code> / <code>~/.agents/skills/</code> (global), so <code>npx skills add … -a universal</code> works without copying into <code>.cast/skills/</code>.</li>
+<li><code>/skills</code>, <code>/mcp</code>, and <code>/plugin</code> pickers/lists sort entries alphabetically by name (skills were previously discovery-order, so plugin skills clustered at the bottom).</li>
+<li><code>/skills</code> labels plugin skills with their pack id (<code>plugin · name@marketplace</code>). Skills from a disabled pack stay visible but locked (muted) until <code>/plugin</code> re-enables the pack.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><code>read</code> tool rows show the correct 1-indexed line range (was off-by-one when <code>offset</code> was set).</li>
+<li>Live-region <code>task</code> rows stay one-line (truncate) while streaming so parallel tasks remain visible; full wrapped assignment still shows once promoted to history.</li>
+<li>Committed <code>task</code> tool rows show the full subagent report (wrapped), not a 500-char truncated line.</li>
+<li>Session rebuild/resume restores tool <code>[error]</code> via persisted <code>castIsError</code> on tool results (was always <code>[ok]</code>).</li>
+<li>Trackpad scroll during an active agent turn no longer fights Ink redraws: while the live region fits the screen, cursor-position polling stays on (and short CUU frames cannot clear the scroll-up guard); tall streaming frames skip that poll so a false scroll latch cannot swallow redraws and scramble scrollback.</li>
+<li>Sync <code>task</code> subagents honor parent <code>--no-skills</code> / <code>--skill</code> (they previously always loaded global/builtin/plugin skills and ignored CLI skill paths).</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Docs spell out hot-reload vs <code>/reload</code>: <code>/skills</code> / <code>/mcp</code> / <code>/plugin</code> toggle and install/uninstall apply in-session; <code>/reload</code> is only for on-disk file drops/edits (same chat, no restart).</li>
+<li><code>task</code> UI shows the delegated assignment text (not raw JSON <code>key=value</code> args). Non-default subagent names are prefixed (<code>explore · …</code>).</li>
+<li>Subagent final-answer extraction ignores empty placeholder turns (<code>(no response)</code>); the worker prompt requires a standalone closing report.</li>
+<li>Sync <code>task</code> subagents now receive the same environment grounding as the parent: Current System State (cwd/date/platform/model), always-apply + lazy rules, skills catalog, MCP server list, and SSH hosts.</li>
+<li><code>--no-skills</code> help/docs clarify that plugin skill discovery is skipped too (behavior unchanged).</li>
+<li><code>coder-with-subagents</code> (and the <code>task</code> tool description) steers harder on user cues like “parallel” / “independently”: split into same-turn multi-<code>task</code> calls instead of solo exploration.</li>
+<li>Shared prompt append adds Agent discipline (action safety, parallel tool calls, preamble-with-tools, prompt secrecy) for all personas and subagents.</li>
+</ul>
+<h2>0.6.12</h2>
+<h3>Changed</h3>
+<ul>
+<li>Renamed the file-search builtin from <code>find</code> to <code>glob</code> (same glob-pattern behavior). Legacy <code>find</code> calls and <code>tools: [find, …]</code> allowlists still work.</li>
+<li>Shared file-tool guidance steers named-file tasks to <code>read</code> first; short <code>glob</code> results remind the model to <code>read</code> a hit instead of another search/<code>ls</code>.</li>
+<li><code>edit</code> <code>insert_after</code> accepts anchor <code>EOF</code> to append at the end of a file (alongside existing <code>0:</code> for the top).</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><code>edit</code> recovers unique hash-only anchors when the model omits the line number (<code>local:chunk</code> instead of <code>22:local:chunk</code>), and accepts ASCII <code>-&gt;</code> gutters the same way as <code>→</code>.</li>
+<li>Shared file-tool guidance (all personas <strong>and</strong> subagents) now spells out the read→edit workflow: known path skips <code>glob</code>, one <code>edit</code> per file, copy the full three-part anchor, retry from tool-returned anchors instead of re-searching.</li>
+<li>When <code>read</code>/<code>edit</code> miss a path, cast runs a basename <code>glob</code> under the hood and lists real matches so the model can retry the correct path without starting its own search loop.</li>
+</ul>
 <h2>0.6.11</h2>
 <h3>Added</h3>
 <ul>
