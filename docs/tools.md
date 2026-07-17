@@ -60,7 +60,7 @@ Multiple ops in one call are validated against the pre-edit file and applied ato
 
 A successful edit replies with the edited regions rendered with fresh anchors (±2 lines of context, overlapping windows merged, capped at 60 lines), so the result of the edit is immediately visible and follow-up ops can reuse the returned anchors without a re-`read`.
 
-On a stale-anchor or anchor-not-found error, the tool returns the fresh anchors and a snippet around the target line in the same reply, so a re-`read` is usually unnecessary. When the anchored content merely moved (e.g. lines were inserted above it), the error names the new line and includes the exact anchor to retry with.
+Anchors are self-healing where the answer is unambiguous: if the anchored content merely moved (lines inserted above it), or a neighbour in the same chunk changed while the anchored line itself is intact, the edit is applied automatically and the reply carries a `Note:` describing the recovery. The tool never guesses — a stale anchor whose content is gone, or one that matches several nearby lines, is still an error, and that error returns fresh anchors plus a snippet around the target line so a re-`read` is usually unnecessary.
 
 #### Hashline anchors
 
