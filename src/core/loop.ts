@@ -226,8 +226,8 @@ export async function compactSessionMessages(
 		// messagesCompacted === 0 means compactMessages found no safe cut point
 		// yet (see session.ts's safeCutIndex) and left messages untouched.
 		if (result.summary.messagesCompacted > 0) {
-			// Grok-build shape: reminder is a separate trailing message, never
-			// embedded in the summary. Omit entirely when nothing actionable.
+			// Reminder is a separate trailing message, never embedded in the
+			// summary. Omit entirely when nothing actionable.
 			const fileTags = fileTagsFromCompactionSummary(result.summary.summary);
 			injectPostCompactReminder(
 				result.messages,

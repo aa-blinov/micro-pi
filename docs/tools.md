@@ -65,7 +65,7 @@ Anchors are self-healing where the answer is unambiguous: if the anchored conten
 
 #### Hashline anchors
 
-Every line `read` and `grep` returns carries a two-part hash (the `chunk` anchor scheme from `xai-org/grok-build`): `LOCAL` fingerprints the line's own content, whitespace-normalized, so formatter-only edits don't invalidate anchors and a line that merely moved keeps its local hash; `CHUNK` fingerprints the 8-line chunk around the line, so nearby edits mark the anchor stale even when the line itself is untouched. To `edit` a line, copy the full `<line>:<local>:<chunk>` prefix into the `anchor` field of the op — do not re-type the line text. Pasting the whole gutter (`22:abc:rst→…`) or ASCII `->` is fine. If the model omits the line number and sends only `local:chunk`, `edit` recovers it when that pair is unique in the file.
+Every line `read` and `grep` returns carries a two-part hash (the `chunk` anchor scheme): `LOCAL` fingerprints the line's own content, whitespace-normalized, so formatter-only edits don't invalidate anchors and a line that merely moved keeps its local hash; `CHUNK` fingerprints the 8-line chunk around the line, so nearby edits mark the anchor stale even when the line itself is untouched. To `edit` a line, copy the full `<line>:<local>:<chunk>` prefix into the `anchor` field of the op — do not re-type the line text. Pasting the whole gutter (`22:abc:rst→…`) or ASCII `->` is fine. If the model omits the line number and sends only `local:chunk`, `edit` recovers it when that pair is unique in the file.
 
 ## Search Tools
 

@@ -108,9 +108,8 @@ export async function execRead(args: Record<string, unknown>, cwd: string, confi
 	// Hashline gutter: each line is prefixed with `LINE:LOCAL:CHUNK→content`
 	// so `edit` can reference lines without the model having to copy their
 	// text. The arrow separator is never legal leading whitespace in source,
-	// so a tab-indented file's real tabs stay unambiguous against the gutter
-	// — same reason Claude Code's Read uses →. See `hashline.ts` for the
-	// anchor scheme.
+	// so a tab-indented file's real tabs stay unambiguous against the gutter.
+	// See `hashline.ts` for the anchor scheme.
 	const numbered = selectedLines
 		.map((line, i) => renderAnchoredLine(startLine + i + 1, cached.hashes[startLine + i] ?? ["", ""], line))
 		.join("\n");
@@ -210,8 +209,7 @@ export async function execEdit(args: Record<string, unknown>, cwd: string, confi
 	// what it *believes* the file now looks like, and a misplaced insert
 	// or a forgotten end_anchor goes unnoticed until a full re-read. The
 	// snippet makes the damage (or success) visible immediately and hands
-	// over ready-to-use anchors for the follow-up edit. Same feedback
-	// grok-build's hashline_edit gives on success.
+	// over ready-to-use anchors for the follow-up edit.
 	const snippet = postEditSnippet(bucketResult.ops, mutated);
 	const notes = bucketResult.notes.map((n) => `Note: ${n}`).join("\n");
 	return {
@@ -431,7 +429,7 @@ function bucketOps(
 				continue;
 			}
 			// "EOF" appends after the last real line (before a synthetic
-			// trailing empty line from a final newline, matching grok-build).
+			// trailing empty line from a final newline).
 			if (op.anchorStr === "EOF" || op.anchorStr === "eof") {
 				if (op.before) {
 					return failBucket(

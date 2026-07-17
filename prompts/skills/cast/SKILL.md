@@ -149,7 +149,7 @@ MCP (Model Context Protocol) servers provide external tools.
 
 Global servers load first, project and CLI override them on name collision.
 
-**File format** — same as Claude Desktop/Cursor:
+**File format** — common `mcpServers` JSON shape:
 
 ```json
 {

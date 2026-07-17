@@ -75,7 +75,7 @@ Self-contained instruction packages loaded on demand from `~/.cast/skills/` (glo
 
 ### MCP Servers
 
-Connect any [Model Context Protocol](https://modelcontextprotocol.io) server — local (stdio) or remote (streamable HTTP). Same `mcpServers` config shape as Claude Desktop / Cursor. Their tools appear alongside the built-in ones.
+Connect any [Model Context Protocol](https://modelcontextprotocol.io) server — local (stdio) or remote (streamable HTTP). Uses the common `mcpServers` JSON config shape. Their tools appear alongside the built-in ones.
 
 ### Personas
 

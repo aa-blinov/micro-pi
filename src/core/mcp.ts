@@ -40,7 +40,7 @@ interface McpConfigFile {
 	mcpServers?: Record<string, McpServerConfig>;
 }
 
-/** Reads a `{ "mcpServers": { "name": { "command": ..., "args": [...] } } }` file — same shape Claude Desktop/Cursor/etc. already use, so existing configs can be copy-pasted. Missing file or malformed JSON both just mean "no servers", not an error. */
+/** Reads a `{ "mcpServers": { "name": { "command": ..., "args": [...] } } }` file — the common MCP client config shape, so existing configs can be copy-pasted. Missing file or malformed JSON both just mean "no servers", not an error. */
 export function loadMcpConfig(path: string): Record<string, McpServerConfig> {
 	if (!existsSync(path)) return {};
 	try {
@@ -81,12 +81,12 @@ export interface McpSetupResult {
 	allServerNames: string[];
 }
 
-// The common `npx -y <package>` config style (same one Claude Desktop/Cursor
-// suggest) has to resolve the package against the npm registry before the
-// server process even starts — confirmed empirically: ~2.6s with a warm npx
-// cache, ~12s with a cold one (fresh $HOME, no prior npx runs), on ordinary
-// network conditions. 10s cut that off mid-resolution; 30s leaves real room
-// without leaving a genuinely hung server unnoticed for too long.
+// The common `npx -y <package>` config style has to resolve the package against
+// the npm registry before the server process even starts — confirmed
+// empirically: ~2.6s with a warm npx cache, ~12s with a cold one (fresh $HOME,
+// no prior npx runs), on ordinary network conditions. 10s cut that off
+// mid-resolution; 30s leaves real room without leaving a genuinely hung
+// server unnoticed for too long.
 const CONNECT_TIMEOUT_MS = 30_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {

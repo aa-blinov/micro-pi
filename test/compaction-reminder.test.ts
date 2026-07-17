@@ -9,7 +9,7 @@ import type { PlanState } from "../src/core/plan.ts";
 import { listOpenPlanSteps, listUncheckedPlanSteps } from "../src/core/plan.ts";
 
 describe("formatPostCompactReminder", () => {
-	it("returns undefined when there is no actionable state (grok omit-when-empty)", () => {
+	it("returns undefined when there is no actionable state (omit-when-empty)", () => {
 		expect(formatPostCompactReminder()).toBeUndefined();
 		expect(formatPostCompactReminder({ mode: "build" })).toBeUndefined();
 		expect(formatPostCompactReminder({ readFiles: ["a.ts"] })).toBeUndefined();

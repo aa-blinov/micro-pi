@@ -1,13 +1,11 @@
 /**
- * Post-compaction state reminder — matches grok-build's shape:
- * a separate `<system-reminder>` message after the summary, omitted when
- * there is nothing actionable to preserve.
+ * Post-compaction state reminder: a separate `<system-reminder>` message after
+ * the summary, omitted when there is nothing actionable to preserve.
  *
- * Shared grok sections we map onto cast state:
+ * Sections when present:
+ * - Mode (plan / build + active plan name)
  * - Files Edited This Session ← modified file tags
  * - TODO List ← open plan steps (`- [ ]`, or `###` under `## Steps`)
- *
- * Cast harness-only: plan/build mode line (grok has no plan mode).
  */
 
 import { basename } from "node:path";
@@ -80,12 +78,11 @@ function formatTodoList(
 
 /**
  * Format the `<system-reminder>` block, or `undefined` when nothing actionable
- * (same omit-when-empty rule as grok-build's `wrap_system_reminder`).
+ * (omit-when-empty — empty reminders must not be injected).
  */
 export function formatPostCompactReminder(state: PostCompactReminderState = {}): string | undefined {
 	const sections: string[] = [];
 
-	// Cast harness-only — grok has no plan/build mode.
 	if (state.mode === "plan") {
 		sections.push(
 			"## Mode\nplan mode is active — explore and author the plan; do not implement (no write/edit; bash is inspection-only).",
@@ -105,10 +102,8 @@ export function formatPostCompactReminder(state: PostCompactReminderState = {}):
 }
 
 /**
- * Inject the reminder as its own trailing user message — grok-build's
- * assemble order ends with `[…, summary, reminder?]`, and the shell test
- * asserts the reminder is a separate message that must NOT be inside the
- * summary text.
+ * Inject the reminder as its own trailing user message after the compaction
+ * summary — never merge it into the summary text.
  */
 export function injectPostCompactReminder(messages: Message[], reminder: string | undefined): void {
 	if (!reminder?.trim()) return;

@@ -1,8 +1,8 @@
 /**
  * Hashline anchors — every line in a file is prefixed with a short
  * content-derived hash so `edit` can reference lines without the model
- * having to copy their text. Port of the `chunk` anchor scheme from
- * `xai-org/grok-build`; see `docs/tools.md` for the user-facing rationale.
+ * having to copy their text. Uses a two-part `chunk` scheme (`LOCAL` +
+ * `CHUNK`); see `docs/tools.md` for the user-facing rationale.
  *
  * Anchor format: `LINE:LOCAL:CHUNK`.
  *
@@ -247,12 +247,12 @@ export type ShiftResult = { kind: "found"; newLine: number } | { kind: "ambiguou
  * (content) hash still matches. Exactly one hit means the content simply
  * moved — the caller can hand the model a ready-made fresh anchor.
  *
- * Deliberate deviation from upstream grok-build: the anchor's chunk
- * component is NOT checked against candidates. The very edit that shifted
- * the line (an insertion above) also changed every chunk fingerprint, so
- * requiring the old chunk to match would make recovery almost never fire.
- * A unique content match within the window is strong enough evidence, and
- * the model's retry is revalidated against the full fresh anchor anyway.
+ * The anchor's chunk component is NOT checked against candidates. The very
+ * edit that shifted the line (an insertion above) also changed every chunk
+ * fingerprint, so requiring the old chunk to match would make recovery almost
+ * never fire. A unique content match within the window is strong enough
+ * evidence, and the model's retry is revalidated against the full fresh
+ * anchor anyway.
  */
 export function findShifted(
 	anchor: ParsedAnchor,

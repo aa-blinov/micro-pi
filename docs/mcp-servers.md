@@ -4,7 +4,7 @@ cast supports [Model Context Protocol](https://modelcontextprotocol.io) servers 
 
 ## Configuration
 
-MCP servers are configured in JSON files using the same `mcpServers` shape as Claude Desktop and Cursor:
+MCP servers are configured in JSON files using the common `mcpServers` shape:
 
 | Location | Scope | Trust |
 |----------|-------|-------|
