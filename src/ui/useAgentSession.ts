@@ -3,7 +3,7 @@ import type { AppConfig } from "../core/config.ts";
 import { initialAnnouncedLocalDate } from "../core/date-rollover-reminder.ts";
 import { describeTurnError, isRetryableStreamError, stripHermesToolCalls } from "../core/llm.ts";
 import { type AgentEvent, runAgentLoop } from "../core/loop.ts";
-import type { McpSetupResult } from "../core/mcp.ts";
+import { formatMcpForPrompt, type McpSetupResult } from "../core/mcp.ts";
 import { readActivePlan } from "../core/plan.ts";
 import type { AgentRunner } from "../core/runner.ts";
 import { addUsage, appendMessage, type SessionState, type SessionUsage, saveSession } from "../core/session.ts";
@@ -530,6 +530,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 					disabledTools,
 					projectTrusted,
 					sshHosts: params.sshHosts,
+					mcpPromptSuffix: formatMcpForPrompt(mcpResult),
 					planState,
 					announcedLocalDate,
 					// Append straight into the display history: warnings fire mid-run

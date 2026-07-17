@@ -3,7 +3,7 @@ import { noPickers } from "../pickers/no-pickers.ts";
 import { initialAnnouncedLocalDate } from "./date-rollover-reminder.ts";
 import type { AgentEvent } from "./loop.ts";
 import { runAgentLoop } from "./loop.ts";
-import { closeMcpConnections } from "./mcp.ts";
+import { closeMcpConnections, formatMcpForPrompt } from "./mcp.ts";
 import { createPlanState, PLAN_TOOL_NAMES } from "./plan.ts";
 import { addUsage, appendMessage, type SessionState, saveSession } from "./session.ts";
 import { loadSettings } from "./settings.ts";
@@ -90,6 +90,8 @@ export async function runNonInteractive(args: ParsedArgs, options: RunOptions): 
 			subagentModel,
 			disabledTools,
 			projectTrusted: result.projectTrusted,
+			sshHosts: result.sshHosts,
+			mcpPromptSuffix: formatMcpForPrompt(mcpResult),
 			planState,
 			announcedLocalDate,
 			onEvent: (event: AgentEvent) => handleEvent(event, session, options.format),

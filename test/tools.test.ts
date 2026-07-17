@@ -1140,7 +1140,8 @@ describe("task", () => {
 			},
 		});
 		await exec("task", { assignment: "do it" }); // no persona → default
-		expect(capturedConfig?.systemPrompt).toBe("worker prompt");
+		expect(String(capturedConfig?.systemPrompt)).toContain("worker prompt");
+		expect(String(capturedConfig?.systemPrompt)).toContain("Current working directory:");
 	});
 
 	it("passes the assignment only in the user message, not the system prompt", async () => {
@@ -1158,8 +1159,8 @@ describe("task", () => {
 			},
 		});
 		await exec("task", { assignment: "unique-assignment-token" });
-		expect(capturedConfig?.systemPrompt).toBe("worker prompt");
-		expect(capturedConfig?.systemPrompt).not.toContain("unique-assignment-token");
+		expect(String(capturedConfig?.systemPrompt)).toContain("worker prompt");
+		expect(String(capturedConfig?.systemPrompt)).not.toContain("unique-assignment-token");
 		expect(JSON.stringify(capturedMessages)).toContain("unique-assignment-token");
 	});
 

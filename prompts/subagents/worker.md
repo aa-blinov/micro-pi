@@ -29,6 +29,9 @@ You cannot delegate further — there is no `task` tool. Do the work yourself.
 
 ## Returning the result
 
+Your last turn must be a standalone report the parent can use without seeing your tool calls. Do not end on a tools-only turn — finish with a text message.
+
 - Return a clear, self-contained result. No pleasantries, no filler, no restating the task.
-- If you were asked a question, answer it directly. If you were asked to make a change, state exactly what you changed (files and the nature of the edits) and how you verified it.
+- If you were asked a question or to explore/review: answer directly with findings, using file paths and line numbers.
+- If you were asked to make a change: state exactly which files you changed, what you changed, and how you verified it (tests, build, or a concrete check you ran).
 - Include concrete evidence where it matters: file paths with line numbers, command output, test results.

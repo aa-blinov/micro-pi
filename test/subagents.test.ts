@@ -200,8 +200,50 @@ describe("execTask — tools allowlist and agentsMd", () => {
 				return [...messages, { role: "assistant", content: "done" }];
 			},
 		});
-		expect(childPrompt).toBe("ROLE_ONLY");
+		expect(childPrompt).toContain("ROLE_ONLY");
 		expect(childPrompt).not.toContain("SHOULD NOT APPEAR");
+		expect(childPrompt).toContain("Current working directory:");
+	});
+
+	it("injects cwd/system state, rules, skills, and mcp catalog into the child prompt", async () => {
+		mkdirSync(join(tmpDir, ".cast", "rules"), { recursive: true });
+		writeFileSync(join(tmpDir, "AGENTS.md"), "AGENTS BODY\n", "utf-8");
+		writeFileSync(
+			join(tmpDir, ".cast", "rules", "always.md"),
+			"---\nalwaysApply: true\n---\nALWAYS RULE BODY\n",
+			"utf-8",
+		);
+		const worker: SubagentPrompt = {
+			name: "worker",
+			label: "Worker",
+			description: "",
+			systemPrompt: "ROLE_PROMPT",
+			agentsMd: true,
+		};
+		let childPrompt = "";
+		let childSsh: unknown;
+		await execTask({ assignment: "do work" }, tmpDir, testConfig, {
+			model: "test-model",
+			subagentPrompts: [worker],
+			projectTrusted: true,
+			mcpPromptSuffix: '\n<available_mcp>\n  <server name="demo" tools="1">\n  </server>\n</available_mcp>',
+			sshHosts: [{ name: "box", host: "example.com", username: "u" }],
+			runAgentLoop: async (messages, config) => {
+				childPrompt = config.systemPrompt;
+				childSsh = config.sshHosts;
+				config.onEvent({ type: "end", reason: "stop" });
+				return [...messages, { role: "assistant", content: "done" }];
+			},
+		});
+		expect(childPrompt).toContain("ROLE_PROMPT");
+		expect(childPrompt).toContain("AGENTS BODY");
+		expect(childPrompt).toContain("ALWAYS RULE BODY");
+		expect(childPrompt).toContain(`Current working directory: ${tmpDir}`);
+		expect(childPrompt).toContain("Subagent: worker (Worker)");
+		expect(childPrompt).toContain("Tool paths are relative to the current working directory above.");
+		expect(childPrompt).toContain("<available_mcp>");
+		expect(childPrompt).toContain('name="demo"');
+		expect(childSsh).toEqual([{ name: "box", host: "example.com", username: "u" }]);
 	});
 });
 

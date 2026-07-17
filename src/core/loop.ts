@@ -411,6 +411,11 @@ export interface LoopConfig {
 	/** Configured SSH hosts — when non-empty, the `ssh` tool is registered. */
 	sshHosts?: SshHost[];
 	/**
+	 * Parent MCP catalog block for the system prompt. Forwarded into sync
+	 * `task` subagents so they see the same `<available_mcp>` list.
+	 */
+	mcpPromptSuffix?: string;
+	/**
 	 * Turn-end open-work gate. When omitted, defaults to enabled with
 	 * `DEFAULT_OPEN_WORK_GATE_MAX_FIRES`. Still requires build mode + an
 	 * active plan on disk (`isOpenWorkGateActive`).
@@ -507,6 +512,8 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 					disabledTools: loopConfig.disabledTools,
 					planState: loopConfig.planState,
 					projectTrusted: loopConfig.projectTrusted,
+					mcpPromptSuffix: loopConfig.mcpPromptSuffix,
+					sshHosts: loopConfig.sshHosts,
 					runAgentLoop,
 				}
 			: undefined,

@@ -2,6 +2,7 @@ import { Box, Static, Text } from "ink";
 import { type JSX, useMemo } from "react";
 import { displayWidth } from "./display-width.ts";
 import { Spinner } from "./Spinner.tsx";
+import { formatTaskToolSummary } from "./task-tool-summary.ts";
 import { theme } from "./themes/index.ts";
 import type { ChatMessage, RetryInfo, StreamBlock, StreamingState, ToolCallEntry } from "./useAgentSession.ts";
 
@@ -23,6 +24,7 @@ type ToolSummaryModel =
 	| { kind: "edit"; path: string; added: number; removed: number }
 	| { kind: "read"; path: string; range: string }
 	| { kind: "write"; path: string; lines: number }
+	| { kind: "task"; text: string }
 	| { kind: "generic"; text: string };
 
 /**
@@ -90,6 +92,11 @@ function parseToolSummary(name: string, args: string): ToolSummaryModel {
 		return { kind: "write", path: parsed.path, lines };
 	}
 
+	if (name === "task") {
+		const taskText = formatTaskToolSummary(args);
+		if (taskText) return { kind: "task", text: taskText };
+	}
+
 	const generic = parsed
 		? Object.entries(parsed)
 				.map(([k, v]) => `${k}=${JSON.stringify(v)}`)
@@ -127,6 +134,14 @@ function ToolSummary({ name, args }: { name: string; args: string }): JSX.Elemen
 		return (
 			<Text color={theme().muted} wrap="truncate">
 				{model.path} · {model.lines} {model.lines === 1 ? "line" : "lines"}
+			</Text>
+		);
+	}
+	if (model.kind === "task") {
+		// Full assignment — wrap so the delegated brief stays readable.
+		return (
+			<Text color={theme().muted} wrap="wrap">
+				{model.text}
 			</Text>
 		);
 	}

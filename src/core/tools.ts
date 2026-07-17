@@ -274,10 +274,11 @@ export function getToolDefinitions(
 						function: {
 							name: "task",
 							description:
-								"Delegate a task to a subagent with an isolated context. " +
-								"The subagent runs independently — its intermediate tool calls do not appear in your context. " +
-								"Only the final result is returned to you. " +
-								`Use for parallel work, research, or isolating complex exploration. ${personaList}${modelInfo}`,
+								"Start a subagent that works on a task independently and reports back. " +
+								"Child tool calls stay out of your context — only the final result is returned. " +
+								"When the user asks for parallel/independent/concurrent work across separate areas, " +
+								"emit multiple task calls in the same turn (one assignment per area) instead of doing all the reads yourself. " +
+								`Also use for isolated research, review, or exploration. ${personaList}${modelInfo}`,
 							parameters: {
 								type: "object",
 								properties: {

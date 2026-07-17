@@ -198,6 +198,95 @@ const PLATFORM_LINE = `${platform()}${PLATFORM_NAMES[platform()] ? ` (${PLATFORM
 	platform() === "win32" ? " — the bash tool runs commands via Git Bash, use POSIX syntax" : ""
 }`;
 
+function localDateString(now = new Date()): string {
+	return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Rules + skills prompt suffixes for a cwd — same discovery the parent session
+ * uses (global + builtin + trusted project). Used so task subagents see the
+ * same project grounding without re-threading startup deps.
+ */
+export function resolvePromptContextForCwd(
+	cwd: string,
+	trusted: boolean,
+): { rulesSuffix: string; rulesLazySuffix: string; skillsPromptSuffix: string } {
+	const rules = resolveRulesForCwd(cwd, trusted);
+	const skillsDir = projectSkillsDir(cwd);
+	const skillsResult = loadSkills({
+		globalDir: globalSkillsDir,
+		builtinDir: builtinSkillsDir,
+		projectDir: trusted && skillsDir && existsSync(skillsDir) ? skillsDir : undefined,
+		extraPaths: [],
+	});
+	return {
+		rulesSuffix: rules.alwaysApplySuffix,
+		rulesLazySuffix: rules.lazySuffix,
+		skillsPromptSuffix: formatSkillsForPrompt(skillsResult.skills),
+	};
+}
+
+export interface SystemEnvironmentOptions {
+	model: string;
+	reasoningLevel: string;
+	reasoningMeta?: { supportedEfforts: string[] } | null;
+	/** Agent mode. TUI-only — headless runs omit it. */
+	mode?: "plan" | "build";
+	persona?: Persona;
+	/** When set, labels a task subagent instead of the parent persona. */
+	subagent?: { name: string; label: string };
+}
+
+/**
+ * Environment grounding (cwd / date / platform / model). Shared by the parent
+ * system prompt and sync `task` subagents so children know which directory
+ * relative tool paths resolve against.
+ */
+export function formatSystemEnvironmentBlock(cwd: string, options?: SystemEnvironmentOptions): string {
+	const date = localDateString();
+	if (!options) {
+		return `\nCurrent date: ${date}\nCurrent working directory: ${cwd}\nPlatform: ${PLATFORM_LINE}\n`;
+	}
+
+	const lines: Array<string | null> = [
+		"",
+		"",
+		"## Current System State",
+		`- Current date: ${date}`,
+		`- Current working directory: ${cwd}`,
+		`- Platform: ${PLATFORM_LINE}`,
+		`- Model: ${options.model}`,
+		`- Reasoning: ${options.reasoningLevel}`,
+	];
+
+	if (options.subagent) {
+		lines.push(`- Subagent: ${options.subagent.name} (${options.subagent.label})`);
+		// Tools resolve against LoopConfig.cwd; say so explicitly — children
+		// previously only had the role prompt and often invented wrong roots.
+		lines.push("- Tool paths are relative to the current working directory above.");
+	} else {
+		if (options.mode === "plan") {
+			lines.push(
+				"- Mode: plan — read-only exploration and planning; plan_done opens the approval dialog, or the user exits with the /build command",
+			);
+		} else if (options.mode === "build") {
+			lines.push(
+				"- Mode: build — full toolset; for a complex task worth planning first, suggest it with the plan_enter tool (the user can also enter plan mode with the /plan command)",
+			);
+		}
+		if (options.reasoningMeta?.supportedEfforts?.length) {
+			lines.push(`- Supported reasoning efforts: ${options.reasoningMeta.supportedEfforts.join(", ")}`);
+		}
+		if (options.persona) {
+			lines.push(`- Persona: ${options.persona.name} (${options.persona.label})`);
+			if (options.persona.filePath) lines.push(`- Persona file: ${options.persona.filePath}`);
+			lines.push(`- Persona source: ${options.persona.source}`);
+		}
+	}
+
+	return `${lines.filter((l): l is string => l !== null).join("\n")}\n`;
+}
+
 export function buildSystemPrompt(
 	persona: Persona,
 	contextFilesSuffix: string,
@@ -215,32 +304,15 @@ export function buildSystemPrompt(
 		mode?: "plan" | "build";
 	},
 ): string {
-	const now = new Date();
-	const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-
 	const stateBlock = state
-		? `${[
-				`\n\n## Current System State`,
-				`- Current date: ${date}`,
-				`- Current working directory: ${cwd}`,
-				`- Platform: ${PLATFORM_LINE}`,
-				`- Model: ${state.model}`,
-				`- Reasoning: ${state.reasoningLevel}`,
-				state.mode === "plan"
-					? "- Mode: plan — read-only exploration and planning; plan_done opens the approval dialog, or the user exits with the /build command"
-					: state.mode === "build"
-						? "- Mode: build — full toolset; for a complex task worth planning first, suggest it with the plan_enter tool (the user can also enter plan mode with the /plan command)"
-						: null,
-				state.reasoningMeta?.supportedEfforts?.length
-					? `- Supported reasoning efforts: ${state.reasoningMeta.supportedEfforts.join(", ")}`
-					: null,
-				`- Persona: ${persona.name} (${persona.label})`,
-				persona.filePath ? `- Persona file: ${persona.filePath}` : null,
-				`- Persona source: ${persona.source}`,
-			]
-				.filter(Boolean)
-				.join("\n")}\n`
-		: `\nCurrent date: ${date}\nCurrent working directory: ${cwd}\nPlatform: ${PLATFORM_LINE}\n`;
+		? formatSystemEnvironmentBlock(cwd, {
+				model: state.model,
+				reasoningLevel: state.reasoningLevel,
+				reasoningMeta: state.reasoningMeta,
+				mode: state.mode,
+				persona,
+			})
+		: formatSystemEnvironmentBlock(cwd);
 
 	return [
 		persona.systemPrompt,
