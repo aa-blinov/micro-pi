@@ -22,6 +22,7 @@ function emptyCtx(overrides: Partial<SegmentContext> = {}): SegmentContext {
 		contextWindow: 128_000,
 		maxResponseTokens: 8192,
 		messages: [] as Message[],
+		sessionId: "test-session",
 		...overrides,
 	};
 }
@@ -101,6 +102,19 @@ describe("segment renderers", () => {
 	it("elapsed renders a positive elapsedMs as a non-null element", () => {
 		const seg = getStatusBarSegments().find((s) => s.id === "elapsed")!;
 		expect(seg.render(emptyCtx({ elapsedMs: 1500 }))).not.toBeNull();
+	});
+
+	it("session is off by default, left-aligned, and renders the sessionId", () => {
+		const seg = getStatusBarSegments().find((s) => s.id === "session")!;
+		expect(seg.defaultOn).toBe(false);
+		expect(seg.side).toBe("left");
+		const ctx = emptyCtx({ sessionId: "abc123" });
+		expect(seg.render(ctx)).not.toBeNull();
+		expect(seg.formatValue(ctx)).toBe("abc123");
+		// Registered after `model`, before `context` — keeps the default order "model | session | …".
+		const ids = getStatusBarSegments().map((s) => s.id);
+		expect(ids.indexOf("session")).toBe(ids.indexOf("model") + 1);
+		expect(ids.indexOf("session")).toBeLessThan(ids.indexOf("context"));
 	});
 });
 

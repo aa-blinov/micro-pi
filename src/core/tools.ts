@@ -98,6 +98,8 @@ export function getToolDefinitions(
 				name: "write",
 				description:
 					"Create a new file or overwrite an entire file. Prefer `edit` for surgical changes to existing files. " +
+					"Do NOT fall back to write because an edit failed — retry the edit with the fresh anchors from the error instead; " +
+					"a from-memory rewrite tends to reproduce stale content. " +
 					"Automatically creates parent directories.",
 				parameters: {
 					type: "object",
@@ -121,7 +123,8 @@ export function getToolDefinitions(
 					"'insert_after' / 'insert_before' (add lines after/before an anchor), 'write' (replace the whole file). " +
 					"Success returns fresh anchors — use them for any follow-up; do not re-read just to confirm. " +
 					"Moved lines, neighbour drift, and unique hash-only anchors (missing line number) are recovered automatically; " +
-					"errors include fresh anchors so a re-read is usually unnecessary.",
+					"errors include fresh anchors so a re-read is usually unnecessary. " +
+					"If an op fails, fix that op using the anchors from the error and retry edit — never give up and rewrite the whole file with `write`.",
 				parameters: {
 					type: "object",
 					properties: {
@@ -149,7 +152,7 @@ export function getToolDefinitions(
 									content: {
 										type: "string",
 										description:
-											"New text to write at the target range / after the anchor / as the new file content. Newlines split it into multiple lines. An empty string on `replace` deletes the range.",
+											"New text to write at the target range / after the anchor / as the new file content. Newlines split it into multiple lines; indentation is preserved verbatim. Do NOT end it with a trailing newline unless you want an extra blank line. An empty string on `replace` deletes the range.",
 									},
 								},
 								required: ["op", "content"],

@@ -648,6 +648,7 @@ export function App(props: AppProps): JSX.Element {
 					contextWindow: config.contextWindow,
 					maxResponseTokens: config.maxResponseTokens,
 					messages: session.messages,
+					sessionId: session.id,
 				};
 
 				// Build ordered list from statusBar.order, then append any new segments

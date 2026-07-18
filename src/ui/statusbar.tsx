@@ -29,6 +29,7 @@ export interface SegmentContext {
 	contextWindow: number;
 	maxResponseTokens: number;
 	messages: import("../core/llm.ts").Message[];
+	sessionId: string;
 }
 
 // ============================================================================
@@ -75,6 +76,7 @@ export const SEGMENT_MAX_WIDTH: Record<string, number> = {
 	persona: 20,
 	mode: 8,
 	model: 30,
+	session: 16,
 	context: 22,
 	usage: 35,
 	speed: 12,
@@ -120,6 +122,15 @@ registerStatusBarSegment({
 		}
 		return ctx.activeModel;
 	},
+});
+
+registerStatusBarSegment({
+	id: "session",
+	label: "Session",
+	defaultOn: false,
+	side: "left",
+	render: (ctx) => <Text color={theme().muted}>{ctx.sessionId}</Text>,
+	formatValue: (ctx) => ctx.sessionId,
 });
 
 registerStatusBarSegment({

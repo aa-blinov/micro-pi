@@ -164,9 +164,7 @@ function pad(str: string, width: number): string {
 
 export async function selectSession(pickers: Pickers): Promise<SessionState | null> {
 	while (true) {
-		const sessions = listSessions()
-			.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
-			.slice(0, 20);
+		const sessions = listSessions().sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 
 		if (sessions.length === 0) {
 			pickers.log("No saved sessions to resume — starting fresh.");

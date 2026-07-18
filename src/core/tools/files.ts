@@ -131,12 +131,105 @@ export async function execWrite(args: Record<string, unknown>, cwd: string): Pro
 	const content = String(args.content ?? "");
 	const absolutePath = resolvePath(filePath, cwd);
 
+	let oldContent: string | null = null;
+	try {
+		oldContent = await readFile(absolutePath, "utf-8");
+	} catch (err) {
+		if (!isEnoent(err)) throw err;
+	}
+
 	await mkdir(dirname(absolutePath), { recursive: true });
 	await writeFile(absolutePath, content, "utf-8");
 	// Drop any cached read so the next read/edit sees the new content.
 	invalidateCachedFile(absolutePath);
 
-	return { content: `Successfully wrote ${content.length} bytes to ${filePath}` };
+	const newLines = content.split("\n");
+	const dupWarning = duplicateRunWarning(newLines);
+	const warn = dupWarning ? `\nWarning: ${dupWarning}` : "";
+
+	if (oldContent === null) {
+		return { content: `Created ${filePath} (${newLines.length} lines, ${content.length} bytes).${warn}` };
+	}
+	if (oldContent === content) {
+		return { content: `Wrote ${filePath} — content is identical to what was already on disk.${warn}` };
+	}
+	// Echo the change as a diff rather than a byte count. A full rewrite is
+	// where the model most often reproduces stale or corrupted content from
+	// its context; a visible diff of what actually changed catches that
+	// immediately, where "wrote N bytes" hides it.
+	//
+	// The trailing newline is diffed out-of-band: models drop or add it all
+	// the time, and letting it into the line diff destroys the common-suffix
+	// match — every trailing line then shows as -/+ noise drowning the real
+	// change.
+	const oldDiffLines = oldContent.split("\n");
+	const hadTrailingNl = oldDiffLines[oldDiffLines.length - 1] === "" && oldDiffLines.length > 1;
+	const hasTrailingNl = newLines[newLines.length - 1] === "" && newLines.length > 1;
+	if (hadTrailingNl) oldDiffLines.pop();
+	const newDiffLines = hasTrailingNl ? newLines.slice(0, -1) : newLines;
+	let nlNote = "";
+	if (hadTrailingNl !== hasTrailingNl) {
+		nlNote = hasTrailingNl ? "\nNote: trailing newline added." : "\nNote: trailing newline removed — the file no longer ends with a newline.";
+	}
+	const diff = formatWriteDiff(oldDiffLines, newDiffLines);
+	return { content: `Overwrote ${filePath} (${newLines.length} lines). Diff vs previous content:\n\n${diff}${nlNote}${warn}` };
+}
+
+const MAX_DIFF_LINES = 80;
+
+/**
+ * Minimal line diff for the `write` echo: trim the common prefix and
+ * suffix, show what's left as `-`/`+` blocks with one context line on
+ * each side. Not an LCS — a full rewrite usually changes one region, and
+ * when it doesn't, the (truncated) coarse diff still shows the shape of
+ * the change.
+ */
+function formatWriteDiff(oldLines: string[], newLines: string[]): string {
+	let prefix = 0;
+	const maxPrefix = Math.min(oldLines.length, newLines.length);
+	while (prefix < maxPrefix && oldLines[prefix] === newLines[prefix]) prefix++;
+	let suffix = 0;
+	const maxSuffix = Math.min(oldLines.length, newLines.length) - prefix;
+	while (suffix < maxSuffix && oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]) {
+		suffix++;
+	}
+	const out: string[] = [];
+	if (prefix > 0) out.push(`  ${oldLines[prefix - 1]}`);
+	const removed = oldLines.slice(prefix, oldLines.length - suffix);
+	const added = newLines.slice(prefix, newLines.length - suffix);
+	let budget = MAX_DIFF_LINES;
+	for (const line of removed) {
+		if (budget-- <= 0) break;
+		out.push(`- ${line}`);
+	}
+	for (const line of added) {
+		if (budget-- <= 0) break;
+		out.push(`+ ${line}`);
+	}
+	if (budget < 0) out.push(`⋯ (diff truncated: ${removed.length} removed, ${added.length} added in total)`);
+	if (suffix > 0) out.push(`  ${newLines[newLines.length - suffix]}`);
+	return out.join("\n");
+}
+
+/**
+ * Detect runs of consecutive byte-identical non-blank lines — the classic
+ * symptom of a botched edit or a rewrite that copied corrupted context
+ * (e.g. the same comment pasted twice). Surfaced as a warning, never an
+ * error: legitimate duplicates exist, but they're rare enough that a nudge
+ * to double-check is worth it.
+ */
+function duplicateRunWarning(lines: string[]): string | null {
+	const runs: string[] = [];
+	for (let i = 1; i < lines.length; i++) {
+		const line = lines[i]!;
+		if (line.trim() === "" || line !== lines[i - 1]) continue;
+		let end = i;
+		while (end + 1 < lines.length && lines[end + 1] === line) end++;
+		runs.push(`lines ${i}-${end + 1} ("${line.trim().slice(0, 60)}")`);
+		i = end;
+	}
+	if (runs.length === 0) return null;
+	return `file contains consecutive identical lines — ${runs.join("; ")}. If unintentional, remove the duplicates.`;
 }
 
 export async function execEdit(args: Record<string, unknown>, cwd: string, config: AppConfig): Promise<ToolResult> {
@@ -168,7 +261,8 @@ export async function execEdit(args: Record<string, unknown>, cwd: string, confi
 		const content = (writeOp as { kind: "write"; content: string }).content;
 		await writeFile(absolutePath, content, "utf-8");
 		invalidateCachedFile(absolutePath);
-		return { content: `Updated file ${filePath}.` };
+		const dupWarning = duplicateRunWarning(content.split("\n"));
+		return { content: `Updated file ${filePath}.${dupWarning ? `\nWarning: ${dupWarning}` : ""}` };
 	}
 
 	// Bucket every non-write op into a typed record against the *pre-edit*
@@ -211,7 +305,10 @@ export async function execEdit(args: Record<string, unknown>, cwd: string, confi
 	// snippet makes the damage (or success) visible immediately and hands
 	// over ready-to-use anchors for the follow-up edit.
 	const snippet = postEditSnippet(bucketResult.ops, mutated);
-	const notes = bucketResult.notes.map((n) => `Note: ${n}`).join("\n");
+	const dupWarning = duplicateRunWarning(mutated);
+	const noteLines = bucketResult.notes.map((n) => `Note: ${n}`);
+	if (dupWarning) noteLines.push(`Warning: ${dupWarning}`);
+	const notes = noteLines.join("\n");
 	return {
 		content: `Updated ${ops.length} block(s) in ${filePath}.${notes ? `\n${notes}` : ""} Result (with fresh anchors):\n\n${snippet}`,
 	};
@@ -609,6 +706,25 @@ function checkAnchor(
 			line: shift.newLine,
 			note: `anchor "${anchorStr}": content had shifted from line ${targetLine} to line ${shift.newLine}; the edit was applied there.`,
 		};
+	}
+	// Ambiguity between byte-identical *contiguous* duplicates is not real
+	// ambiguity: replacing or inserting relative to any line of such a run
+	// produces the same file. Without this, a duplicated line (e.g. a comment
+	// pasted twice) dead-ends the edit — the model is told "lines 9, 10 both
+	// match" with no way to express which, since duplicates share the anchor.
+	if (shift?.kind === "ambiguous") {
+		const cands = shift.candidates;
+		const contiguous = cands.every((c, i) => i === 0 || c === cands[i - 1]! + 1);
+		const first = lines[cands[0]! - 1];
+		const identical = first !== undefined && cands.every((c) => lines[c - 1] === first);
+		if (contiguous && identical) {
+			const nearest = cands.reduce((a, b) => (Math.abs(b - targetLine) < Math.abs(a - targetLine) ? b : a));
+			return {
+				ok: true,
+				line: nearest,
+				note: `anchor "${anchorStr}": matched a run of identical lines (${cands.join(", ")}); they are interchangeable, so the edit was applied at line ${nearest}.`,
+			};
+		}
 	}
 	if (!inRange) {
 		return { ok: false, failure: anchorNotFound(anchorStr, lines, hashes) };
