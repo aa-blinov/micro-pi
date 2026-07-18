@@ -29,6 +29,7 @@ All notable user-facing changes to cast, newest first.
 ### Changed
 
 - Docs: provider credentials are configured only via `~/.cast/settings.json` / `/provider` — the `PROVIDER_BASE_URL` / `PROVIDER_API_KEY` environment variables were documented but never read; the docs no longer claim otherwise.
+- Minimum Node.js version raised from 18 to 22 (required by undici 8.x used for MCP SSE transport).
 
 ## 0.7.0
 
