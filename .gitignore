@@ -6,3 +6,26 @@ dist/
 qa/
 qa-nfr/
 test/__test_tmp__/
+# IDE-specific state — not part of the cast codebase.
+# Coding agents (Cursor, Claude, Codex, Aider, Windsurf, Continue, Cline, Roo,
+# Bolt, OpenCode, Kiro, Amazon Q, Qodo, Tabnine, Gemini Code Assist) and IDEs
+# (VSCode, JetBrains, Zed) all drop local state in the project root.
+.claude/
+.cursor/
+.codex/
+.aider/
+.aider.chat/
+.windsurf/
+.continue/
+.cline/
+.roo/
+.bolt/
+.opencode/
+.kiro/
+.amazonq/
+.qodo/
+.tabnine/
+.gemini/
+.vscode/
+.idea/
+.zed/

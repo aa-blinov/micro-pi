@@ -1885,6 +1885,7 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 			contextWindow: config.contextWindow,
 			maxResponseTokens: config.maxResponseTokens,
 			messages: session.messages,
+			sessionId: session.id,
 		};
 		// Build ordered list from statusBar.order, then append any new segments
 		const ordered: StatusBarSegment[] = cfg.order
@@ -1894,6 +1895,7 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 			if (!ordered.some((s) => s.id === seg.id)) ordered.push(seg);
 		}
 		const lines: string[] = [];
+		lines.push(`  ${"Session".padEnd(16)} ${session.id}`);
 		for (const seg of ordered) {
 			const value = seg.formatValue(ctxForCurrent) ?? "—";
 			lines.push(`  ${seg.label.padEnd(16)} ${value}`);

@@ -264,6 +264,51 @@ describe("write", () => {
 		expect(readResult.content).toContain("new");
 		expect(readResult.content).not.toContain("old");
 	});
+
+	it("reports a line diff when overwriting, not a byte count", async () => {
+		writeFileSync(join(TEST_DIR, "diff.txt"), "alpha\nbeta\ngamma\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("write", { path: "diff.txt", content: "alpha\nBETA\ngamma\n" });
+		expect(result.isError).toBeFalsy();
+		expect(result.content).toContain("- beta");
+		expect(result.content).toContain("+ BETA");
+		expect(result.content).not.toContain("bytes to");
+	});
+
+	it("keeps the diff clean when only the trailing newline differs mid-rewrite", async () => {
+		writeFileSync(join(TEST_DIR, "nl.txt"), "alpha\nbeta\ngamma\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		// Model rewrites with one changed line AND drops the trailing newline:
+		// the diff must show only the changed line, with the newline as a note.
+		const result = await exec("write", { path: "nl.txt", content: "alpha\nBETA\ngamma" });
+		expect(result.content).toContain("- beta");
+		expect(result.content).toContain("+ BETA");
+		expect(result.content).not.toContain("- gamma");
+		expect(result.content).toContain("trailing newline removed");
+	});
+
+	it("says the content was identical when nothing changed", async () => {
+		writeFileSync(join(TEST_DIR, "same.txt"), "stable\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("write", { path: "same.txt", content: "stable\n" });
+		expect(result.content).toContain("identical");
+	});
+
+	it("warns about consecutive identical lines in the written content", async () => {
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("write", {
+			path: "dup.txt",
+			content: "# IDE state\n# IDE state\n.claude/\n",
+		});
+		expect(result.content).toContain("consecutive identical lines");
+		expect(result.content).toContain("lines 1-2");
+	});
+
+	it("does not warn about consecutive blank lines", async () => {
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const result = await exec("write", { path: "blanks.txt", content: "a\n\n\nb\n" });
+		expect(result.content).not.toContain("consecutive identical lines");
+	});
 });
 
 // ============================================================================
@@ -480,6 +525,69 @@ describe("edit", () => {
 		expect(result.isError).toBe(true);
 		expect(result.content).toContain("multiple nearby lines match");
 		expect(readFileSync(join(TEST_DIR, "ambig.txt"), "utf-8")).toBe("dup\nx\nchanged\ny\ndup\n");
+	});
+
+	it("recovers a stale anchor onto a contiguous run of identical duplicate lines", async () => {
+		// The duplicated-comment scenario: the anchored line got duplicated by
+		// a botched earlier edit, so two adjacent byte-identical lines both
+		// match. They're interchangeable — the edit must apply, not dead-end.
+		writeFileSync(join(TEST_DIR, "duprun.txt"), "a\ncomment\nb\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const before = await exec("read", { path: "duprun.txt" });
+		const target = anchorForLine(before.content, 2); // "comment"
+		writeFileSync(join(TEST_DIR, "duprun.txt"), "a\nnew\ncomment\ncomment\nb\n");
+
+		const result = await exec("edit", {
+			path: "duprun.txt",
+			ops: [{ op: "replace", anchor: target, content: "COMMENT" }],
+		});
+		expect(result.isError).toBeFalsy();
+		expect(result.content).toContain("identical lines");
+		expect(readFileSync(join(TEST_DIR, "duprun.txt"), "utf-8")).toBe("a\nnew\nCOMMENT\ncomment\nb\n");
+	});
+
+	it("still rejects ambiguity between contiguous lines that only match after whitespace normalization", async () => {
+		// Same local hash (whitespace-normalized) but different bytes — the
+		// lines are NOT interchangeable, so the tool must not guess.
+		writeFileSync(join(TEST_DIR, "wsambig.txt"), "a\nitem\nb\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const before = await exec("read", { path: "wsambig.txt" });
+		const target = anchorForLine(before.content, 2); // "item"
+		writeFileSync(join(TEST_DIR, "wsambig.txt"), "a\nnew\n  item\nitem\nb\n");
+
+		const result = await exec("edit", {
+			path: "wsambig.txt",
+			ops: [{ op: "replace", anchor: target, content: "ITEM" }],
+		});
+		expect(result.isError).toBe(true);
+		expect(result.content).toContain("multiple nearby lines match");
+	});
+
+	it("preserves indentation of an inserted block verbatim (tabs and spaces)", async () => {
+		writeFileSync(join(TEST_DIR, "indent.txt"), "function f() {\n\tif (x) {\n\t}\n}\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const before = await exec("read", { path: "indent.txt" });
+		const block = "\t\tconst y = 1;\n\t\tif (y) {\n\t\t\treturn y;\n\t\t}\n        // space-indented too";
+		const result = await exec("edit", {
+			path: "indent.txt",
+			ops: [{ op: "insert_after", anchor: anchorForLine(before.content, 2), content: block }],
+		});
+		expect(result.isError).toBeFalsy();
+		expect(readFileSync(join(TEST_DIR, "indent.txt"), "utf-8")).toBe(
+			"function f() {\n\tif (x) {\n\t\tconst y = 1;\n\t\tif (y) {\n\t\t\treturn y;\n\t\t}\n        // space-indented too\n\t}\n}\n",
+		);
+	});
+
+	it("warns when an edit leaves consecutive identical lines behind", async () => {
+		writeFileSync(join(TEST_DIR, "dupwarn.txt"), "one\ntwo\nthree\n");
+		const exec = createToolExecutor(TEST_DIR, mockConfig);
+		const before = await exec("read", { path: "dupwarn.txt" });
+		const result = await exec("edit", {
+			path: "dupwarn.txt",
+			ops: [{ op: "insert_after", anchor: anchorForLine(before.content, 2), content: "two" }],
+		});
+		expect(result.isError).toBeFalsy();
+		expect(result.content).toContain("consecutive identical lines");
 	});
 
 	it("echoes the edited region with fresh anchors on success", async () => {
