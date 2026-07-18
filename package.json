@@ -4,7 +4,7 @@
 	"description": "Role-based terminal agent harness with 13 built-in personas",
 	"type": "module",
 	"engines": {
-		"node": ">=18"
+		"node": ">=22"
 	},
 	"bin": {
 		"cast": "./cast.sh"
