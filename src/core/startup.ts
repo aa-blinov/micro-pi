@@ -40,6 +40,7 @@ import type { Skill } from "./skills.ts";
 import type { SshHost } from "./ssh.ts";
 import { resolveSshHosts } from "./ssh.ts";
 import { loadSubagentPrompts, type SubagentPrompt } from "./subagents.ts";
+import { getBashResolution } from "./tools/bash.ts";
 import { buildReasoningParams, type ModelReasoningMeta } from "./vendors.ts";
 
 export interface ParsedArgs {
@@ -191,6 +192,12 @@ export async function runStartup(
 		settings,
 		pickers,
 	};
+
+	// Surface a broken bash resolution (win32 without Git Bash → WSL shim
+	// fallback) at startup, where the user actually sees it — the per-call
+	// warning inside the first bash result is read mostly by the model.
+	const bashResolution = getBashResolution();
+	if (bashResolution.warning) pickers.log(`[bash] ${bashResolution.warning}`);
 
 	onProgress?.("Loading project settings...");
 	const projectTrusted = await resolveProjectTrustForCwd(projectDeps, cwd);
