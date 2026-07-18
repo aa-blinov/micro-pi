@@ -20,6 +20,7 @@ All notable user-facing changes to cast, newest first.
 - Resuming a session created on a different provider falls back to the currently configured model (with a notice) instead of sending requests to a model the new provider doesn't serve.
 - Tool-call arguments that are valid JSON but not an object (e.g. a bare array) are wrapped before sending, so providers whose chat template iterates arguments as a mapping don't reject the whole history.
 - Stdio MCP servers inherit cast's full environment (config `env` wins) — shell-exported API keys now reach servers; the SDK's whitelist default silently stripped them.
+- Remote MCP servers that only speak the legacy HTTP+SSE transport now connect: Streamable HTTP is tried first, then one SSE retry on rejection. SSE JSON-RPC POSTs run on a dedicated connection pool — the long-lived `/sse` stream otherwise serializes them behind itself in Node's fetch and the handshake hangs forever.
 - SKILL.md / persona / rules frontmatter survives a UTF-8 BOM (Windows Notepad, `Out-File`); previously the whole frontmatter was silently discarded.
 - Plugin marketplace commands report "git is not installed or not in PATH" instead of a raw `spawn git ENOENT`; staging directory names derived from Windows local paths no longer contain `\` or `:`; marketplace install retries `rm`/rename against transient Windows EPERM/EBUSY locks.
 - `getMostRecentSession` skips a corrupt (half-written) newest session file and falls back to the next one.

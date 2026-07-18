@@ -21,6 +21,8 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { Agent } from "undici";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { Tool } from "./llm.ts";
@@ -154,6 +156,24 @@ interface McpContentPart {
  * at startup). GET is used solely for this listening stream; POST/DELETE (send,
  * session terminate) pass through to the real fetch untouched.
  */
+/**
+ * Fetch for the legacy SSE transport: every request gets its own connection
+ * (`pipelining: 0` disables keep-alive reuse). The transport holds a
+ * long-lived GET /sse stream open on the same origin, and Node's default
+ * undici pool serializes the JSON-RPC POSTs behind that busy connection —
+ * the initialize POST then hangs forever (confirmed against Cloudflare's
+ * docs server: POST times out while the stream is open, returns 202 in
+ * ~300ms once it's closed). Same undici behavior mcpHttpFetch works around
+ * for Streamable HTTP, different fix because here the GET must stay open.
+ */
+const sseAgent = new Agent({ pipelining: 0 });
+function sseFetch(url: string | URL, init?: RequestInit): Promise<Response> {
+	return fetch(url as Parameters<typeof fetch>[0], {
+		...init,
+		dispatcher: sseAgent,
+	} as RequestInit);
+}
+
 export function mcpHttpFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
 	if ((init?.method ?? "GET") === "GET") {
 		return Promise.resolve(new Response(null, { status: 405, statusText: "SSE listening stream declined" }));
@@ -179,6 +199,8 @@ export async function connectMcpServers(servers: Record<string, McpServerConfig>
 
 			let transport: Transport;
 			if (cfg.url) {
+				// Streamable HTTP first; legacy SSE servers reject it below and
+				// get a second connect attempt over SSEClientTransport.
 				transport = new StreamableHTTPClientTransport(new URL(cfg.url), {
 					requestInit: cfg.headers ? { headers: cfg.headers } : undefined,
 					fetch: mcpHttpFetch,
@@ -198,11 +220,44 @@ export async function connectMcpServers(servers: Record<string, McpServerConfig>
 			}
 
 			try {
-				await withTimeout(
-					client.connect(transport),
-					CONNECT_TIMEOUT_MS,
-					`didn't respond within ${CONNECT_TIMEOUT_MS / 1000}s`,
-				);
+				try {
+					await withTimeout(
+						client.connect(transport),
+						CONNECT_TIMEOUT_MS,
+						`didn't respond within ${CONNECT_TIMEOUT_MS / 1000}s`,
+					);
+				} catch (error) {
+					// Legacy SSE fallback (the pattern Claude Code and friends use):
+					// a server that only speaks the deprecated HTTP+SSE transport
+					// answers the Streamable HTTP initialize POST with an HTTP
+					// error (DeepWiki's /sse: "Method Not Allowed"). Retry once
+					// over SSEClientTransport. Only for url servers, and not for
+					// timeouts — a hung endpoint is hung either way.
+					const msg = error instanceof Error ? error.message : String(error);
+					if (!cfg.url || /didn't respond within/.test(msg)) throw error;
+					transport = new SSEClientTransport(new URL(cfg.url), {
+						requestInit: cfg.headers ? { headers: cfg.headers } : undefined,
+						// POSTs go through the dedicated agent; the long-lived GET
+						// stream stays on the default pool. See sseFetch.
+						fetch: sseFetch,
+						eventSourceInit: { fetch: (u, i) => fetch(u as Parameters<typeof fetch>[0], i) },
+					});
+					try {
+						await withTimeout(
+							client.connect(transport),
+							CONNECT_TIMEOUT_MS,
+							`didn't respond within ${CONNECT_TIMEOUT_MS / 1000}s (SSE fallback)`,
+						);
+					} catch (sseError) {
+						// Both transports failed — a genuinely broken endpoint. Show
+						// both attempts; "SSE error: 404" alone points users at a
+						// transport they never configured.
+						const sseMsg = sseError instanceof Error ? sseError.message : String(sseError);
+						// SDK errors can embed whole HTML error pages — keep the head.
+						const trim = (s: string) => (s.length > 160 ? `${s.slice(0, 160)}…` : s);
+						throw new Error(`Streamable HTTP: ${trim(msg)}; SSE fallback: ${trim(sseMsg)}`);
+					}
+				}
 				const tools: Awaited<ReturnType<typeof client.listTools>>["tools"] = [];
 				let cursor: string | undefined;
 				do {

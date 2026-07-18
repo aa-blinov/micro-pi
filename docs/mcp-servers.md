@@ -55,11 +55,13 @@ MCP servers are configured in JSON files using the common `mcpServers` shape:
 
 Stdio servers inherit cast's **full environment**, with the config's `env` winning on conflicts — an API key exported in your shell reaches the server without duplicating it in the config. (The MCP SDK's default is a minimal whitelist; cast overrides it because a server that works when launched by hand should work identically under cast.)
 
-**streamable HTTP (remote):**
+**remote (`url`):**
 
 | Field | Description |
 |-------|-------------|
 | `url` | Server endpoint URL |
+
+Remote servers are connected over **Streamable HTTP** first; if the server rejects it (legacy servers answer the initialize POST with an HTTP error), cast retries once over the deprecated **HTTP+SSE** transport — so old `/sse` endpoints (e.g. Cloudflare's docs server) work with the same one-line config. Timeouts are not retried: a hung endpoint is hung on either transport.
 | `headers` | HTTP headers for auth (static header/token only) |
 
 Each server needs either `command` (local) or `url` (remote), not both.
