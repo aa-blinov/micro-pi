@@ -2,6 +2,13 @@
 
 All notable user-facing changes to cast, newest first.
 
+## 0.7.2
+
+### Fixed
+
+- "Cannot connect to <url>" errors now include the underlying network detail (`ECONNREFUSED` / `ENOTFOUND` / certificate errors, including ones buried in undici AggregateErrors) — DNS, dead-endpoint, and TLS-interception failures need different fixes and were indistinguishable.
+- Windows: the Git Bash registry probe no longer leaks `reg.exe`'s localized stderr into the TUI as mojibake when the GitForWindows key is absent.
+
 ## 0.7.1
 
 ### Added
@@ -25,8 +32,6 @@ All notable user-facing changes to cast, newest first.
 - Plugin marketplace commands report "git is not installed or not in PATH" instead of a raw `spawn git ENOENT`; staging directory names derived from Windows local paths no longer contain `\` or `:`; marketplace install retries `rm`/rename against transient Windows EPERM/EBUSY locks.
 - `getMostRecentSession` skips a corrupt (half-written) newest session file and falls back to the next one.
 - `bash` tool reports a clean error when the bash executable itself can't be spawned (e.g. a wrong `CAST_BASH`), instead of hanging.
-- Windows: the Git Bash registry probe no longer leaks `reg.exe`'s localized stderr into the TUI as mojibake when the GitForWindows key is absent.
-- "Cannot connect to <url>" errors now include the underlying network detail (`ECONNREFUSED` / `ENOTFOUND` / certificate errors, including ones buried in undici AggregateErrors) — DNS, dead-endpoint, and TLS-interception failures need different fixes and were indistinguishable.
 
 ### Changed
 
