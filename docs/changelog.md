@@ -2,6 +2,15 @@
 
 All notable user-facing changes to cast, newest first.
 
+## 0.7.5
+
+### Added
+
+- Personas travel with the thread: each session remembers the persona that drove it, and resuming (`-c`, `--resume`, `/sessions`) restores it — same rule as plan/build mode. The global setting remains the default for new sessions; a deleted persona falls back to the current one with a notice.
+- Switching to a different persona (`/persona`) in a non-empty thread now offers to start a new session, so the previous persona's context doesn't bleed into the new role; "Continue here" / Esc keeps the current thread.
+- Four new built-in personas rounding out the IT-company role set: `architect` (trade-off analysis, ADRs, module boundaries), `analyst` (requirements from vague asks, contradictions, API contracts), `sre` (incident response, blameless postmortems, SLOs), and `product` (hypotheses, success metrics, prioritization — distinct from the ticket-writing Project Manager).
+- Built-in persona `coder-with-subagents-force-review` (Coder · forced review): same delegation as `coder-with-subagents`, plus a mandatory review gate — every code change goes through an independent `review` sub-agent (fresh context, diff-based input, execution-confirmed findings, exactly one round) before being reported done. No "too trivial to review" exception for code.
+
 ## 0.7.4
 
 ### Fixed
