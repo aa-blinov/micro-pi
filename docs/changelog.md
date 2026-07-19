@@ -2,6 +2,12 @@
 
 All notable user-facing changes to cast, newest first.
 
+## 0.7.3
+
+### Fixed
+
+- Windows: `cast upgrade` no longer crashes on exit with `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` — the hard `process.exit()` right after the release-check fetch raced libuv's handle teardown; the command now returns and lets the process exit naturally.
+
 ## 0.7.2
 
 ### Fixed

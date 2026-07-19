@@ -81,15 +81,20 @@ export function isAlreadyUpToDate(currentVersion: string, targetVersion: string 
 /**
  * `cast upgrade` / `cast upgrade <version>` / `... --force`. Re-runs
  * the public installer in-process via the platform shell — same script real
- * users run, so this can't drift from what actually works. Exits the
- * process itself (matches --help/--version) rather than returning to
- * main()'s normal flow.
+ * users run, so this can't drift from what actually works.
+ *
+ * Returns (with `process.exitCode` set on failure) instead of calling
+ * `process.exit()`: a hard exit right after the fetch in fetchLatestVersion
+ * races libuv's handle teardown on Windows and crashes with
+ * `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` (async.c) after
+ * the useful output was already printed. Nothing on this path holds the
+ * event loop open, so a natural return exits immediately anyway.
  */
 export async function runUpgrade(currentVersion: string, pinnedVersion?: string, force = false): Promise<void> {
 	if (!isReleaseInstall()) {
 		console.log("cast is running from source (dev mode), not an installed release — nothing to upgrade here.");
 		console.log("Update the checkout instead: git pull");
-		process.exit(0);
+		return;
 	}
 
 	// A pinned version is the target as-is; otherwise ask what's latest.
@@ -97,7 +102,7 @@ export async function runUpgrade(currentVersion: string, pinnedVersion?: string,
 	if (isAlreadyUpToDate(currentVersion, targetVersion, force)) {
 		console.log(`Already up to date (v${currentVersion}).`);
 		console.log('Use "cast upgrade --force" to reinstall anyway.');
-		process.exit(0);
+		return;
 	}
 
 	const env: NodeJS.ProcessEnv = { ...process.env };
@@ -116,7 +121,7 @@ export async function runUpgrade(currentVersion: string, pinnedVersion?: string,
 				? `  $env:CAST_VERSION="${pinnedVersion}"; irm ${PAGES_BASE}/install.ps1 | iex`
 				: `  irm ${PAGES_BASE}/install.ps1 | iex`,
 		);
-		process.exit(0);
+		return;
 	}
 
 	const result = spawnSync("bash", ["-c", `curl -fsSL ${PAGES_BASE}/install | bash`], {
@@ -126,7 +131,6 @@ export async function runUpgrade(currentVersion: string, pinnedVersion?: string,
 
 	if (result.status !== 0) {
 		console.error("\nUpgrade failed — see output above.");
-		process.exit(1);
+		process.exitCode = 1;
 	}
-	process.exit(0);
 }
