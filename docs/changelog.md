@@ -2,6 +2,14 @@
 
 All notable user-facing changes to cast, newest first.
 
+## 0.7.8
+
+### Fixed
+
+- Terminal rendering corruption on Termius (mobile) and similar terminals: Ink's per-line erase sequence (`\x1b[2K\x1b[1A` repeated) is now coalesced into a single combined cursor-up + erase-to-end-of-screen before writing, preventing orphaned top-border fragments from stacking on every keystroke.
+
+
+
 ## 0.7.7
 
 ### Added

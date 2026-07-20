@@ -6,6 +6,31 @@ import {
 	setLastFrameOverflow,
 } from "../core/stdin-manager.ts";
 
+// Ink's log-update erases a taller-than-one-line frame via ansi-escapes'
+// eraseLines() (node_modules/ansi-escapes/base.js), which emits one
+// *separate* `\x1b[1A` per line (`\x1b[2K\x1b[1A` repeated) rather than a
+// single combined `\x1b[<n>A`. Some terminals (observed: Termius on mobile)
+// mishandle several byte-identical escape sequences arriving back-to-back
+// in one write — the cursor ends up fewer rows above its target than Ink
+// assumes, the redraw lands lower than intended, and the un-erased top of
+// the previous frame is left on screen. Repeated once per keystroke, this
+// stacks into dozens of orphaned top-border fragments (reproduced and
+// confirmed fixed via a debug capture — Termius + a composer frame taller
+// than one line). Rewriting the whole per-line erase run into a single
+// combined cursor-up + erase-to-end-of-screen (`\x1b[<n>A\x1b[J`) fixes it
+// and is equivalent for terminals that handled the original sequence fine,
+// so it's applied unconditionally rather than behind a compatibility flag.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: ansi-escapes eraseLines() output
+const ERASE_LINES_RUN_RE = /(?:\x1b\[2K\x1b\[1A)+\x1b\[2K\x1b\[G/g;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: counting hops within a matched run
+const CUU_HOP_RE = /\x1b\[1A/g;
+function coalesceEraseLines(s: string): string {
+	return s.replace(ERASE_LINES_RUN_RE, (match) => {
+		const hops = match.match(CUU_HOP_RE)?.length ?? 0;
+		return hops > 0 ? `\x1b[${hops}A\x1b[J` : match;
+	});
+}
+
 /**
  * Two distinct terminal desyncs, one shared remedy (clear + full <Static>
  * replay via the onResync callback):
@@ -315,7 +340,19 @@ export function useTerminalResync(onResync: (preserveScrollback: boolean) => voi
 			chunk: string | Uint8Array,
 			...args: [BufferEncoding?, ((err?: Error | null) => void)?]
 		): boolean {
-			const s = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+			let s = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+			// See coalesceEraseLines above — rewrite Ink's per-line erase run into
+			// one combined cursor-up + erase-to-end-of-screen before anything else
+			// (including the CUU_RE check below) sees it.
+			let coalesced = false;
+			if (ERASE_LINES_RUN_RE.test(s)) {
+				ERASE_LINES_RUN_RE.lastIndex = 0;
+				const rewritten = coalesceEraseLines(s);
+				if (rewritten !== s) {
+					s = rewritten;
+					coalesced = true;
+				}
+			}
 
 			// log-update starts each frame with `\x1b[<n>A` (move up past the
 			// previous frame). n > terminal rows means the live area doesn't fit
@@ -354,7 +391,7 @@ export function useTerminalResync(onResync: (preserveScrollback: boolean) => voi
 			if (scrollUp && CURSOR_OR_ERASE_RE.test(s)) {
 				return true; // swallow — don't erase/redraw while scrolled
 			}
-			return origWrite(chunk, ...args);
+			return coalesced ? origWrite(s, ...args) : origWrite(chunk, ...args);
 		} as typeof out.write;
 
 		// --- layer (b): DECXCPR cursor-position polling ---
