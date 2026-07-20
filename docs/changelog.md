@@ -2,6 +2,14 @@
 
 All notable user-facing changes to cast, newest first.
 
+## 0.7.9
+
+### Changed
+
+- Shift+Tab keybinding removed from Composer — simplified input handling, removed dead code from input-parser and keybindings.
+
+
+
 ## 0.7.8
 
 ### Fixed
