@@ -1220,6 +1220,7 @@ function App() {
 	const abortRun = useCallback(async () => {
 		if (!activeId) return;
 		try { await api("POST", `/api/sessions/${activeId}/abort`); } catch {}
+		setSession((prev) => prev ? { ...prev, messages: [...prev.messages, { role: "warning", content: "Run aborted" }] } : prev);
 	}, [activeId]);
 
 	// SSE
@@ -1327,7 +1328,10 @@ function App() {
 		// restart) and needs our own recovery loop instead.
 		es.onerror = () => {
 			setConnected(false);
-			if (es.readyState === EventSource.CLOSED) startReconnectLoop();
+			if (es.readyState === EventSource.CLOSED) {
+				setSession((prev) => prev ? { ...prev, messages: [...prev.messages, { role: "warning", content: "Connection terminated" }] } : prev);
+				startReconnectLoop();
+			}
 		};
 
 		return () => { es.close(); };
