@@ -61,7 +61,11 @@ button, input, textarea { font: inherit; }
 /* ── Layout ───────────────────────────────────────────────────────── */
 .app {
 	display: grid;
-	grid-template-columns: var(--sidebar-col, var(--sidebar-w)) minmax(0, 1fr);
+	/* A third (diff) track, 0px by default — always present so .with-diff
+	 * only ever changes that track's width, never the track count. Grid
+	 * can't animate a track appearing/disappearing, so a 2-column <-> 3-column
+	 * swap would pop instead of sliding like the sidebar does. */
+	grid-template-columns: var(--sidebar-col, var(--sidebar-w)) minmax(0, 1fr) 0px;
 	grid-template-rows: calc(var(--header-h) + env(safe-area-inset-top)) 1fr;
 	height: 100vh;
 	height: 100dvh;
@@ -806,14 +810,19 @@ body.resizing-diff * { user-select: none; }
 /* ── Diff panel ───────────────────────────────────────────────────── */
 .diff-panel {
 	position: relative;
-	display: none;
+	/* Always in flow (never display:none) — same reasoning as the sidebar:
+	 * a mount with no "from" state can't animate, and here specifically the
+	 * grid track above needs the panel present to size against. Closed state
+	 * is 0 width from the grid track, clipped by overflow:hidden below. */
+	display: flex;
 	flex-direction: column;
 	overflow: hidden;
 	border-left: 1px solid var(--border);
 	background: var(--bg);
 	width: 100%;
+	transition: border-color .16s ease;
 }
-.diff-panel.open { display: flex; }
+.app:not(.with-diff) .diff-panel { border-left-color: transparent; }
 .diff-resize-handle {
 	position: absolute;
 	top: 0; bottom: 0; left: -4px;
@@ -822,6 +831,11 @@ body.resizing-diff * { user-select: none; }
 	z-index: 6;
 	touch-action: none;
 }
+/* The panel is always in the DOM now (see .diff-panel above), so its resize
+ * handle must be hidden explicitly while closed instead of disappearing for
+ * free with display:none — otherwise an 8px draggable strip sits on the
+ * chat/sidebar boundary at all times, diff open or not. */
+.app:not(.with-diff) .diff-resize-handle { display: none; }
 .diff-resize-handle::after {
 	content: '';
 	position: absolute;
@@ -1017,12 +1031,15 @@ body.resizing-diff .diff-resize-handle::after { background: var(--cyan); }
  * the cramped ~400px column this used to be. The chat column has a hard
  * floor (280px) so the composer never gets crushed illegibly — --diff-w
  * (set while drag-resizing, see startDiffResize in app.js) overrides the
- * default share when present. */
+ * default share when present. The fallback must be a plain length (not
+ * minmax()) — grid-template-columns only animates track-for-track between
+ * comparable value types, and minmax() vs. the 0px closed state doesn't
+ * qualify, which is what turned the open/close into an instant pop. */
 @media (min-width: 769px) and (max-width: 1100px) {
 	.app.with-diff { grid-template-columns: var(--sidebar-col, var(--sidebar-w)) minmax(280px, 1fr) var(--diff-w, 45%); }
 }
 @media (min-width: 1101px) {
-	.app.with-diff { grid-template-columns: var(--sidebar-col, var(--sidebar-w)) minmax(320px, 1fr) var(--diff-w, minmax(480px, 640px)); }
+	.app.with-diff { grid-template-columns: var(--sidebar-col, var(--sidebar-w)) minmax(320px, 1fr) var(--diff-w, 600px); }
 }
 
 /* ── Scrollbar ────────────────────────────────────────────────────── */
