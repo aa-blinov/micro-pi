@@ -1119,10 +1119,21 @@ function App() {
 					? lastAssistant.blocks.filter((b) => b.kind === "content").map((b) => b.text).join("")
 					: typeof lastAssistant.content === "string" ? lastAssistant.content : JSON.stringify(lastAssistant.content);
 				try {
-					await navigator.clipboard.writeText(text2);
+					if (navigator.clipboard) {
+						await navigator.clipboard.writeText(text2);
+					} else {
+						// HTTP fallback — Clipboard API unavailable outside secure contexts.
+						const ta = document.createElement("textarea");
+						ta.value = text2;
+						ta.style.cssText = "position:fixed;opacity:0";
+						document.body.appendChild(ta);
+						ta.select();
+						document.execCommand("copy");
+						document.body.removeChild(ta);
+					}
 					addNotice("Copied to clipboard");
 				} catch {
-					addNotice("Clipboard unavailable", "error");
+					addNotice("Copy failed", "error");
 				}
 				return;
 			}
