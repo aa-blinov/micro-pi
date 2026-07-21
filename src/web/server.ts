@@ -183,6 +183,7 @@ export function startWebServer(options: WebServerOptions): ReturnType<typeof cre
 			persona: ws.session.persona,
 			model: ws.session.model,
 			cwd: ws.session.cwd,
+			mode: ws.session.mode ?? "build",
 			title: ws.session.title,
 			pinned: ws.session.pinned,
 			status: ws.status,

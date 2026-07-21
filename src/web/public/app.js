@@ -1164,6 +1164,10 @@ function App() {
 					addNotice(r.note ?? `Reasoning: ${r.reasoningLevel}${r.options?.length ? ` (options: ${r.options.join(", ")})` : ""}`);
 				} else if (text.startsWith("/web") && result?.result && "webTools" in result.result) {
 					addNotice(`Web tools: ${result.result.webTools ? "enabled" : "disabled"}`);
+				} else if ((text === "/plan" || text === "/build") && result?.ok) {
+					const mode = text === "/plan" ? "plan" : "build";
+					setSession((prev) => (prev ? { ...prev, mode } : prev));
+					addNotice(result.result);
 				} else if (result?.result && typeof result.result === "string") {
 					addNotice(result.result);
 				} else if (result?.result && typeof result.result === "object") {
@@ -1469,6 +1473,7 @@ function App() {
 					<div class="composer-role">
 						<span class="composer-role-dot" />
 						${activePersonaLabel}
+						${session?.mode && session.mode !== "build" && html`<span class="composer-role-mode">${session.mode}</span>`}
 					</div>
 				`}
 				<${Composer} running=${running} ready=${!!activeId} activeId=${activeId} commands=${commands} personas=${personas} themes=${themes} onSubmit=${submitMessage} onAbort=${abortRun} />

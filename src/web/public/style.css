@@ -650,6 +650,16 @@ body.resizing-diff * { user-select: none; }
 	background: var(--purple);
 	flex-shrink: 0;
 }
+.composer-role-mode {
+	font-size: .65rem;
+	font-weight: 600;
+	color: var(--amber);
+	background: color-mix(in srgb, var(--amber) 12%, transparent);
+	padding: 1px 6px;
+	border-radius: 4px;
+	text-transform: uppercase;
+	letter-spacing: .04em;
+}
 .composer-wrap {
 	position: relative;
 	max-width: 860px;
