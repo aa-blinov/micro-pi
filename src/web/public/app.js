@@ -1520,6 +1520,40 @@ function App() {
 	if (sidebarCollapsed) appStyle["--sidebar-col"] = "0px";
 	if (diffOpen && diffWidth) appStyle["--diff-w"] = `${diffWidth}px`;
 
+
+	// Hotkeys modal — built with h() because htm can't parse <kbd>+</kbd> patterns.
+	const hotkeysModal = hotkeysOpen && h("div", { class: "modal-backdrop", onClick: () => setHotkeysOpen(false) },
+		h("div", { class: "modal modal-hotkeys", onClick: (e) => e.stopPropagation() },
+			h("div", { class: "modal-header" },
+				h("span", null, "Keyboard shortcuts"),
+				h("button", { class: "modal-close", onClick: () => setHotkeysOpen(false), "aria-label": "Close" }, "\u00d7")
+			),
+			h("div", { class: "hotkeys-list" },
+				h("div", { class: "hotkey-group" },
+					h("div", { class: "hotkey-group-title" }, "General"),
+					hotkey("Toggle sidebar", "Ctrl+B"),
+					hotkey("Toggle diff", "Ctrl+D"),
+					hotkey("New session", "Ctrl+N"),
+					hotkey("Clear context", "Ctrl+L"),
+					hotkey("Show shortcuts", "Ctrl+/")
+				),
+				h("div", { class: "hotkey-group" },
+					h("div", { class: "hotkey-group-title" }, "Composer"),
+					hotkey("Send message", "Enter"),
+					hotkey("New line", "Shift+Enter"),
+					hotkey("Abort run", "Escape"),
+					hotkey("Navigate suggestions", "\u2191 \u2193")
+				),
+				h("div", { class: "hotkey-group" },
+					h("div", { class: "hotkey-group-title" }, "Commands"),
+					hotkey("Command palette", "/"),
+					hotkey("Plan mode", "/plan"),
+					hotkey("Build mode", "/build")
+				)
+			)
+		)
+	);
+
 	return html`
 		<div class="app${diffOpen ? " with-diff" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}" style=${appStyle}>
 			<!-- Toasts -->
@@ -1576,37 +1610,7 @@ function App() {
 				/>
 			`}
 
-			${hotkeysOpen && h("div", { class: "modal-backdrop", onClick: () => setHotkeysOpen(false) },
-				h("div", { class: "modal modal-hotkeys", onClick: (e) => e.stopPropagation() },
-					h("div", { class: "modal-header" },
-						h("span", null, "Keyboard shortcuts"),
-						h("button", { class: "modal-close", onClick: () => setHotkeysOpen(false), "aria-label": "Close" }, "\u00d7")
-					),
-					h("div", { class: "hotkeys-list" },
-						h("div", { class: "hotkey-group" },
-							h("div", { class: "hotkey-group-title" }, "General"),
-							hotkey("Toggle sidebar", "Ctrl+B"),
-							hotkey("Toggle diff", "Ctrl+D"),
-							hotkey("New session", "Ctrl+N"),
-							hotkey("Clear context", "Ctrl+L"),
-							hotkey("Show shortcuts", "Ctrl+/")
-						),
-						h("div", { class: "hotkey-group" },
-							h("div", { class: "hotkey-group-title" }, "Composer"),
-							hotkey("Send message", "Enter"),
-							hotkey("New line", "Shift+Enter"),
-							hotkey("Abort run", "Escape"),
-							hotkey("Navigate suggestions", "\u2191 \u2193")
-						),
-						h("div", { class: "hotkey-group" },
-							h("div", { class: "hotkey-group-title" }, "Commands"),
-							hotkey("Command palette", "/"),
-							hotkey("Plan mode", "/plan"),
-							hotkey("Build mode", "/build")
-						)
-					)
-				)
-			);
+			${hotkeysModal}
 
 			<!-- Chat area -->
 			<main class="chat-area">
