@@ -20,13 +20,29 @@ const icons = {
 	terminal: (props) => h("svg", { width: 20, height: 20, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": 1.5, "stroke-linecap": "round", "stroke-linejoin": "round", ...props }, h("path", { d: "m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z" })),
 };
 
-// Hotkey row helper — builds DOM directly to avoid htm parsing issues with <kbd>+<kbd>.
-function hotkey(label, keys) {
-	return h("div", { class: "hotkey-row" },
-		h("span", { class: "hotkey-label" }, label),
-		h("span", { class: "hotkey-keys" }, keys)
-	);
-}
+const hotkeysHtml = `
+	<div class="hotkey-group">
+		<div class="hotkey-group-title">General</div>
+		<div class="hotkey-row"><span class="hotkey-label">Toggle sidebar</span><span class="hotkey-keys">Ctrl+B</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">Toggle diff</span><span class="hotkey-keys">Ctrl+D</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">New session</span><span class="hotkey-keys">Ctrl+N</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">Clear context</span><span class="hotkey-keys">Ctrl+L</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">Show shortcuts</span><span class="hotkey-keys">Ctrl+/</span></div>
+	</div>
+	<div class="hotkey-group">
+		<div class="hotkey-group-title">Composer</div>
+		<div class="hotkey-row"><span class="hotkey-label">Send message</span><span class="hotkey-keys">Enter</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">New line</span><span class="hotkey-keys">Shift+Enter</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">Abort run</span><span class="hotkey-keys">Escape</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">Navigate suggestions</span><span class="hotkey-keys">\u2191 \u2193</span></div>
+	</div>
+	<div class="hotkey-group">
+		<div class="hotkey-group-title">Commands</div>
+		<div class="hotkey-row"><span class="hotkey-label">Command palette</span><span class="hotkey-keys">/</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">Plan mode</span><span class="hotkey-keys">/plan</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">Build mode</span><span class="hotkey-keys">/build</span></div>
+	</div>
+`;
 
 // ── API ──────────────────────────────────────────────────────────────
 async function api(method, path, body) {
@@ -1521,38 +1537,18 @@ function App() {
 	if (diffOpen && diffWidth) appStyle["--diff-w"] = `${diffWidth}px`;
 
 
-	// Hotkeys modal — built with h() because htm can't parse <kbd>+</kbd> patterns.
-	const hotkeysModal = hotkeysOpen && h("div", { class: "modal-backdrop", onClick: () => setHotkeysOpen(false) },
-		h("div", { class: "modal modal-hotkeys", onClick: (e) => e.stopPropagation() },
-			h("div", { class: "modal-header" },
-				h("span", null, "Keyboard shortcuts"),
-				h("button", { class: "modal-close", onClick: () => setHotkeysOpen(false), "aria-label": "Close" }, "\u00d7")
-			),
-			h("div", { class: "hotkeys-list" },
-				h("div", { class: "hotkey-group" },
-					h("div", { class: "hotkey-group-title" }, "General"),
-					hotkey("Toggle sidebar", "Ctrl+B"),
-					hotkey("Toggle diff", "Ctrl+D"),
-					hotkey("New session", "Ctrl+N"),
-					hotkey("Clear context", "Ctrl+L"),
-					hotkey("Show shortcuts", "Ctrl+/")
-				),
-				h("div", { class: "hotkey-group" },
-					h("div", { class: "hotkey-group-title" }, "Composer"),
-					hotkey("Send message", "Enter"),
-					hotkey("New line", "Shift+Enter"),
-					hotkey("Abort run", "Escape"),
-					hotkey("Navigate suggestions", "\u2191 \u2193")
-				),
-				h("div", { class: "hotkey-group" },
-					h("div", { class: "hotkey-group-title" }, "Commands"),
-					hotkey("Command palette", "/"),
-					hotkey("Plan mode", "/plan"),
-					hotkey("Build mode", "/build")
-				)
-			)
-		)
-	);
+	// Hotkeys modal — rendered via dangerouslySetInnerHTML to avoid htm/h() issues.
+	const hotkeysModal = hotkeysOpen && html`
+		<div class="modal-backdrop" onClick=${() => setHotkeysOpen(false)}>
+			<div class="modal modal-hotkeys" onClick=${(e) => e.stopPropagation()}>
+				<div class="modal-header">
+					<span>Keyboard shortcuts</span>
+					<button class="modal-close" onClick=${() => setHotkeysOpen(false)} aria-label="Close">×</button>
+				</div>
+				<div class="hotkeys-list" dangerouslySetInnerHTML=${{ __html: hotkeysHtml }}></div>
+			</div>
+		</div>
+	`;
 
 	return html`
 		<div class="app${diffOpen ? " with-diff" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}" style=${appStyle}>
