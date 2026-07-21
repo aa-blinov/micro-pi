@@ -137,10 +137,6 @@ body.resizing-diff * { user-select: none; }
 .menu-toggle.collapsed .chevron-icon { transform: rotate(180deg); }
 .diff-toggle.active .chevron-icon { transform: rotate(180deg); }
 
-@keyframes pulse {
-	0%, 100% { opacity: 1; }
-	50% { opacity: .4; }
-}
 
 /* ── Sidebar ──────────────────────────────────────────────────────── */
 .sidebar {
@@ -183,14 +179,7 @@ body.resizing-diff * { user-select: none; }
 	color: var(--text-dim);
 	flex-shrink: 0;
 }
-.sidebar-footer-status {
-	width: 7px; height: 7px;
-	border-radius: 50%;
-	flex-shrink: 0;
-}
-.sidebar-footer-status.idle { background: var(--text-muted); }
-.sidebar-footer-status.running { background: var(--amber); animation: pulse 1.5s infinite; }
-.sidebar-footer-status.error { background: var(--rose); }
+.sidebar-footer-status { display: none; }
 .sidebar-footer-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Always out-of-flow, even on desktop where it's never shown — otherwise
  * this unconditionally-rendered div is a plain static block and grid
@@ -260,7 +249,7 @@ body.resizing-diff * { user-select: none; }
 	border-radius: 50%; flex-shrink: 0;
 }
 .sidebar-item-status.idle { background: var(--text-muted); }
-.sidebar-item-status.running { background: var(--amber); animation: pulse 1.5s infinite; }
+.sidebar-item-status.running { background: var(--amber); }
 .sidebar-item-status.error { background: var(--rose); }
 .sidebar-item-meta {
 	font-size: .7rem; color: var(--text-muted);
@@ -620,7 +609,7 @@ body.resizing-diff * { user-select: none; }
 	border-radius: 50%; flex-shrink: 0;
 	margin-left: auto;
 }
-.tool-card-status.running { background: var(--amber); animation: pulse 1.5s infinite; }
+.tool-card-status.running { background: var(--amber); }
 .tool-card-status.ok { background: var(--green); }
 .tool-card-status.error { background: var(--rose); }
 .tool-card-body {
