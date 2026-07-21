@@ -623,7 +623,7 @@ body.resizing-diff * { user-select: none; }
 
 /* ── Composer ─────────────────────────────────────────────────────── */
 .composer-role {
-	display: flex; align-items: center; gap: 6px;
+	display: flex; align-items: center; justify-content: space-between;
 	max-width: 860px;
 	width: 100%;
 	margin: 0 auto;
@@ -632,6 +632,9 @@ body.resizing-diff * { user-select: none; }
 	color: var(--text-muted);
 	text-transform: uppercase;
 	letter-spacing: .04em;
+}
+.composer-role-left {
+	display: flex; align-items: center; gap: 6px;
 }
 .composer-role-dot {
 	width: 5px; height: 5px;
@@ -648,6 +651,12 @@ body.resizing-diff * { user-select: none; }
 	border-radius: 4px;
 	text-transform: uppercase;
 	letter-spacing: .04em;
+}
+.composer-elapsed {
+	font-size: .65rem;
+	font-weight: 500;
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
 }
 
 .pending-items {

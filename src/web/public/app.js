@@ -855,6 +855,26 @@ function App() {
 	const reconnectTimerRef = useRef(null);
 	const [reconnectNonce, setReconnectNonce] = useState(0);
 
+	// Live stopwatch — ticks while running, freezes on stop. Per-session
+	// start times survive thread switches so the display is correct when
+	// you come back to a still-running session.
+	const turnStartRef = useRef(new Map());
+	const [elapsedMs, setElapsedMs] = useState(0);
+	useEffect(() => {
+		if (running) {
+			if (!turnStartRef.current.has(activeId)) turnStartRef.current.set(activeId, Date.now());
+			const id = setInterval(() => {
+				const start = turnStartRef.current.get(activeId);
+				if (start) setElapsedMs(Date.now() - start);
+			}, 100);
+			return () => clearInterval(id);
+		} else {
+			// Freeze the display for 5s after the run ends, then hide.
+			const timeout = setTimeout(() => setElapsedMs(0), 5000);
+			return () => clearTimeout(timeout);
+		}
+	}, [running, activeId]);
+
 	// Toast helper — stacks; each entry removes itself after 4s.
 	const showToast = useCallback((text, type = "info") => {
 		const id = `${Date.now()}-${Math.random()}`;
@@ -1206,6 +1226,8 @@ function App() {
 		// appending it made every send feel like it had a beat of lag, even
 		// though the round trip to localhost is fast.
 		setSession((prev) => prev ? { ...prev, messages: [...prev.messages, { role: "user", content: text }] } : prev);
+		turnStartRef.current.delete(activeId);
+		setElapsedMs(0);
 		try {
 			await api("POST", `/api/sessions/${activeId}/chat`, { text });
 			// Picks up the auto-derived title after a session's first message
@@ -1499,8 +1521,11 @@ function App() {
 				`}
 				${activePersonaLabel && html`
 					<div class="composer-role">
-						${activePersonaLabel}
-						${session?.mode && session.mode !== "build" && html`<span class="composer-role-mode">${session.mode}</span>`}
+						<div class="composer-role-left">
+							${activePersonaLabel}
+							${session?.mode && session.mode !== "build" && html`<span class="composer-role-mode">${session.mode}</span>`}
+						</div>
+						${elapsedMs > 0 && html`<span class="composer-elapsed">${(elapsedMs / 1000).toFixed(1)}s</span>`}
 					</div>
 				`}
 				${(pendingSteers.length > 0 || pendingQueue.length > 0) && html`
