@@ -45,27 +45,29 @@ const icons = {
 	pencil: (props) => h("svg", { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": 1.5, "stroke-linecap": "round", "stroke-linejoin": "round", ...props }, h("path", { d: "m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" })),
 };
 
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || "");
+const modKeys = isMac ? ["\u2318"] : ["Ctrl"];
+const modShiftKeys = isMac ? ["\u2318", "\u21e7"] : ["Ctrl", "Shift"];
+const modKey = modKeys.join("");
+// kc() renders each key of a shortcut as its own key-cap chip instead of
+// one flat text/ASCII string, so multi-key combos read like a keyboard.
+const kc = (...keys) => keys.map((k) => `<kbd class="hotkey-key">${k}</kbd>`).join("");
+
 const hotkeysHtml = `
 	<div class="hotkey-group">
 		<div class="hotkey-group-title">General</div>
-		<div class="hotkey-row"><span class="hotkey-label">Toggle sidebar</span><span class="hotkey-keys">Ctrl+B</span></div>
-		<div class="hotkey-row"><span class="hotkey-label">Toggle diff</span><span class="hotkey-keys">Ctrl+D</span></div>
-		<div class="hotkey-row"><span class="hotkey-label">New session</span><span class="hotkey-keys">Ctrl+N</span></div>
-		<div class="hotkey-row"><span class="hotkey-label">Clear context</span><span class="hotkey-keys">Ctrl+L</span></div>
-		<div class="hotkey-row"><span class="hotkey-label">Show shortcuts</span><span class="hotkey-keys">Ctrl+/</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">Toggle sidebar</span><span class="hotkey-keys">${kc(...modKeys, "B")}</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">Toggle diff</span><span class="hotkey-keys">${kc(...modShiftKeys, "D")}</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">New session</span><span class="hotkey-keys">${kc(...modShiftKeys, "N")}</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">Clear context</span><span class="hotkey-keys">${kc(...modShiftKeys, "L")}</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">Show shortcuts</span><span class="hotkey-keys">${kc(...modKeys, "/")}</span></div>
 	</div>
 	<div class="hotkey-group">
 		<div class="hotkey-group-title">Composer</div>
-		<div class="hotkey-row"><span class="hotkey-label">Send message</span><span class="hotkey-keys">Enter</span></div>
-		<div class="hotkey-row"><span class="hotkey-label">New line</span><span class="hotkey-keys">Shift+Enter</span></div>
-		<div class="hotkey-row"><span class="hotkey-label">Abort run</span><span class="hotkey-keys">Escape</span></div>
-		<div class="hotkey-row"><span class="hotkey-label">Navigate suggestions</span><span class="hotkey-keys">\u2191 \u2193</span></div>
-	</div>
-	<div class="hotkey-group">
-		<div class="hotkey-group-title">Commands</div>
-		<div class="hotkey-row"><span class="hotkey-label">Command palette</span><span class="hotkey-keys">/</span></div>
-		<div class="hotkey-row"><span class="hotkey-label">Plan mode</span><span class="hotkey-keys">/plan</span></div>
-		<div class="hotkey-row"><span class="hotkey-label">Build mode</span><span class="hotkey-keys">/build</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">Send message</span><span class="hotkey-keys">${kc("\u21b5")}</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">New line</span><span class="hotkey-keys">${kc("\u21e7", "\u21b5")}</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">Abort run</span><span class="hotkey-keys">${kc("Esc")}</span></div>
+		<div class="hotkey-row"><span class="hotkey-label">Navigate suggestions</span><span class="hotkey-keys">${kc("\u2191", "\u2193")}</span></div>
 	</div>
 `;
 
@@ -409,7 +411,7 @@ function Composer({ running, ready, activeId, commands, personas, onSubmit, onAb
 		const el = textareaRef.current;
 		if (el) {
 			el.style.height = "auto";
-			el.style.height = Math.min(el.scrollHeight, 150) + "px";
+			el.style.height = Math.min(el.scrollHeight, 100) + "px";
 		}
 	}, []);
 
@@ -1924,20 +1926,18 @@ function App() {
 	// Global hotkeys
 	useEffect(() => {
 		const onKey = (e) => {
-			// Don't fire when typing in an input/textarea
-			const tag = e.target.tagName;
-			const isInput = tag === "INPUT" || tag === "TEXTAREA";
-
 			if (e.key === "Escape" && hotkeysOpen) { setHotkeysOpen(false); return; }
 			if (e.key === "Escape" && dirPickerOpen) { setDirPickerOpen(false); return; }
 
-			// Ctrl/Cmd combos
+			// Ctrl/Cmd combos. Plain Ctrl+D/N/L are reserved by Chrome/Firefox
+			// (bookmark, new window, focus address bar) and never reach page
+			// JS at all, so those actions use Ctrl+Shift instead.
 			const mod = e.ctrlKey || e.metaKey;
-			if (mod && e.key === "b") { e.preventDefault(); setSidebarCollapsed((v) => !v); return; }
-			if (mod && e.key === "d") { e.preventDefault(); toggleDiff(); return; }
-			if (mod && e.key === "n") { e.preventDefault(); const p = personas.find((x) => x.name === "coding") ?? personas[0]; if (p) createSession(p.name, cwd); return; }
-			if (mod && e.key === "l") { e.preventDefault(); if (activeId) submitMessage("/clear"); return; }
-			if (mod && e.key === "/") { e.preventDefault(); setHotkeysOpen((v) => !v); return; }
+			if (mod && !e.shiftKey && e.key === "b") { e.preventDefault(); setSidebarCollapsed((v) => !v); return; }
+			if (mod && e.shiftKey && e.key === "D") { e.preventDefault(); toggleDiff(); return; }
+			if (mod && e.shiftKey && e.key === "N") { e.preventDefault(); const p = personas.find((x) => x.name === "coding") ?? personas[0]; if (p) createSession(p.name, cwd); return; }
+			if (mod && e.shiftKey && e.key === "L") { e.preventDefault(); if (activeId) submitMessage("/clear"); return; }
+			if (mod && !e.shiftKey && e.key === "/") { e.preventDefault(); setHotkeysOpen((v) => !v); return; }
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
@@ -1989,8 +1989,8 @@ function App() {
 
 			<!-- Header -->
 			<header class="header">
-				<button class="menu-toggle${sidebarVisible ? "" : " collapsed"}" onClick=${toggleSidebar} aria-label=${sidebarVisible ? "Collapse sessions" : "Expand sessions"}>
-					<${icons.chevronLeft} class="chevron-icon" />
+				<button class="menu-toggle${sidebarVisible ? " active" : " collapsed"}" onClick=${toggleSidebar} aria-label=${sidebarVisible ? "Collapse sessions" : "Expand sessions"}>
+					<${icons.chevronRight} class="chevron-icon" />
 				</button>
 				<span class="header-logo">cast</span>
 				${!connected && html`<span class="conn-pill">reconnecting\u2026</span>`}
@@ -1999,11 +1999,11 @@ function App() {
 					<button class="menu-toggle" onClick=${() => setSettingsOpen(true)} aria-label="Settings" title="Settings">
 						<${icons.settings} />
 					</button>
-					<button class="menu-toggle" onClick=${() => setHotkeysOpen(true)} aria-label="Keyboard shortcuts" title="Shortcuts (Ctrl+/)">
+					<button class="menu-toggle hotkeys-toggle" onClick=${() => setHotkeysOpen(true)} aria-label="Keyboard shortcuts" title=${`Shortcuts (${modKey}/)`}>
 						<${icons.help} />
 					</button>
 					<button class="menu-toggle diff-toggle${diffOpen ? " active" : ""}" onClick=${toggleDiff} aria-label=${diffOpen ? "Close diff panel" : "Open diff panel"} title="Diff">
-						<${icons.chevronRight} class="chevron-icon" />
+						<${icons.chevronLeft} class="chevron-icon" />
 					</button>
 				</div>
 			</header>

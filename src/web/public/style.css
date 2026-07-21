@@ -132,13 +132,12 @@ body.resizing-diff * { user-select: none; }
 /* diff-toggle reuses .menu-toggle's plain icon-button look (no border/box)
  * so both header chevrons read as the same control — only the rotation
  * direction and which side of the layout they act on differ. */
-.diff-toggle.active { color: var(--cyan); }
+.menu-toggle.active { color: var(--cyan); }
 /* Chevron rotates to reflect open/closed state instead of a static glyph —
  * shared by the sidebar toggle (points left = collapse this way, right =
  * expand) and the diff toggle (mirrored: right = open, left = close). */
 .chevron-icon { transition: transform .18s ease; }
-.menu-toggle.collapsed .chevron-icon { transform: rotate(180deg); }
-.diff-toggle.active .chevron-icon { transform: rotate(180deg); }
+.menu-toggle.active .chevron-icon { transform: rotate(180deg); }
 
 /* ── Status modal ─────────────────────────────────────────────────── */
 .modal-status {
@@ -724,7 +723,7 @@ body.resizing-diff * { user-select: none; }
 	resize: none;
 	outline: none;
 	min-height: 24px;
-	max-height: 150px;
+	max-height: 100px;
 	line-height: 1.5;
 	caret-color: var(--cyan);
 }
@@ -995,6 +994,13 @@ body.resizing-diff .diff-resize-handle::after { background: var(--cyan); }
 	   rather than a `~` combinator (which only looks forward). */
 	.sidebar:has(~ .diff-panel.open) { display: none; }
 	.diff-resize-handle { display: none; }
+}
+
+/* Keyboard shortcuts are a physical-keyboard feature — not useful on a phone
+ * held upright, so hide the button there. Landscape keeps it since a wider
+ * mobile viewport often means an attached/foldable keyboard. */
+@media (max-width: 768px) and (orientation: portrait) {
+	.hotkeys-toggle { display: none; }
 }
 
 /* Desktop/tablet: diff opens as a generously wide sidebar alongside chat, not
@@ -1305,17 +1311,24 @@ body.resizing-diff .diff-resize-handle::after { background: var(--cyan); }
 .hotkey-keys {
 	display: flex;
 	align-items: center;
-	gap: 3px;
+	gap: 4px;
 }
-.hotkey-keys {
+.hotkey-key {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 24px;
+	height: 24px;
+	padding: 0 7px;
 	font-family: var(--font-mono);
-	font-size: .7rem;
+	font-size: .8rem;
+	font-weight: 600;
 	background: var(--bg);
 	border: 1px solid var(--border);
-	border-radius: 4px;
-	padding: 1px 5px;
+	border-bottom-width: 2px;
+	border-radius: 5px;
 	color: var(--text-muted);
-	line-height: 1.4;
+	line-height: 1;
 }
 /* ── Utilities ────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
