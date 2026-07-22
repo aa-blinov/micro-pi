@@ -125,6 +125,11 @@ export interface DisplayMessage {
  * assistant message's reasoning so a reload looks the same as a live turn.
  */
 export function toDisplayMessages(messages: Message[], reasoning?: Record<number, string>): DisplayMessage[] {
+	// Pre-index tool results by call_id — turns O(N*M) lookups into O(M).
+	const toolResults = new Map<string, Message>();
+	for (const m of messages) {
+		if (m.role === "tool" && "tool_call_id" in m && m.tool_call_id) toolResults.set(m.tool_call_id, m);
+	}
 	const out: DisplayMessage[] = [];
 	messages.forEach((m, i) => {
 		if (m.role === "tool") return;
@@ -132,7 +137,7 @@ export function toDisplayMessages(messages: Message[], reasoning?: Record<number
 			const toolCalls: DisplayToolCall[] = m.tool_calls
 				.filter((tc) => tc.type === "function")
 				.map((tc) => {
-					const resultMsg = messages.find((r) => r.role === "tool" && r.tool_call_id === tc.id);
+					const resultMsg = toolResults.get(tc.id);
 					return {
 						id: tc.id,
 						name: tc.function.name,
