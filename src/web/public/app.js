@@ -2176,6 +2176,9 @@ function App() {
 								: prev,
 						);
 						break;
+					case "session_update":
+						setSessions((prev) => prev.map((s) => (s.id === event.session.id ? { ...s, ...event.session } : s)));
+						break;
 					case "compaction":
 						setSession((prev) =>
 							prev

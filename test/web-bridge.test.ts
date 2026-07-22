@@ -221,6 +221,127 @@ describe("web bridge", () => {
 		expect(bridge.suggestCommand(ws.id, "/mcp enable unknown-server")).toEqual([]);
 	});
 
+	describe("SSE broadcast synchronicity", () => {
+		it("delivers events to two listeners in the same synchronous tick", () => {
+			const bridge = createWebBridge(makeResult());
+			const ws = bridge.createSession();
+
+			// Track which microtask tick each listener sees per event.
+			// A microtask-based counter increments every time the event loop
+			// yields. If broadcast were async, the two listeners would see
+			// different tick values for at least one event.
+			const counter = { value: 0 };
+			let ticking = true;
+			Promise.resolve().then(function tick() {
+				counter.value++;
+				if (ticking) Promise.resolve().then(tick);
+			});
+
+			const ticksAtListener1: number[] = [];
+			const ticksAtListener2: number[] = [];
+			const received1: unknown[] = [];
+			const received2: unknown[] = [];
+
+			bridge.subscribe(ws.id, (e) => {
+				ticksAtListener1.push(counter.value);
+				received1.push(e);
+			});
+			bridge.subscribe(ws.id, (e) => {
+				ticksAtListener2.push(counter.value);
+				received2.push(e);
+			});
+
+			// submit() fires runAgentLoop and broadcasts a status event —
+			// grab the onEvent callback it passes in.
+			bridge.submit(ws.id, "trigger");
+			const loopConfig = runAgentLoop.mock.calls[0]?.[1] as {
+				onEvent: (event: unknown) => void;
+			};
+			const onEvent = loopConfig.onEvent;
+
+			// Clear the initial "status: running" event that submit() broadcast
+			ticksAtListener1.length = 0;
+			ticksAtListener2.length = 0;
+			received1.length = 0;
+			received2.length = 0;
+
+			// Fire several events simulating a real LLM stream
+			const events = [
+				{ type: "token", text: "Hello" },
+				{ type: "thinking", text: "reasoning..." },
+				{ type: "token", text: " world" },
+				{ type: "assistant_message", content: "Hello world", thinking: "reasoning..." },
+				{ type: "usage", usage: { promptTokens: 10, completionTokens: 5 } },
+				{ type: "end", reason: "stop" },
+			];
+
+			for (const event of events) {
+				onEvent(event);
+			}
+
+			ticking = false;
+
+			// Both listeners received every event
+			expect(received1).toHaveLength(events.length);
+			expect(received2).toHaveLength(events.length);
+
+			// Events arrived in the same order
+			for (let i = 0; i < events.length; i++) {
+				expect(received1[i]).toBe(events[i]);
+				expect(received2[i]).toBe(events[i]);
+			}
+
+			// The tick counter was identical for both listeners on every event
+			// — proving no microtask ran between them (i.e. broadcast is sync).
+			expect(ticksAtListener1).toEqual(ticksAtListener2);
+		});
+
+		it("a disconnected listener does not block delivery to remaining listeners", () => {
+			const bridge = createWebBridge(makeResult());
+			const ws = bridge.createSession();
+
+			const goodEvents: unknown[] = [];
+
+			// First listener throws (simulating a disconnected SSE client)
+			bridge.subscribe(ws.id, () => {
+				throw new Error("client disconnected");
+			});
+			// Second listener is healthy
+			bridge.subscribe(ws.id, (e) => goodEvents.push(e));
+
+			bridge.submit(ws.id, "trigger");
+			const loopConfig = runAgentLoop.mock.calls[0]?.[1] as {
+				onEvent: (event: unknown) => void;
+			};
+
+			// Clear the initial "status: running" from submit()
+			goodEvents.length = 0;
+
+			loopConfig.onEvent({ type: "token", text: "ok" });
+			loopConfig.onEvent({ type: "end", reason: "stop" });
+
+			// Healthy listener got both events despite the first one throwing
+			expect(goodEvents).toHaveLength(2);
+			expect(goodEvents[0]).toEqual({ type: "token", text: "ok" });
+			expect(goodEvents[1]).toEqual({ type: "end", reason: "stop" });
+		});
+
+		it("subscribe receives current status immediately on connection", () => {
+			const bridge = createWebBridge(makeResult());
+			const ws = bridge.createSession();
+
+			// Simulate a running session
+			ws.status = "running";
+
+			// The SSE endpoint in server.ts sends current status via a direct
+			// res.write before subscribing — here we verify the bridge exposes
+			// the status so that path can read it.
+			const summary = bridge.listSessions();
+			const ours = summary.find((s) => s.id === ws.id);
+			expect(ours?.status).toBe("running");
+		});
+	});
+
 	describe("background bash tasks", () => {
 		it("submit() threads backgroundBash into the LoopConfig passed to runAgentLoop", () => {
 			const bridge = createWebBridge(makeResult());

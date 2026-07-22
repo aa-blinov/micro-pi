@@ -641,11 +641,16 @@ export function listSessions(): SessionState[] {
 // ============================================================================
 
 const INDEX_FILE_NAME = "index.json";
-const INDEX_VERSION = 1;
+const INDEX_VERSION = 2;
 
 export interface SessionSummary {
 	id: string;
 	cwd?: string;
+	persona?: string;
+	model?: string;
+	title?: string;
+	pinned?: boolean;
+	createdAt?: string;
 	updatedAt: string;
 	msgCount: number;
 	/** First user message text — the list row's description. */
@@ -721,6 +726,11 @@ function summarizeSession(session: SessionState): SessionSummary {
 	return {
 		id: session.id,
 		...(session.cwd ? { cwd: session.cwd } : {}),
+		...(session.persona ? { persona: session.persona } : {}),
+		...(session.model ? { model: session.model } : {}),
+		...(session.title ? { title: session.title } : {}),
+		...(session.pinned ? { pinned: session.pinned } : {}),
+		...(session.createdAt ? { createdAt: session.createdAt } : {}),
 		updatedAt: session.updatedAt,
 		msgCount: session.messages.length,
 		firstUserMessage: getFirstUserMessage(session),

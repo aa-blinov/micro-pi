@@ -58,7 +58,11 @@ import { isCommandBlocking, SLASH_COMMANDS } from "./commands.ts";
 
 export type WebAgentStatus = "idle" | "running" | "error";
 
-export type WebEvent = AgentEvent | { type: "status"; status: WebAgentStatus } | { type: "session_closed" };
+export type WebEvent =
+	| AgentEvent
+	| { type: "status"; status: WebAgentStatus }
+	| { type: "session_update"; session: SessionSummary }
+	| { type: "session_closed" };
 
 export interface WebAgentSession {
 	id: string;
@@ -288,6 +292,18 @@ export function createWebBridge(result: StartupResult): WebBridge {
 		}
 	}
 
+	/** Pushes a sidebar-friendly snapshot so every connected client (including
+	 *  tabs that didn't initiate the turn) can update their session list
+	 *  without a full refetch. */
+	function broadcastSessionUpdate(ws: WebAgentSession): void {
+		try {
+			broadcast(ws, { type: "session_update", session: summaryFor(ws.session, ws.status) });
+		} catch {
+			// Defensive: summaryFor reads session.messages.length — if the run
+			// left messages in an unexpected state, don't crash the broadcast.
+		}
+	}
+
 	function submit(sessionId: string, text: string): void {
 		const ws = sessions.get(sessionId);
 		if (!ws) return;
@@ -302,6 +318,7 @@ export function createWebBridge(result: StartupResult): WebBridge {
 		broadcast(ws, { type: "status", status: "running" });
 		ws.status = "running";
 		ws.error = null;
+		broadcastSessionUpdate(ws);
 
 		const ac = new AbortController();
 		ws.runner.startRun(ac);
@@ -412,6 +429,7 @@ export function createWebBridge(result: StartupResult): WebBridge {
 				ws.runner.endRun();
 				saveSession(ws.session);
 				broadcast(ws, { type: "status", status: "idle" });
+				broadcastSessionUpdate(ws);
 			})
 			.catch((err: unknown) => {
 				ws.status = "error";
@@ -420,6 +438,7 @@ export function createWebBridge(result: StartupResult): WebBridge {
 				saveSession(ws.session);
 				broadcast(ws, { type: "error", message: ws.error });
 				broadcast(ws, { type: "status", status: "error" });
+				broadcastSessionUpdate(ws);
 			});
 	}
 
@@ -514,9 +533,18 @@ export function createWebBridge(result: StartupResult): WebBridge {
 		// still a real thread the user should be able to find and reopen.
 		for (const cold of listSessionSummaries()) {
 			if (seen.has(cold.id)) continue;
-			const full = loadSession(cold.id);
-			if (!full) continue;
-			out.push(summaryFor(full, "idle"));
+			out.push({
+				id: cold.id,
+				persona: cold.persona ?? "coding",
+				model: cold.model ?? "",
+				cwd: cold.cwd ?? cwd,
+				title: cold.title,
+				pinned: cold.pinned,
+				status: "idle",
+				messageCount: cold.msgCount,
+				createdAt: cold.createdAt ?? cold.updatedAt,
+				updatedAt: cold.updatedAt,
+			});
 		}
 		return out;
 	}
