@@ -6,7 +6,14 @@ import { type AgentEvent, runAgentLoop } from "../core/loop.ts";
 import { formatMcpForPrompt, type McpSetupResult } from "../core/mcp.ts";
 import { readActivePlan } from "../core/plan.ts";
 import type { AgentRunner } from "../core/runner.ts";
-import { addUsage, appendMessage, type SessionState, type SessionUsage, saveSession } from "../core/session.ts";
+import {
+	addUsage,
+	appendMessage,
+	resetSavedMessageCount,
+	type SessionState,
+	type SessionUsage,
+	saveSession,
+} from "../core/session.ts";
 import type { PermissionMode } from "../core/settings.ts";
 import { setLastTurnAborted, setStreamingActive } from "../core/stdin-manager.ts";
 import type { BackgroundTaskRegistry, BashBackgroundDeps } from "../core/tools/bash-background.ts";
@@ -840,6 +847,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 				process.off("uncaughtException", onUncaught);
 				runner.endRun();
 				acRef.current = null;
+				resetSavedMessageCount(session);
 				saveSession(session);
 			}
 		},
@@ -908,6 +916,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 
 	const clearContext = useCallback(() => {
 		session.messages = [];
+		resetSavedMessageCount(session);
 		// The authoritative context-size signal must reset with the context it
 		// measured — otherwise shouldCompact still sees the pre-clear size and
 		// the first turn after clearing a long session (e.g. the "clear context,

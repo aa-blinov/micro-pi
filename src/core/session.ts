@@ -1,4 +1,5 @@
 import {
+	appendFileSync,
 	existsSync,
 	mkdirSync,
 	readdirSync,
@@ -471,21 +472,50 @@ function getProjectSessionDir(cwd: string): string {
 	return dir;
 }
 
+const JSONL_EXT = ".jsonl";
+
+/** Tracks how many messages from each session have been written to the
+ *  `.jsonl` file, so saveSession can append only the delta. Keyed by
+ *  the session object identity — a new object (fresh load or create)
+ *  starts at 0, meaning "write all messages on next save". */
+const savedMessageCount = new WeakMap<SessionState, number>();
+
+/** Extract metadata-only snapshot (no messages) for the `.json` file. */
+function sessionMeta(session: SessionState): Omit<SessionState, "messages"> {
+	const { messages: _drop, ...meta } = session;
+	return meta;
+}
+
 export function saveSession(session: SessionState): void {
-	// updatedAt previously only moved when appendMessage ran (i.e. when the
-	// user's own message was added at the start of a turn) — every mutation
-	// made during the turn itself (assistant replies, tool results,
-	// compaction) left it stale, so the session picker's "last updated" time
-	// and getMostRecentSession() sort order reflected turn-start, not
-	// turn-end. saveSession is the one place every mutation path funnels
-	// through before hitting disk, so bump it here instead of relying on
-	// every caller to remember to do it themselves.
 	session.updatedAt = new Date().toISOString();
-	// Sessions from before per-project grouping existed have no cwd — leave
-	// them where they are (flat, at the root) rather than inventing one.
 	const dir = session.cwd ? getProjectSessionDir(session.cwd) : getSessionsRootDir();
 	const filePath = join(dir, `${session.id}.json`);
-	writeFileAtomic(filePath, JSON.stringify(session));
+	const jsonlPath = join(dir, `${session.id}${JSONL_EXT}`);
+
+	// 1. Write metadata (atomic rename — readers never see a half-written file).
+	writeFileAtomic(filePath, JSON.stringify(sessionMeta(session)));
+
+	// 2. Append only new messages to the JSONL file.
+	const msgs = session.messages;
+	const prev = savedMessageCount.get(session) ?? 0;
+	if (Array.isArray(msgs) && msgs.length > prev) {
+		const delta = msgs.slice(prev);
+		const lines = `${delta.map((m) => JSON.stringify(m)).join("\n")}\n`;
+		if (prev === 0) {
+			// First write — use writeFileSync to create/overwrite the file.
+			writeFileSync(jsonlPath, lines, "utf-8");
+		} else {
+			appendFileSync(jsonlPath, lines, "utf-8");
+		}
+		savedMessageCount.set(session, session.messages.length);
+	}
+}
+
+/** Reset the saved-message counter so the next saveSession writes all
+ *  messages. Call after replacing session.messages wholesale (e.g. after
+ *  compaction or a full restore). */
+export function resetSavedMessageCount(session: SessionState): void {
+	savedMessageCount.set(session, 0);
 }
 
 /**
@@ -540,10 +570,31 @@ function findSessionFilePath(id: string): string | null {
  * Read and parse a session file, returning null if it's missing, truncated,
  * or not valid JSON — a session file can be left half-written if the process
  * dies mid-save, and one bad file shouldn't take down the whole listing.
+ *
+ * Supports two formats:
+ * - Legacy: single `.json` with messages array embedded.
+ * - JSONL: `.json` (metadata only) + `.jsonl` (one message per line).
+ *   Messages are read from the JSONL file when present; the `.json` file
+ *   is the source of truth for everything else.
  */
 function readSessionFile(filePath: string): SessionState | null {
 	try {
-		const session = withUsageDefault(JSON.parse(readFileSync(filePath, "utf-8")));
+		const raw = JSON.parse(readFileSync(filePath, "utf-8")) as SessionState & { messages?: unknown };
+		const jsonlPath = filePath.replace(/\.json$/, JSONL_EXT);
+		if (existsSync(jsonlPath)) {
+			// JSONL format — read messages from the companion file.
+			const text = readFileSync(jsonlPath, "utf-8");
+			const messages: Message[] = text
+				.split("\n")
+				.filter((line) => line.trim())
+				.map((line) => JSON.parse(line) as Message);
+			raw.messages = messages;
+		} else if (!Array.isArray(raw.messages)) {
+			// Metadata-only .json with no .jsonl yet — empty session.
+			raw.messages = [];
+		}
+		// else: legacy format — messages already in the .json object.
+		const session = withUsageDefault(raw as SessionState);
 		normalizeStoredMessages(session);
 		return session;
 	} catch {
@@ -594,6 +645,15 @@ export function deleteSession(id: string): boolean {
 	const filePath = findSessionFilePath(id);
 	if (!filePath) return false;
 	unlinkSync(filePath);
+	// Also remove the JSONL companion if present.
+	const jsonlPath = filePath.replace(/\.json$/, JSONL_EXT);
+	if (existsSync(jsonlPath)) {
+		try {
+			unlinkSync(jsonlPath);
+		} catch {
+			// Best-effort — the .json is already gone.
+		}
+	}
 	return true;
 }
 

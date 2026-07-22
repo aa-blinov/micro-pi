@@ -43,6 +43,7 @@ import {
 	createSession,
 	listSessionSummaries,
 	loadSession,
+	resetSavedMessageCount,
 	type SessionState,
 	saveSession,
 } from "../core/session.ts";
@@ -433,6 +434,9 @@ export function createWebBridge(result: StartupResult): WebBridge {
 
 				ws.status = "idle";
 				ws.runner.endRun();
+				// finalMessages is a fresh array from runAgentLoop — reset the
+				// JSONL append counter so saveSession writes all messages.
+				resetSavedMessageCount(ws.session);
 				saveSession(ws.session);
 				broadcast(ws, { type: "status", status: "idle" });
 				broadcast(ws, {
@@ -766,6 +770,7 @@ export function createWebBridge(result: StartupResult): WebBridge {
 		// Everything below requires idle (enforced by the isCommandBlocking gate above).
 		if (name === "/clear") {
 			ws.session.messages = [];
+			resetSavedMessageCount(ws.session);
 			saveSession(ws.session);
 			return { ok: true, result: "Context cleared" };
 		}
@@ -786,6 +791,7 @@ export function createWebBridge(result: StartupResult): WebBridge {
 					ws.status = "idle";
 					if (result.compacted) {
 						ws.session.messages = result.messages;
+						resetSavedMessageCount(ws.session);
 						broadcast(ws, {
 							type: "compaction",
 							messagesCompacted: result.messagesCompacted,

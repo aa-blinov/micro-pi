@@ -5,7 +5,7 @@ import type { AgentEvent } from "./loop.ts";
 import { runAgentLoop } from "./loop.ts";
 import { closeMcpConnections, formatMcpForPrompt } from "./mcp.ts";
 import { createPlanState, PLAN_TOOL_NAMES } from "./plan.ts";
-import { addUsage, appendMessage, type SessionState, saveSession } from "./session.ts";
+import { addUsage, appendMessage, resetSavedMessageCount, type SessionState, saveSession } from "./session.ts";
 import { loadSettings } from "./settings.ts";
 import type { ParsedArgs } from "./startup.ts";
 import { runStartup } from "./startup.ts";
@@ -102,6 +102,7 @@ export async function runNonInteractive(args: ParsedArgs, options: RunOptions): 
 		session.messages = finalMessages;
 	} finally {
 		runner.endRun();
+		resetSavedMessageCount(session);
 		saveSession(session);
 		process.off("SIGINT", onSigint);
 		await closeMcpConnections(mcpResult.connections);
