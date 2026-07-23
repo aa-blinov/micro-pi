@@ -201,8 +201,10 @@ export async function compactSessionMessages(
 	extraInstructions?: string,
 	/** Live session state to preserve in a post-compact `<system-reminder>`. */
 	reminderState?: PostCompactReminderState,
+	/** Provider credentials override (for per-slot provider selection). */
+	providerOverride?: { baseURL: string; apiKey: string },
 ): Promise<CompactSessionResult> {
-	const client = createClient(config);
+	const client = createClient(config, providerOverride);
 	try {
 		const result = await compactMessages(
 			messages,
@@ -375,6 +377,10 @@ export interface LoopConfig {
 	subagentPrompts?: SubagentPrompt[];
 	/** Model override for subagents (falls back to main model if undefined). */
 	subagentModel?: string;
+	/** Provider credentials for the main model (if on a different provider than config). */
+	modelProvider?: { baseURL: string; apiKey: string };
+	/** Provider credentials for the subagent model (if on a different provider). */
+	subagentModelProvider?: { baseURL: string; apiKey: string };
 	/** Tool names to exclude from the definitions sent to the model. */
 	disabledTools?: Set<string>;
 	/**
@@ -576,6 +582,7 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 					confirmBash: loopConfig.confirmBash,
 					mainModel: initialModel,
 					subagentModel: loopConfig.subagentModel,
+					subagentModelProvider: loopConfig.subagentModelProvider,
 					disabledTools: loopConfig.disabledTools,
 					planState: loopConfig.planState,
 					projectTrusted: loopConfig.projectTrusted,
@@ -626,7 +633,7 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 		if (mcpTool) return mcpTool.call(args, toolSignal);
 		return builtinExecuteTool(name, args, toolSignal);
 	};
-	const client = createClient(config);
+	const client = createClient(config, loopConfig.modelProvider);
 	const steeringQueue = loopConfig.steeringQueue ?? new MessageQueue();
 	const followUpQueue = loopConfig.followUpQueue ?? new MessageQueue();
 
@@ -767,6 +774,7 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 					(usage) => onEvent({ type: "usage", usage }),
 					loopConfig.planState?.enabled ? PLAN_COMPACTION_PROMPT : undefined,
 					reminderStateFromPlan(loopConfig.planState),
+					loopConfig.modelProvider,
 				);
 				if (result.compacted) {
 					messages.length = 0;
@@ -896,6 +904,7 @@ async function runLoop(messages: Message[], loopConfig: LoopConfig): Promise<voi
 							(usage) => onEvent({ type: "usage", usage }),
 							loopConfig.planState?.enabled ? PLAN_COMPACTION_PROMPT : undefined,
 							reminderStateFromPlan(loopConfig.planState),
+							loopConfig.modelProvider,
 						);
 						if (result.compacted) {
 							messages.length = 0;

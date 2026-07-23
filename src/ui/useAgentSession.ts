@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppConfig } from "../core/config.ts";
+import { resolveProvider } from "../core/config.ts";
 import { initialAnnouncedLocalDate } from "../core/date-rollover-reminder.ts";
 import { describeTurnError, isRetryableStreamError, stripHermesToolCalls } from "../core/llm.ts";
 import { type AgentEvent, runAgentLoop } from "../core/loop.ts";
@@ -14,7 +15,7 @@ import {
 	type SessionUsage,
 	saveSession,
 } from "../core/session.ts";
-import type { PermissionMode } from "../core/settings.ts";
+import { loadSettings, type PermissionMode } from "../core/settings.ts";
 import { setLastTurnAborted, setStreamingActive } from "../core/stdin-manager.ts";
 import type { BackgroundTaskRegistry, BashBackgroundDeps } from "../core/tools/bash-background.ts";
 import { displayWidthCacheFlush } from "./display-width.ts";
@@ -195,6 +196,8 @@ interface UseAgentSessionParams {
 	subagentPrompts?: import("../core/subagents.ts").SubagentPrompt[];
 	/** Model override for subagents. */
 	subagentModel?: string;
+	/** Provider name for the subagent model. */
+	subagentModelProvider?: string;
 	/** Tool names to exclude from the definitions sent to the model. */
 	disabledTools?: Set<string>;
 	/** Whether the project cwd is trusted — for subagent AGENTS.md injection. */
@@ -215,6 +218,8 @@ interface UseAgentSessionParams {
 	 * model override. session.model stays untouched: it is the user's main
 	 * model, this is a per-phase substitution. */
 	modelOverride?: string;
+	/** Provider name for the plan model. */
+	planModelProvider?: string;
 }
 
 /**
@@ -329,6 +334,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 		currentPersona,
 		subagentPrompts,
 		subagentModel,
+		subagentModelProvider,
 		disabledTools,
 		projectTrusted,
 		noSkills,
@@ -336,6 +342,7 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 		planState,
 		onPlanSignal,
 		modelOverride,
+		planModelProvider,
 	} = params;
 	const [messages, setMessages] = useState<ChatMessage[]>(() => buildDisplayMessages(session.messages));
 	const [streaming, setStreaming] = useState<StreamingState | null>(null);
@@ -607,9 +614,19 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 						session.lastAnnouncedLocalDate = next;
 					},
 				};
+				// Resolve per-slot provider credentials.
+				const providers = loadSettings().providers ?? [];
+				const activeCreds = { baseURL: config.baseURL, apiKey: config.apiKey };
+				const resolvedModelProvider =
+					modelOverride && planModelProvider
+						? resolveProvider(providers, planModelProvider, activeCreds)
+						: undefined;
+				const resolvedSubagentProvider = resolveProvider(providers, subagentModelProvider, activeCreds);
 				const result = await runAgentLoop(session.messages, {
 					config,
 					model: modelOverride ?? session.model,
+					modelProvider: resolvedModelProvider,
+					subagentModelProvider: resolvedSubagentProvider,
 					cwd,
 					systemPrompt,
 					signal: ac.signal,
@@ -894,6 +911,8 @@ export function useAgentSession(params: UseAgentSessionParams): UseAgentSession 
 			planState,
 			onPlanSignal,
 			modelOverride,
+			planModelProvider,
+			subagentModelProvider,
 			params.sshHosts,
 		],
 	);

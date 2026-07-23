@@ -260,9 +260,15 @@ export async function selectModel(
 	pickers: Pickers,
 	current?: string,
 	lastError?: string,
+	providerOverride?: { baseURL: string; apiKey: string },
 ): Promise<ModelSelection | null> {
+	// When picking a model from a different provider, use a temporary config
+	// copy so fetchModels and validation hit the right endpoint.
+	const effectiveConfig = providerOverride
+		? { ...config, baseURL: providerOverride.baseURL, apiKey: providerOverride.apiKey }
+		: config;
 	const fetching = pickers.status?.("Loading models...");
-	const result = await fetchModels(config);
+	const result = await fetchModels(effectiveConfig);
 	fetching?.();
 
 	// A real model pick carries its metadata; the sentinel row routes to
@@ -309,14 +315,14 @@ export async function selectModel(
 	if (!picked) return null;
 
 	if ("custom" in picked) {
-		return promptCustomModel(config, pickers, current);
+		return promptCustomModel(effectiveConfig, pickers, current);
 	}
 
-	const { ok, reason } = await validateModelForSelection(config, pickers, picked.model);
+	const { ok, reason } = await validateModelForSelection(effectiveConfig, pickers, picked.model);
 	if (ok) {
 		return { model: picked.model, reasoningMeta: picked.reasoningMeta, contextWindow: picked.contextWindow };
 	}
-	return selectModel(config, pickers, current, reason);
+	return selectModel(config, pickers, current, reason, providerOverride);
 }
 
 /**

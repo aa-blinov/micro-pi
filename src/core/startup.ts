@@ -89,8 +89,12 @@ export interface StartupResult {
 	subagentPrompts: SubagentPrompt[];
 	/** Model for subagents (falls back to main model if unset). */
 	subagentModel?: string;
+	/** Provider name for the subagent model (falls back to active provider if unset). */
+	subagentModelProvider?: string;
 	/** Model for plan mode (falls back to main model if unset). */
 	planModel?: string;
+	/** Provider name for the plan model (falls back to active provider if unset). */
+	planModelProvider?: string;
 	reasoningMeta?: ModelReasoningMeta;
 	confirmBash: (command: string, reason: string) => Promise<boolean>;
 	projectDeps: ProjectResolverDeps;
@@ -417,6 +421,21 @@ export async function runStartup(
 	const confirmBash = makeConfirmBash(pickers, permissionMode);
 	const sshHosts = resolveSshHosts(cwd, projectTrusted);
 
+	// Validate per-slot provider references — warn and clear if the provider was deleted.
+	const providerSlots: Array<[keyof Settings, string | undefined]> = [
+		["modelProvider", settings.modelProvider],
+		["subagentModelProvider", settings.subagentModelProvider],
+		["planModelProvider", settings.planModelProvider],
+	];
+	for (const [slot, providerName] of providerSlots) {
+		if (providerName && !settings.providers?.some((p) => p.name === providerName)) {
+			pickers.log(
+				`[Warning: ${slot} references provider "${providerName}" which no longer exists — falling back to active provider]`,
+			);
+			updateSettings({ [slot]: undefined });
+		}
+	}
+
 	return {
 		config,
 		cwd,
@@ -432,7 +451,9 @@ export async function runStartup(
 		personas: allPersonas,
 		subagentPrompts: loadSubagentPrompts(),
 		subagentModel: settings.subagentModel,
+		subagentModelProvider: settings.subagentModelProvider,
 		planModel: settings.planModel,
+		planModelProvider: settings.planModelProvider,
 		reasoningMeta,
 		confirmBash,
 		projectDeps,

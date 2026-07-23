@@ -5,7 +5,10 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { fetchModels, type ModelInfo, probeProvider } from "../core/config.ts";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { fetchModels, type ModelInfo, probeProvider, resolveProvider } from "../core/config.ts";
 import type { Message } from "../core/llm.ts";
 import { type AgentEvent, compactSessionMessages, runAgentLoop } from "../core/loop.ts";
 import { closeMcpConnections, formatMcpForPrompt } from "../core/mcp.ts";
@@ -187,7 +190,9 @@ export interface WebBridge {
 	getConfig(): { baseURL: string; model: string; persona: string; theme: string; cwd: string };
 	getPersonas(): Array<{ name: string; label: string; description: string; source: string }>;
 	getThemes(): Array<{ id: string; label: string; description: string; colors: ThemeColors }>;
-	getModels(): Promise<{ models: ModelInfo[]; error?: string }>;
+	getModels(providerName?: string): Promise<{ models: ModelInfo[]; error?: string }>;
+	getCachedModels(): { models: ModelInfo[] };
+	saveSshKey(name: string, keyContent: string): { ok: boolean; path?: string; error?: string };
 	getReasoningOptionsForSession(sessionId: string): { options: Array<{ value: string; label: string }> };
 	suggestCommand(sessionId: string, input: string): Array<{ value: string; label: string }>;
 }
@@ -207,7 +212,9 @@ export function createWebBridge(result: StartupResult): WebBridge {
 	let mcpResult = result.mcpResult;
 	let personas = result.personas;
 	let subagentModel = result.subagentModel;
+	let subagentModelProvider = result.subagentModelProvider;
 	let planModel = result.planModel;
+	let planModelProvider = result.planModelProvider;
 	let projectTrusted = result.projectTrusted;
 	const contextFilesSuffix = result.contextFilesSuffix;
 	let rulesSuffix = result.rulesSuffix;
@@ -364,9 +371,21 @@ export function createWebBridge(result: StartupResult): WebBridge {
 		// itself is untouched so leaving plan mode reverts automatically.
 		const runModel = planMode && planModel ? planModel : ws.session.model;
 
+		// Resolve per-slot provider credentials.
+		const currentSettings = loadSettings();
+		const providers = currentSettings.providers ?? [];
+		const activeCreds = { baseURL: config.baseURL, apiKey: config.apiKey };
+		const resolvedModelProvider =
+			planMode && planModel && planModelProvider
+				? resolveProvider(providers, planModelProvider, activeCreds)
+				: undefined;
+		const resolvedSubagentProvider = resolveProvider(providers, subagentModelProvider, activeCreds);
+
 		runAgentLoop(ws.session.messages, {
 			config,
 			model: runModel,
+			modelProvider: resolvedModelProvider,
+			subagentModelProvider: resolvedSubagentProvider,
 			cwd: ws.session.cwd ?? cwd,
 			systemPrompt: ws.systemPrompt,
 			signal: ac.signal,
@@ -646,7 +665,9 @@ export function createWebBridge(result: StartupResult): WebBridge {
 					lastTurn: ws.lastTurn,
 					permissionMode,
 					subagentModel: subagentModel ?? null,
+					subagentModelProvider: subagentModelProvider ?? null,
 					planModel: planModel ?? null,
+					planModelProvider: planModelProvider ?? null,
 				},
 			};
 		}
@@ -876,6 +897,17 @@ export function createWebBridge(result: StartupResult): WebBridge {
 			updateSettings({ subagentModel: arg });
 			return { ok: true, result: { subagentModel: arg } };
 		}
+		if (name === "/subagent-model-provider") {
+			if (!arg) return { ok: true, result: { subagentModelProvider: subagentModelProvider ?? null } };
+			if (arg === "off" || arg === "reset") {
+				subagentModelProvider = undefined;
+				updateSettings({ subagentModelProvider: undefined });
+				return { ok: true, result: { subagentModelProvider: null } };
+			}
+			subagentModelProvider = arg;
+			updateSettings({ subagentModelProvider: arg });
+			return { ok: true, result: { subagentModelProvider: arg } };
+		}
 		if (name === "/plan-model") {
 			if (!arg) return { ok: true, result: { planModel: planModel ?? null } };
 			if (arg === "off" || arg === "reset") {
@@ -886,6 +918,17 @@ export function createWebBridge(result: StartupResult): WebBridge {
 			planModel = arg;
 			updateSettings({ planModel: arg });
 			return { ok: true, result: { planModel: arg } };
+		}
+		if (name === "/plan-model-provider") {
+			if (!arg) return { ok: true, result: { planModelProvider: planModelProvider ?? null } };
+			if (arg === "off" || arg === "reset") {
+				planModelProvider = undefined;
+				updateSettings({ planModelProvider: undefined });
+				return { ok: true, result: { planModelProvider: null } };
+			}
+			planModelProvider = arg;
+			updateSettings({ planModelProvider: arg });
+			return { ok: true, result: { planModelProvider: arg } };
 		}
 		if (name === "/plan" || name === "/build") {
 			const mode = name === "/plan" ? "plan" : "build";
@@ -944,6 +987,7 @@ export function createWebBridge(result: StartupResult): WebBridge {
 					ok: true,
 					result: mcpResult.allServerNames.map((n) => ({
 						name: n,
+						source: mcpResult.serverSources[n] ?? "global",
 						connected: mcpResult.connections.some((c) => c.serverName === n),
 						disabled: (loadSettings().disabledMcpServers ?? []).includes(n),
 					})),
@@ -1221,13 +1265,36 @@ export function createWebBridge(result: StartupResult): WebBridge {
 	 * (core/config.ts's fetchModels), fetched fresh per request rather than
 	 * cached, since a stale list would just silently hide newly available
 	 * models from the picker. */
-	async function getModels(): Promise<{ models: ModelInfo[]; error?: string }> {
-		const result = await fetchModels(config);
+	async function getModels(providerName?: string): Promise<{ models: ModelInfo[]; error?: string }> {
+		let fetchConfig = config;
+		if (providerName) {
+			const currentSettings = loadSettings();
+			const provider = (currentSettings.providers ?? []).find((p) => p.name === providerName);
+			if (provider) fetchConfig = { ...config, baseURL: provider.url, apiKey: provider.apiKey };
+		}
+		const result = await fetchModels(fetchConfig);
 		if (result.ok && result.models) {
-			setModelsCache(result.models);
+			if (!providerName) setModelsCache(result.models);
 			return { models: result.models };
 		}
 		return { models: [], error: result.error };
+	}
+
+	function getCachedModels(): { models: ModelInfo[] } {
+		return { models: getModelsCache() };
+	}
+
+	function saveSshKey(name: string, keyContent: string): { ok: boolean; path?: string; error?: string } {
+		try {
+			const keysDir = join(homedir(), ".cast", "keys");
+			if (!existsSync(keysDir)) mkdirSync(keysDir, { recursive: true });
+			const keyPath = join(keysDir, name);
+			writeFileSync(keyPath, keyContent.endsWith("\n") ? keyContent : `${keyContent}\n`, "utf-8");
+			chmodSync(keyPath, 0o600);
+			return { ok: true, path: keyPath };
+		} catch (err) {
+			return { ok: false, error: err instanceof Error ? err.message : String(err) };
+		}
 	}
 
 	function getReasoningOptionsForSession(sessionId: string): { options: Array<{ value: string; label: string }> } {
@@ -1366,6 +1433,8 @@ export function createWebBridge(result: StartupResult): WebBridge {
 		getPersonas,
 		getThemes,
 		getModels,
+		getCachedModels,
+		saveSshKey,
 		getReasoningOptionsForSession,
 		suggestCommand,
 	};

@@ -220,6 +220,7 @@ export async function resolveMcpForCwd(
 		connections: [],
 		diagnostics: [],
 		allServerNames: [] as string[],
+		serverSources: {} as Record<string, "global" | "project">,
 	};
 	if (deps.noMcp) return emptyResult;
 	const globalServers = loadMcpConfig(globalMcpPath());
@@ -232,12 +233,17 @@ export async function resolveMcpForCwd(
 	for (const path of deps.cliMcpPaths) Object.assign(extraServers, loadMcpConfig(path));
 	const merged = { ...globalServers, ...projectServers, ...extraServers };
 	const allNames = Object.keys(merged);
-	if (allNames.length === 0) return { ...emptyResult, allServerNames: [] };
+	const serverSources: Record<string, "global" | "project"> = {};
+	for (const name of Object.keys(globalServers)) serverSources[name] = "global";
+	for (const name of Object.keys(projectServers)) serverSources[name] = "project";
+	for (const name of Object.keys(extraServers)) serverSources[name] = "project";
+	if (allNames.length === 0) return { ...emptyResult, allServerNames: [], serverSources };
 	// Filter out disabled servers before connecting
 	const disabledSet = new Set(disabledServers);
 	const filtered = Object.fromEntries(Object.entries(merged).filter(([name]) => !disabledSet.has(name)));
 	const result = await connectMcpServers(filtered);
 	result.allServerNames = allNames.sort((a, b) => a.localeCompare(b));
+	result.serverSources = serverSources;
 	for (const diagnostic of result.diagnostics) console.log(`[mcp warning] ${diagnostic}`);
 	return result;
 }

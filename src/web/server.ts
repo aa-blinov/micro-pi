@@ -38,7 +38,7 @@ export interface WebServerOptions {
 }
 
 export function startWebServer(options: WebServerOptions): ReturnType<typeof createServer> {
-	const { port, host, bridge, webUser, webPassword, version } = options;
+	const { port, host, bridge, webUser, webPassword } = options;
 	const publicDir = join(import.meta.dirname ?? ".", "public");
 
 	console.log(`[cast web] auth enabled (user: ${webUser})`);
@@ -106,12 +106,13 @@ export function startWebServer(options: WebServerOptions): ReturnType<typeof cre
 			// a stale cached index.html still asks for the JS/CSS it originally
 			// linked, which is fine; any fresh load after an upgrade gets new
 			// URLs and bypasses the old cache entry instead of racing it.
+			const buildStamp = Date.now().toString(36);
 			let content: Buffer | string = readFileSync(filePath);
 			if (ext === ".html") {
 				content = content
 					.toString("utf-8")
-					.replace('href="/style.css"', `href="/style.css?v=${version}"`)
-					.replace('src="/app.js"', `src="/app.js?v=${version}"`);
+					.replace('href="/style.css"', `href="/style.css?v=${buildStamp}"`)
+					.replace('src="/app.js"', `src="/app.js?v=${buildStamp}"`);
 			}
 			res.writeHead(200, {
 				"Content-Type": mime,
@@ -419,8 +420,19 @@ export function startWebServer(options: WebServerOptions): ReturnType<typeof cre
 		json(res, bridge.getThemes());
 	});
 
-	route("GET", "/api/models", async (_req, res) => {
-		json(res, await bridge.getModels());
+	route("GET", "/api/models", async (req, res) => {
+		const url = new URL(req.url ?? "/", `http://localhost:${port}`);
+		const provider = url.searchParams.get("provider") ?? undefined;
+		json(res, await bridge.getModels(provider));
+	});
+	route("GET", "/api/models/cached", (_req, res) => {
+		json(res, bridge.getCachedModels());
+	});
+	route("POST", "/api/ssh/key", async (req, res) => {
+		const body = await readBody(req);
+		const { name, key } = JSON.parse(body);
+		if (!name || !key) return json(res, { ok: false, error: "name and key required" }, 400);
+		json(res, bridge.saveSshKey(name, key));
 	});
 
 	route("GET", "/api/sessions/:id/reasoning-options", (_req, res, params) => {

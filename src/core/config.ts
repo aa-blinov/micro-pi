@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import type { Provider } from "./settings.ts";
 import type { ModelReasoningMeta, ReasoningParams } from "./vendors.ts";
 import { extractReasoningMeta } from "./vendors.ts";
 
@@ -17,6 +18,22 @@ export interface AppConfig {
 	defaultBashTimeout: number;
 	reasoningLevel: string;
 	reasoningParams: ReasoningParams;
+}
+
+export interface ProviderCredentials {
+	baseURL: string;
+	apiKey: string;
+}
+
+/** Look up a provider by name from the saved list. Returns active if not found. */
+export function resolveProvider(
+	providers: Provider[],
+	providerName: string | undefined,
+	active: ProviderCredentials,
+): ProviderCredentials {
+	if (!providerName) return active;
+	const found = providers.find((p) => p.name === providerName);
+	return found ? { baseURL: found.url, apiKey: found.apiKey } : active;
 }
 
 /**

@@ -129,6 +129,8 @@ export interface TaskExecutorDeps {
 	mainModel?: string;
 	/** Model override for subagents (falls back to main model if undefined). */
 	subagentModel?: string;
+	/** Provider credentials for the subagent model (if on a different provider). */
+	subagentModelProvider?: { baseURL: string; apiKey: string };
 	/** Tool names to exclude from the definitions sent to the model. */
 	disabledTools?: Set<string>;
 	/** Parent's plan state — lets build-mode subagents inherit the approved
@@ -264,6 +266,7 @@ export async function execTask(
 		finalMessages = await deps.runAgentLoop(childMessages, {
 			config,
 			model: deps.model,
+			modelProvider: deps.subagentModelProvider,
 			cwd,
 			systemPrompt: childSystemPrompt,
 			onEvent: (event) => {

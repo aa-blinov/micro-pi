@@ -29,11 +29,17 @@ export interface Provider {
 export interface Settings {
 	/** Last used model */
 	model?: string;
+	/** Provider name for the main model (falls back to active provider if unset). */
+	modelProvider?: string;
 	/** Model used for subagents (falls back to model if unset). */
 	subagentModel?: string;
+	/** Provider name for the subagent model (falls back to active provider if unset). */
+	subagentModelProvider?: string;
 	/** Model used while plan mode is active (falls back to model if unset) —
 	 * lets planning run on a stronger model than day-to-day building. */
 	planModel?: string;
+	/** Provider name for the plan model (falls back to active provider if unset). */
+	planModelProvider?: string;
 	/** Last used reasoning level */
 	reasoningLevel?: string;
 	/** Last used persona name (see personas.ts) — defaults to "coding" when unset. */

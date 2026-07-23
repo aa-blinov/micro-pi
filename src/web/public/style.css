@@ -1133,6 +1133,10 @@ body.resizing-diff .diff-resize-handle::after { background: var(--cyan); }
 	transition: border-color .15s, color .15s, background .15s;
 }
 .modal-btn:hover { border-color: var(--border-active); color: var(--text); background: var(--bg-hover); }
+.icon-btn { padding: 4px 6px; border: none; background: none; color: var(--text-dim); cursor: pointer; border-radius: var(--radius-sm); display: inline-flex; align-items: center; }
+.icon-btn:hover { color: var(--text); background: var(--bg-hover); }
+.icon-btn:disabled { opacity: .35; cursor: default; }
+.icon-btn.active { color: var(--cyan); }
 .modal-btn-primary {
 	background: var(--cyan);
 	border-color: var(--cyan);
@@ -1148,12 +1152,15 @@ body.resizing-diff .diff-resize-handle::after { background: var(--cyan); }
 .settings-modal {
 	max-width: 620px;
 	width: 92vw;
-	max-height: min(640px, 84vh);
+	height: min(640px, 84vh);
+	max-height: none;
+	overflow: hidden;
 }
 .settings-body {
 	display: flex;
 	flex: 1;
 	min-height: 0;
+	overflow: hidden;
 }
 .settings-tabs {
 	display: flex; flex-direction: column;
@@ -1198,6 +1205,9 @@ body.resizing-diff .diff-resize-handle::after { background: var(--cyan); }
 	margin-bottom: 10px;
 }
 .settings-rows { display: flex; flex-direction: column; gap: 4px; }
+.settings-group { margin-top: 4px; }
+.settings-group:first-child { margin-top: 0; }
+.settings-group .settings-section-title { margin-top: 0; }
 .settings-row {
 	display: flex; justify-content: space-between; gap: 12px;
 	padding: 5px 0;
@@ -1212,8 +1222,10 @@ body.resizing-diff .diff-resize-handle::after { background: var(--cyan); }
 	letter-spacing: .05em;
 	color: var(--text-muted);
 	margin: 14px 0 6px;
+	padding-top: 10px;
+	border-top: 1px solid var(--border);
 }
-.settings-section-title:first-child { margin-top: 0; }
+.settings-section-title:first-child { margin-top: 0; border-top: none; padding-top: 0; }
 .settings-form-row {
 	display: flex; flex-wrap: wrap; gap: 6px;
 	align-items: center;
@@ -1235,11 +1247,33 @@ body.resizing-diff .diff-resize-handle::after { background: var(--cyan); }
 .settings-form-row select:focus,
 .settings-form-row input:focus { border-color: var(--cyan); }
 .settings-item-row {
-	display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px;
+	display: flex; flex-wrap: wrap; gap: 6px 8px;
 	padding: 6px 4px;
-	border-bottom: 1px solid var(--border);
 	font-size: .8rem;
 }
+.settings-item-row .settings-item-info {
+	display: flex; align-items: center; gap: 8px;
+	flex: 1; min-width: 0;
+}
+.settings-item-row .settings-item-actions {
+	display: flex; gap: 4px; align-items: center;
+	flex-shrink: 0;
+}
+.settings-ssh-form { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.settings-textarea {
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	padding: 6px 8px;
+	color: var(--text);
+	font-family: var(--font);
+	font-size: .8rem;
+	outline: none;
+	resize: vertical;
+	min-height: 60px;
+	width: 100%;
+}
+.settings-textarea:focus { border-color: var(--cyan); }
 .settings-item-status {
 	width: 6px; height: 6px;
 	border-radius: 50%; flex-shrink: 0;

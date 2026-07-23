@@ -184,9 +184,9 @@ function shortPath(p) {
 	return `…/${parts.slice(-2).join("/")}`;
 }
 
-const WEB_TOOLS_OPTIONS = [
-	{ value: "on", label: "Enable web_search / web_fetch" },
-	{ value: "off", label: "Disable web_search / web_fetch" },
+const _WEB_TOOLS_OPTIONS = [
+	{ value: "on", label: "Enable" },
+	{ value: "off", label: "Disable" },
 ];
 
 // ── URL routing ──────────────────────────────────────────────────────
@@ -867,10 +867,11 @@ function SettingsModal({ activeId, themes, currentThemeId, onApplyTheme, onTheme
 		async (t) => {
 			setErrors((e) => ({ ...e, [t]: null }));
 			if (t === "model") {
-				const [models, reasoning, current] = await Promise.all([
-					api("GET", "/api/models").catch(() => null),
+				const [models, reasoning, current, providers] = await Promise.all([
+					api("GET", "/api/models/cached").catch(() => null),
 					api("GET", `/api/sessions/${activeId}/reasoning-options`).catch(() => null),
 					run("/current"),
+					run("/provider list"),
 				]);
 				setData((d) => ({
 					...d,
@@ -878,6 +879,7 @@ function SettingsModal({ activeId, themes, currentThemeId, onApplyTheme, onTheme
 						models: models?.models ?? [],
 						reasoningOptions: reasoning?.options ?? [],
 						current: current?.result,
+						providers: providers?.result ?? [],
 					},
 				}));
 			} else if (t === "tools") {
@@ -956,7 +958,10 @@ function SettingsModal({ activeId, themes, currentThemeId, onApplyTheme, onTheme
 			<div class="modal settings-modal" role="dialog" aria-modal="true" aria-label="Settings" tabIndex="-1" ref=${modalRef} onClick=${(e) => e.stopPropagation()}>
 				<div class="modal-header">
 					<span>Settings</span>
-					<button class="modal-close" onClick=${onClose} aria-label="Close"><${icons.xMark} /></button>
+					<div style=${{ display: "flex", gap: "6px", alignItems: "center" }}>
+						<button class="modal-btn" disabled=${busy} onClick=${() => act("/reload")}>Reload resources</button>
+						<button class="modal-close" onClick=${onClose} aria-label="Close"><${icons.xMark} /></button>
+					</div>
 				</div>
 				<div class="settings-body">
 					<div class="settings-tabs">
@@ -1024,23 +1029,131 @@ function SettingsStatus({ data }) {
 	`;
 }
 
+/**
+ * Cascading provider → model picker.  When the user picks a provider its
+ * /v1/models list is fetched and shown in the model dropdown.  The "Set"
+ * button fires two commands: one to set the provider, one to set the model.
+ * "Reset" clears both overrides so the slot falls back to the active provider
+ * and main model.
+ */
+/**
+ * Cascading provider → model picker.
+ * @param providerCommand  e.g. "/subagent-model-provider" or "/provider"
+ * @param modelCommand      e.g. "/subagent-model" or "/model"
+ */
+function SlotModelPicker({
+	busy,
+	act,
+	providers,
+	activeProviderName,
+	currentProvider,
+	currentModel,
+	fallbackModel,
+	providerCommand,
+	modelCommand,
+	isMainSlot,
+	initialModels,
+}) {
+	const initialProvider = currentProvider || "";
+	const effectiveModel = currentModel || fallbackModel || "";
+	const [providerValue, setProviderValue] = useState(initialProvider);
+	const [modelValue, setModelValue] = useState(effectiveModel);
+	const [models, setModels] = useState(initialModels || []);
+	const [loading, setLoading] = useState(false);
+
+	// Label for the empty option in the provider dropdown.
+	const defaultLabel = activeProviderName || (providers.length > 1 ? "Select…" : "Active");
+
+	// Fetch models on mount: use cached endpoint for instant load, then
+	// optionally re-fetch from a specific provider if one is pinned.
+	useEffect(() => {
+		let cancelled = false;
+		(async () => {
+			if (!initialModels?.length) {
+				// No models from parent — load cached ones instantly.
+				try {
+					const res = await api("GET", "/api/models/cached");
+					if (!cancelled && res?.models?.length) {
+						setModels(res.models);
+					}
+				} catch {
+					/* ignore */
+				}
+			}
+			// If a specific provider is pinned (not the active one), fetch from it.
+			if (initialProvider) {
+				setLoading(true);
+				try {
+					const res = await api("GET", `/api/models?provider=${encodeURIComponent(initialProvider)}`);
+					if (!cancelled) setModels(res?.models ?? []);
+				} catch {
+					if (!cancelled) setModels([]);
+				}
+				if (!cancelled) setLoading(false);
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [initialModels?.length, initialProvider]);
+
+	// Fetch models when provider changes.
+	const onProviderChange = useCallback(async (name) => {
+		setProviderValue(name);
+		setModelValue("");
+		setLoading(true);
+		try {
+			const qs = name ? `?provider=${encodeURIComponent(name)}` : "";
+			const res = await api("GET", `/api/models${qs}`);
+			setModels(res?.models ?? []);
+		} catch {
+			setModels([]);
+		}
+		setLoading(false);
+	}, []);
+
+	const doSet = useCallback(async () => {
+		if (providerValue) await act(`${providerCommand} ${providerValue}`);
+		if (modelValue) await act(`${modelCommand} ${modelValue}`);
+	}, [providerValue, modelValue, act, providerCommand, modelCommand]);
+
+	const doReset = useCallback(async () => {
+		if (providerCommand !== "/provider") await act(`${providerCommand} off`);
+		await act(`${modelCommand} off`);
+		setProviderValue("");
+		setModelValue("");
+		setModels([]);
+	}, [act, providerCommand, modelCommand]);
+
+	const hasOverride = currentProvider || currentModel;
+
+	return html`
+		<div class="settings-form-row">
+			<select disabled=${busy} value=${providerValue} onChange=${(e) => onProviderChange(e.target.value)}>
+				<option value="">${defaultLabel}</option>
+				${providers.map((p) => html`<option key=${p.name} value=${p.name}>${p.name} — ${p.url}</option>`)}
+			</select>
+			<select disabled=${busy || loading} onChange=${(e) => setModelValue(e.target.value)} value=${modelValue}>
+				<option value="">${loading ? "Loading…" : currentModel ? "Pick a model…" : fallbackModel ? `${fallbackModel} (default)` : "Pick a model…"}</option>
+				${[...models].sort((a, b) => a.id.localeCompare(b.id)).map((m) => html`<option key=${m.id} value=${m.id}>${m.id}${m.reasoning ? " (reasoning)" : ""}</option>`)}
+			</select>
+			<button class="modal-btn icon-btn" title="Apply" disabled=${busy || !modelValue} onClick=${doSet}><${icons.check} /></button>
+			${!isMainSlot ? html`<button class="modal-btn icon-btn" title="Clear model override" disabled=${busy} onClick=${() => act(`${modelCommand} off`)}><${icons.xCircle} /></button>` : null}
+			${!isMainSlot && hasOverride ? html`<button class="modal-btn icon-btn" title="Reset all overrides" disabled=${busy} onClick=${doReset}><${icons.arrowUturnLeft} /></button>` : null}
+		</div>
+	`;
+}
+
 function SettingsModel({ data, busy, act }) {
-	const [modelValue, setModelValue] = useState("");
 	const [reasoningValue, setReasoningValue] = useState("");
-	const [subagentValue, setSubagentValue] = useState("");
-	const [planValue, setPlanValue] = useState("");
 	if (!data) return null;
 	const c = data.current || {};
+	const providers = data.providers || [];
+	const activeProviderName = providers.find((p) => p.active)?.name ?? "";
 	return html`
 		<div class="settings-rows">
 			<div class="settings-section-title">Model — current: ${c.model ?? "—"}</div>
-			<div class="settings-form-row">
-				<select onChange=${(e) => setModelValue(e.target.value)}>
-					<option value="">Pick a model…</option>
-					${[...data.models].sort((a, b) => a.id.localeCompare(b.id)).map((m) => html`<option key=${m.id} value=${m.id}>${m.id}${m.reasoning ? " (reasoning)" : ""}</option>`)}
-				</select>
-				<button class="modal-btn modal-btn-primary" disabled=${busy || !modelValue} onClick=${() => act(`/model ${modelValue}`)}>Set</button>
-			</div>
+			<${SlotModelPicker} busy=${busy} act=${act} providers=${providers} activeProviderName=${activeProviderName} currentModel=${c.model} providerCommand="/provider" modelCommand="/model" isMainSlot=${true} initialModels=${data.models} />
 			<div class="settings-section-title">Reasoning — current: ${c.reasoningLevel ?? "off"}</div>
 			${
 				data.reasoningOptions.length === 0
@@ -1051,21 +1164,14 @@ function SettingsModel({ data, busy, act }) {
 							<option value="">Pick a level…</option>
 							${data.reasoningOptions.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}
 						</select>
-						<button class="modal-btn modal-btn-primary" disabled=${busy || !reasoningValue} onClick=${() => act(`/reasoning ${reasoningValue}`)}>Set</button>
+						<button class="modal-btn icon-btn" title="Apply reasoning" disabled=${busy || !reasoningValue} onClick=${() => act(`/reasoning ${reasoningValue}`)}><${icons.check} /></button>
 					</div>
 				`
 			}
-			<div class="settings-section-title">Subagent model — current: ${c.subagentModel ?? "(same as main)"}</div>
-			<div class="settings-form-row">
-				<input type="text" placeholder="model id" value=${subagentValue} onInput=${(e) => setSubagentValue(e.target.value)} />
-				<button class="modal-btn modal-btn-primary" disabled=${busy || !subagentValue} onClick=${() => act(`/subagent-model ${subagentValue}`)}>Set</button>
-			</div>
-			<div class="settings-section-title">Plan-mode model — current: ${c.planModel ?? "(same as main)"}</div>
-			<div class="settings-form-row">
-				<input type="text" placeholder="model id" value=${planValue} onInput=${(e) => setPlanValue(e.target.value)} />
-				<button class="modal-btn modal-btn-primary" disabled=${busy || !planValue} onClick=${() => act(`/plan-model ${planValue}`)}>Set</button>
-				<button class="modal-btn" disabled=${busy} onClick=${() => act("/plan-model off")}>Clear</button>
-			</div>
+			<div class="settings-section-title">Subagent model — current: ${c.subagentModel ?? c.model ?? "—"}${c.subagentModelProvider ? ` @ ${c.subagentModelProvider}` : ""}</div>
+			<${SlotModelPicker} busy=${busy} act=${act} providers=${providers} activeProviderName=${activeProviderName} currentProvider=${c.subagentModelProvider} currentModel=${c.subagentModel} fallbackModel=${c.model} providerCommand="/subagent-model-provider" modelCommand="/subagent-model" initialModels=${data.models} />
+			<div class="settings-section-title">Plan-mode model — current: ${c.planModel ?? c.model ?? "—"}${c.planModelProvider ? ` @ ${c.planModelProvider}` : ""}</div>
+			<${SlotModelPicker} busy=${busy} act=${act} providers=${providers} activeProviderName=${activeProviderName} currentProvider=${c.planModelProvider} currentModel=${c.planModel} fallbackModel=${c.model} providerCommand="/plan-model-provider" modelCommand="/plan-model" initialModels=${data.models} />
 		</div>
 	`;
 }
@@ -1091,71 +1197,103 @@ function SettingsTools({ data, busy, act }) {
 	if (!data) return null;
 	const web = data.web || {};
 	const perm = data.permissions || {};
+	const webOn = web.webTools;
 	return html`
 		<div class="settings-rows">
-			<div class="settings-section-title">Web tools (web_search, web_fetch)</div>
+			<div class="settings-section-title">Web tools</div>
 			<div class="settings-form-row">
-				${WEB_TOOLS_OPTIONS.map(
-					(o) => html`
-					<button key=${o.value} class="modal-btn${(web.webTools ? "on" : "off") === o.value ? " modal-btn-primary" : ""}" disabled=${busy} onClick=${() => act(`/web ${o.value}`)}>${o.label}</button>
-				`,
-				)}
+				<button class="modal-btn${webOn ? " modal-btn-primary" : ""}" title="Enable web_search and web_fetch" disabled=${busy} onClick=${() => act("/web on")}>Enabled</button>
+				<button class="modal-btn${!webOn ? " modal-btn-primary" : ""}" title="Disable web_search and web_fetch" disabled=${busy} onClick=${() => act("/web off")}>Disabled</button>
 			</div>
 			<div class="settings-section-title">Bash confirmation mode</div>
 			<div class="settings-form-row">
-				<button class="modal-btn${perm.permissionMode === "default" ? " modal-btn-primary" : ""}" disabled=${busy} onClick=${() => act("/permissions default")}>Default (confirm dangerous commands)</button>
-				<button class="modal-btn${perm.permissionMode === "bypass" ? " modal-btn-primary" : ""}" disabled=${busy} onClick=${() => act("/permissions bypass")}>Bypass</button>
+				<button class="modal-btn${perm.permissionMode === "default" ? " modal-btn-primary" : ""}" title="Confirm dangerous commands" disabled=${busy} onClick=${() => act("/permissions default")}>Default</button>
+				<button class="modal-btn${perm.permissionMode === "bypass" ? " modal-btn-primary" : ""}" title="Skip confirmation prompts" disabled=${busy} onClick=${() => act("/permissions bypass")}>Bypass</button>
 			</div>
 		</div>
 	`;
 }
 
 function SettingsMcp({ data, busy, act, confirm }) {
+	const servers = data || [];
+	const groups = [
+		{ key: "global", label: "Global", items: servers.filter((s) => s.source === "global") },
+		{ key: "project", label: "Project", items: servers.filter((s) => s.source === "project") },
+	];
+	const renderServer = (s) => html`
+		<div key=${s.name} class="settings-item-row">
+			<div class="settings-item-info">
+				<span class="settings-item-status ${s.connected ? "ok" : "off"}" />
+				<span class="settings-item-name">${s.name}</span>
+				<span class="settings-item-meta">${s.disabled ? "disabled" : s.connected ? "connected" : "not connected"}</span>
+			</div>
+			<div class="settings-item-actions">
+				<button class="modal-btn icon-btn" title=${s.disabled ? "Enable" : "Disable"} disabled=${busy} onClick=${() => act(`/mcp ${s.disabled ? "enable" : "disable"} ${s.name}`)}>${s.disabled ? html`<${icons.play} />` : html`<${icons.pause} />`}</button>
+				<button class="modal-btn icon-btn modal-btn-danger" title="Uninstall" disabled=${busy} onClick=${async () => {
+					if (await confirm(`Uninstall MCP server "${s.name}"?`)) act(`/mcp uninstall ${s.name}`);
+				}}><${icons.trash} /></button>
+			</div>
+		</div>
+	`;
 	return html`
 		<div class="settings-rows">
-			${[...(data || [])]
-				.sort((a, b) => a.name.localeCompare(b.name))
+			${groups
+				.filter((g) => g.items.length > 0)
 				.map(
-					(s) => html`
-				<div key=${s.name} class="settings-item-row">
-					<span class="settings-item-status ${s.connected ? "ok" : "off"}" />
-					<span class="settings-item-name">${s.name}</span>
-					<span class="settings-item-meta">${s.disabled ? "disabled" : s.connected ? "connected" : "not connected"}</span>
-					<button class="modal-btn" disabled=${busy} onClick=${() => act(`/mcp ${s.disabled ? "enable" : "disable"} ${s.name}`)}>${s.disabled ? "Enable" : "Disable"}</button>
-					<button class="modal-btn modal-btn-danger" disabled=${busy} onClick=${async () => {
-						if (await confirm(`Uninstall MCP server "${s.name}"?`)) act(`/mcp uninstall ${s.name}`);
-					}}>Uninstall</button>
+					(g) => html`
+				<div key=${g.key} class="settings-group">
+					<div class="settings-section-title">${g.label}</div>
+					${[...g.items].sort((a, b) => a.name.localeCompare(b.name)).map(renderServer)}
 				</div>
 			`,
 				)}
-			${(!data || data.length === 0) && html`<div class="settings-hint">No MCP servers configured.</div>`}
-			<div class="settings-form-row"><button class="modal-btn" disabled=${busy} onClick=${() => act("/reload")}>Reload project resources</button></div>
+			${servers.length === 0 && html`<div class="settings-hint">No MCP servers configured.</div>`}
 		</div>
 	`;
 }
 
 function SettingsSkills({ data, busy, act, confirm }) {
+	const skills = data || [];
+	const groups = [
+		{ key: "builtin", label: "Built-in", items: skills.filter((s) => s.source === "builtin") },
+		{ key: "global", label: "Global", items: skills.filter((s) => s.source === "global") },
+		{
+			key: "project",
+			label: "Project",
+			items: skills.filter((s) => s.source === "project" || s.source === "agents" || s.source === "path"),
+		},
+		{ key: "plugin", label: "Plugins", items: skills.filter((s) => s.source === "plugin") },
+	];
+	const renderSkill = (s) => html`
+		<div key=${s.name} class="settings-item-row">
+			<div class="settings-item-info">
+				<span class="settings-item-status ${s.enabled ? "ok" : "off"}" />
+				<span class="settings-item-name" title=${s.description}>${s.name}</span>
+			</div>
+			<div class="settings-item-actions">
+				<button class="modal-btn icon-btn" title=${s.enabled ? "Disable" : "Enable"} disabled=${busy} onClick=${() => act(`/skills ${s.enabled ? "disable" : "enable"} ${s.name}`)}>${s.enabled ? html`<${icons.pause} />` : html`<${icons.play} />`}</button>
+				${
+					s.uninstallable &&
+					html`<button class="modal-btn icon-btn modal-btn-danger" title="Uninstall" disabled=${busy} onClick=${async () => {
+						if (await confirm(`Uninstall skill "${s.name}"?`)) act(`/skills uninstall ${s.name}`);
+					}}><${icons.trash} /></button>`
+				}
+			</div>
+		</div>
+	`;
 	return html`
 		<div class="settings-rows">
-			${[...(data || [])]
-				.sort((a, b) => a.name.localeCompare(b.name))
+			${groups
+				.filter((g) => g.items.length > 0)
 				.map(
-					(s) => html`
-				<div key=${s.name} class="settings-item-row">
-					<span class="settings-item-status ${s.enabled ? "ok" : "off"}" />
-					<span class="settings-item-name" title=${s.description}>${s.name}</span>
-					<span class="settings-item-meta">${s.source}</span>
-					<button class="modal-btn" disabled=${busy} onClick=${() => act(`/skills ${s.enabled ? "disable" : "enable"} ${s.name}`)}>${s.enabled ? "Disable" : "Enable"}</button>
-					${
-						s.uninstallable &&
-						html`<button class="modal-btn modal-btn-danger" disabled=${busy} onClick=${async () => {
-							if (await confirm(`Uninstall skill "${s.name}"?`)) act(`/skills uninstall ${s.name}`);
-						}}>Uninstall</button>`
-					}
+					(g) => html`
+				<div key=${g.key} class="settings-group">
+					<div class="settings-section-title">${g.label}</div>
+					${[...g.items].sort((a, b) => a.name.localeCompare(b.name)).map(renderSkill)}
 				</div>
 			`,
 				)}
-			${(!data || data.length === 0) && html`<div class="settings-hint">No skills found.</div>`}
+			${skills.length === 0 && html`<div class="settings-hint">No skills found.</div>`}
 		</div>
 	`;
 }
@@ -1172,22 +1310,27 @@ function SettingsPlugins({ data, busy, act, confirm }) {
 				.map(
 					(p) => html`
 				<div key=${p.id} class="settings-item-row">
-					<span class="settings-item-status ${p.enabled ? "ok" : "off"}" />
-					<span class="settings-item-name" title=${p.description}>${p.id}</span>
-					<button class="modal-btn" disabled=${busy} onClick=${() => act(`/plugin ${p.enabled ? "disable" : "enable"} ${p.id}`)}>${p.enabled ? "Disable" : "Enable"}</button>
-					<button class="modal-btn modal-btn-danger" disabled=${busy} onClick=${async () => {
-						if (await confirm(`Uninstall plugin "${p.id}"?`)) act(`/plugin uninstall ${p.id}`);
-					}}>Uninstall</button>
+					<div class="settings-item-info">
+						<span class="settings-item-status ${p.enabled ? "ok" : "off"}" />
+						<span class="settings-item-name">${p.description || p.id}</span>
+						<span class="settings-item-meta">${p.id}</span>
+					</div>
+					<div class="settings-item-actions">
+						<button class="modal-btn icon-btn" title=${p.enabled ? "Disable" : "Enable"} disabled=${busy} onClick=${() => act(`/plugin ${p.enabled ? "disable" : "enable"} ${p.id}`)}>${p.enabled ? html`<${icons.pause} />` : html`<${icons.play} />`}</button>
+						<button class="modal-btn icon-btn modal-btn-danger" title="Uninstall" disabled=${busy} onClick=${async () => {
+							if (await confirm(`Uninstall plugin "${p.id}"?`)) act(`/plugin uninstall ${p.id}`);
+						}}><${icons.trash} /></button>
+					</div>
 				</div>
 			`,
 				)}
 			${data.plugins.length === 0 && html`<div class="settings-hint">No plugins installed.</div>`}
 			<div class="settings-form-row">
 				<input type="text" placeholder="name@marketplace" value=${installRef} onInput=${(e) => setInstallRef(e.target.value)} />
-				<button class="modal-btn modal-btn-primary" disabled=${busy || !installRef} onClick=${() => {
+				<button class="modal-btn icon-btn" title="Install plugin" disabled=${busy || !installRef} onClick=${() => {
 					act(`/plugin install ${installRef}`);
 					setInstallRef("");
-				}}>Install</button>
+				}}><${icons.arrowDownTray} /></button>
 			</div>
 			<div class="settings-section-title">Marketplaces</div>
 			${[...data.marketplaces]
@@ -1195,22 +1338,27 @@ function SettingsPlugins({ data, busy, act, confirm }) {
 				.map(
 					(mp) => html`
 				<div key=${mp.name} class="settings-item-row">
-					<span class="settings-item-name">${mp.name}</span>
-					<span class="settings-item-meta" title=${mp.source}>${shortPath(mp.source)}</span>
-					<button class="modal-btn" disabled=${busy} onClick=${() => act(`/plugin marketplace update ${mp.name}`)}>Update</button>
-					<button class="modal-btn modal-btn-danger" disabled=${busy} onClick=${async () => {
-						if (await confirm(`Remove marketplace "${mp.name}"?`)) act(`/plugin marketplace remove ${mp.name}`);
-					}}>Remove</button>
+					<div class="settings-item-info">
+						<span class="settings-item-name">${mp.name}</span>
+						<span class="settings-item-meta" title=${mp.source}>${shortPath(mp.source)}</span>
+					</div>
+					<div class="settings-item-actions">
+						<button class="modal-btn icon-btn" title="Update" disabled=${busy} onClick=${() => act(`/plugin marketplace update ${mp.name}`)}><${icons.arrowPath} /></button>
+						<button class="modal-btn icon-btn modal-btn-danger" title="Remove" disabled=${busy} onClick=${async () => {
+							if (await confirm(`Remove marketplace "${mp.name}"?`))
+								act(`/plugin marketplace remove ${mp.name}`);
+						}}><${icons.trash} /></button>
+					</div>
 				</div>
 			`,
 				)}
 			${data.marketplaces.length === 0 && html`<div class="settings-hint">No marketplaces added.</div>`}
 			<div class="settings-form-row">
 				<input type="text" placeholder="owner/repo, URL, or path" value=${mpSource} onInput=${(e) => setMpSource(e.target.value)} />
-				<button class="modal-btn modal-btn-primary" disabled=${busy || !mpSource} onClick=${() => {
+				<button class="modal-btn icon-btn" title="Add marketplace" disabled=${busy || !mpSource} onClick=${() => {
 					act(`/plugin marketplace add ${mpSource}`);
 					setMpSource("");
-				}}>Add marketplace</button>
+				}}><${icons.plus} /></button>
 			</div>
 		</div>
 	`;
@@ -1220,6 +1368,19 @@ function SettingsProvider({ data, busy, act, confirm }) {
 	const [name, setName] = useState("");
 	const [url, setUrl] = useState("");
 	const [apiKey, setApiKey] = useState("");
+	const [editing, setEditing] = useState(null);
+	const startEdit = (p) => {
+		setEditing(p.name);
+		setName(p.name);
+		setUrl(p.url);
+		setApiKey(p.apiKey);
+	};
+	const cancelEdit = () => {
+		setEditing(null);
+		setName("");
+		setUrl("");
+		setApiKey("");
+	};
 	return html`
 		<div class="settings-rows">
 			${[...(data || [])]
@@ -1227,28 +1388,38 @@ function SettingsProvider({ data, busy, act, confirm }) {
 				.map(
 					(p) => html`
 				<div key=${p.name} class="settings-item-row">
-					<span class="settings-item-status ${p.active ? "ok" : "off"}" />
-					<span class="settings-item-name">${p.name}</span>
-					<span class="settings-item-meta" title=${p.url}>${shortPath(p.url)}</span>
-					${!p.active && html`<button class="modal-btn" disabled=${busy} onClick=${() => act(`/provider ${p.name}`)}>Switch</button>`}
-					<button class="modal-btn modal-btn-danger" disabled=${busy} onClick=${async () => {
-						if (await confirm(`Delete provider "${p.name}"?`)) act(`/provider delete ${p.name}`);
-					}}>Delete</button>
+					<div class="settings-item-info">
+						<span class="settings-item-status ${p.active ? "ok" : "off"}" />
+						<span class="settings-item-name">${p.name}</span>
+						<span class="settings-item-meta" title=${p.url}>${shortPath(p.url)}</span>
+					</div>
+					<div class="settings-item-actions">
+						<button class="modal-btn icon-btn" title="Edit" disabled=${busy} onClick=${() => startEdit(p)}><${icons.pencil} /></button>
+						${!p.active ? html`<button class="modal-btn icon-btn" title="Switch" disabled=${busy} onClick=${() => act(`/provider ${p.name}`)}><${icons.arrowRight} /></button>` : null}
+						<button class="modal-btn icon-btn modal-btn-danger" title="Delete" disabled=${busy} onClick=${async () => {
+							if (await confirm(`Delete provider "${p.name}"?`)) act(`/provider delete ${p.name}`);
+						}}><${icons.trash} /></button>
+					</div>
 				</div>
 			`,
 				)}
-			${(!data || data.length === 0) && html`<div class="settings-hint">No saved providers.</div>`}
-			<div class="settings-section-title">Add provider</div>
+			${!data || data.length === 0 ? html`<div class="settings-hint">No saved providers.</div>` : null}
+			<div class="settings-section-title">${editing ? `Edit provider: ${editing}` : "Add provider"}</div>
 			<div class="settings-form-row">
-				<input type="text" placeholder="name" value=${name} onInput=${(e) => setName(e.target.value)} />
+				<input type="text" placeholder="name" value=${name} disabled=${!!editing} onInput=${(e) => setName(e.target.value)} />
 				<input type="text" placeholder="base URL" value=${url} onInput=${(e) => setUrl(e.target.value)} />
 				<input type="password" placeholder="API key" value=${apiKey} onInput=${(e) => setApiKey(e.target.value)} />
-				<button class="modal-btn modal-btn-primary" disabled=${busy || !name || !url || !apiKey} onClick=${() => {
-					act(`/provider add ${name} ${url} ${apiKey}`);
-					setName("");
-					setUrl("");
-					setApiKey("");
-				}}>Add</button>
+				<button class="modal-btn icon-btn" title=${editing ? "Save changes" : "Add provider"} disabled=${busy || !name || !url || !apiKey} onClick=${async () => {
+					if (editing) {
+						await act(`/provider delete ${editing}`);
+						await act(`/provider add ${name} ${url} ${apiKey}`);
+						if (data.find((p) => p.active && p.name === editing)) await act(`/provider ${name}`);
+					} else {
+						await act(`/provider add ${name} ${url} ${apiKey}`);
+					}
+					cancelEdit();
+				}}><${icons.check} /></button>
+				${editing ? html`<button class="modal-btn icon-btn" title="Cancel" disabled=${busy} onClick=${cancelEdit}><${icons.xCircle} /></button>` : null}
 			</div>
 		</div>
 	`;
@@ -1259,6 +1430,7 @@ function SettingsSsh({ data, busy, act, confirm }) {
 	const [host, setHost] = useState("");
 	const [username, setUsername] = useState("");
 	const [port, setPort] = useState("");
+	const [keyContent, setKeyContent] = useState("");
 	return html`
 		<div class="settings-rows">
 			${[...(data || [])]
@@ -1266,28 +1438,50 @@ function SettingsSsh({ data, busy, act, confirm }) {
 				.map(
 					(h) => html`
 				<div key=${h.name} class="settings-item-row">
-					<span class="settings-item-name">${h.name}</span>
-					<span class="settings-item-meta">${h.username ? `${h.username}@` : ""}${h.host}${h.port ? `:${h.port}` : ""}</span>
-					<button class="modal-btn modal-btn-danger" disabled=${busy} onClick=${async () => {
-						if (await confirm(`Remove host "${h.name}"?`)) act(`/ssh remove ${h.name}`);
-					}}>Remove</button>
+					<div class="settings-item-info">
+						<span class="settings-item-name">${h.name}</span>
+						<span class="settings-item-meta">${h.username ? `${h.username}@` : ""}${h.host}${h.port ? `:${h.port}` : ""}${h.keyPath ? " (key)" : ""}</span>
+					</div>
+					<div class="settings-item-actions">
+						<button class="modal-btn icon-btn modal-btn-danger" title="Remove" disabled=${busy} onClick=${async () => {
+							if (await confirm(`Remove host "${h.name}"?`)) act(`/ssh remove ${h.name}`);
+						}}><${icons.trash} /></button>
+					</div>
 				</div>
 			`,
 				)}
 			${(!data || data.length === 0) && html`<div class="settings-hint">No SSH hosts configured.</div>`}
 			<div class="settings-section-title">Add host</div>
-			<div class="settings-form-row">
-				<input type="text" placeholder="name" value=${name} onInput=${(e) => setName(e.target.value)} />
-				<input type="text" placeholder="host" value=${host} onInput=${(e) => setHost(e.target.value)} />
-				<input type="text" placeholder="username (optional)" value=${username} onInput=${(e) => setUsername(e.target.value)} />
-				<input type="text" placeholder="port (optional)" value=${port} onInput=${(e) => setPort(e.target.value)} />
-				<button class="modal-btn modal-btn-primary" disabled=${busy || !name || !host} onClick=${() => {
-					act(`/ssh add ${name} ${host}${username ? ` ${username}` : " -"}${port ? ` ${port}` : ""}`);
-					setName("");
-					setHost("");
-					setUsername("");
-					setPort("");
-				}}>Add</button>
+			<div class="settings-ssh-form">
+				<div class="settings-form-row">
+					<input type="text" placeholder="name" value=${name} onInput=${(e) => setName(e.target.value)} />
+					<input type="text" placeholder="host or IP" value=${host} onInput=${(e) => setHost(e.target.value)} />
+				</div>
+				<div class="settings-form-row">
+					<input type="text" placeholder="username" value=${username} onInput=${(e) => setUsername(e.target.value)} />
+					<input type="text" placeholder="port" value=${port} style=${{ maxWidth: "80px" }} onInput=${(e) => setPort(e.target.value)} />
+				</div>
+				<textarea class="settings-textarea" placeholder="Paste SSH private key (optional)" onInput=${(e) => setKeyContent(e.target.value)} rows="4">${keyContent}</textarea>
+				<div class="settings-form-row" style=${{ justifyContent: "flex-end" }}>
+					<button class="modal-btn icon-btn" title="Add SSH host" disabled=${busy || !name || !host} onClick=${async () => {
+						let kp = "-";
+						if (keyContent.trim()) {
+							const res = await api("POST", "/api/ssh/key", { name, key: keyContent.trim() });
+							if (!res?.ok) {
+								alert(res?.error || "Failed to save key");
+								return;
+							}
+							kp = res.path;
+						}
+						const parts = [name, host, username || "-", port || "-", kp];
+						await act(`/ssh add ${parts.join(" ")}`);
+						setName("");
+						setHost("");
+						setUsername("");
+						setPort("");
+						setKeyContent("");
+					}}><${icons.plus} /></button>
+				</div>
 			</div>
 		</div>
 	`;

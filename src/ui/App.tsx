@@ -126,7 +126,9 @@ export function App(props: AppProps): JSX.Element {
 	const [personas] = useState(result.personas);
 	const [subagentPrompts] = useState(result.subagentPrompts);
 	const [subagentModel, setSubagentModel] = useState(result.subagentModel);
+	const [subagentModelProvider, setSubagentModelProvider] = useState(result.subagentModelProvider);
 	const [planModel, setPlanModel] = useState(result.planModel);
+	const [planModelProvider, setPlanModelProvider] = useState(result.planModelProvider);
 	const [webToolsEnabled, setWebToolsEnabled] = useState(() => loadSettings().webTools === true);
 	// Status bar segment configuration — persisted in settings, defaults to all
 	// segments visible in registry order (see statusbar.ts).
@@ -276,6 +278,7 @@ export function App(props: AppProps): JSX.Element {
 		currentPersona: currentPersona.name,
 		subagentPrompts,
 		subagentModel,
+		subagentModelProvider,
 		disabledTools,
 		projectTrusted,
 		noSkills: projectDeps.noSkills,
@@ -284,6 +287,7 @@ export function App(props: AppProps): JSX.Element {
 		planState,
 		onPlanSignal,
 		modelOverride: planMode && planModel ? planModel : undefined,
+		planModelProvider,
 	});
 	const running = agent.status === "running";
 	const canSubmit = useCallback(
@@ -474,12 +478,16 @@ export function App(props: AppProps): JSX.Element {
 		setPersonaOptions,
 		subagentModel,
 		setSubagentModel,
+		subagentModelProvider,
+		setSubagentModelProvider,
 		webToolsEnabled,
 		setWebToolsEnabled,
 		planMode,
 		setPlanMode,
 		planModel,
 		setPlanModel,
+		planModelProvider,
+		setPlanModelProvider,
 		sshHosts,
 		setSshHosts,
 		onThemeChange,
@@ -527,12 +535,16 @@ export function App(props: AppProps): JSX.Element {
 		setPersonaOptions,
 		subagentModel,
 		setSubagentModel,
+		subagentModelProvider,
+		setSubagentModelProvider,
 		webToolsEnabled,
 		setWebToolsEnabled,
 		planMode,
 		setPlanMode,
 		planModel,
 		setPlanModel,
+		planModelProvider,
+		setPlanModelProvider,
 		sshHosts,
 		setSshHosts,
 		onThemeChange,

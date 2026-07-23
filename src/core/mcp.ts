@@ -90,6 +90,8 @@ export interface McpSetupResult {
 	/** Every server name from the original config, regardless of connection
 	 * success or disabled state — so the /mcp picker can show the full list. */
 	allServerNames: string[];
+	/** Per-server source: "global" or "project". */
+	serverSources: Record<string, "global" | "project">;
 }
 
 // The common `npx -y <package>` config style has to resolve the package against
@@ -335,7 +337,14 @@ export async function connectMcpServers(servers: Record<string, McpServerConfig>
 		}),
 	);
 
-	return { toolIndex, toolDefinitions, connections, diagnostics, allServerNames: Object.keys(servers) };
+	return {
+		toolIndex,
+		toolDefinitions,
+		connections,
+		diagnostics,
+		allServerNames: Object.keys(servers),
+		serverSources: {},
+	};
 }
 
 function escapeXml(s: string): string {

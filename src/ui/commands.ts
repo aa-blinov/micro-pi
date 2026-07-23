@@ -1,7 +1,7 @@
 import { execFileSync, execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { reminderStateFromPlan } from "../core/compaction-reminder.ts";
-import { type AppConfig, probeProvider, runOnboardingCheck } from "../core/config.ts";
+import { type AppConfig, probeProvider, resolveProvider, runOnboardingCheck } from "../core/config.ts";
 import { formatContextFilesForPrompt, loadProjectContextFiles } from "../core/context-files.ts";
 import { compactSessionMessages, PLAN_COMPACTION_PROMPT } from "../core/loop.ts";
 import { closeMcpConnections, formatMcpForPrompt, type McpSetupResult, mcpServerToolBlurbs } from "../core/mcp.ts";
@@ -109,6 +109,7 @@ export const SLASH_COMMANDS: Array<{ name: string; description: string; takesArg
 	{ name: "/persona", description: "Show or change persona" },
 	{ name: "/plan", description: "Enter plan mode (explore + plan only)" },
 	{ name: "/plan-model", description: "Show or change the plan-mode model" },
+	{ name: "/plan-model-provider", description: "Set provider for plan-mode model", takesArgs: true },
 	// /plugin* — separate palette rows so typing "/plugin" shows the full menu
 	// (Composer matches name.startsWith; space closes the palette after pick).
 	{ name: "/plugin", description: "Toggle installed plugins on/off" },
@@ -161,6 +162,7 @@ export const SLASH_COMMANDS: Array<{ name: string; description: string; takesArg
 	{ name: "/statusbar", description: "Toggle and reorder status bar segments" },
 	{ name: "/steer", description: "Inject a message while running", takesArgs: true },
 	{ name: "/subagent-model", description: "Show or change subagent model" },
+	{ name: "/subagent-model-provider", description: "Set provider for subagent model", takesArgs: true },
 	{ name: "/theme", description: "Change color theme" },
 	{ name: "/usage", description: "Show session token and cost usage" },
 	{ name: "/web", description: "Toggle web tools (web_search, web_fetch)" },
@@ -209,6 +211,8 @@ export interface CommandDeps {
 	setReasoningMeta: (m: ModelReasoningMeta | undefined) => void;
 	subagentModel?: string;
 	setSubagentModel: (m: string | undefined) => void;
+	subagentModelProvider?: string;
+	setSubagentModelProvider: (p: string | undefined) => void;
 	webToolsEnabled: boolean;
 	setWebToolsEnabled: (v: boolean) => void;
 	planMode: boolean;
@@ -216,6 +220,8 @@ export interface CommandDeps {
 	/** Model used while plan mode is active; undefined falls back to session.model. */
 	planModel?: string;
 	setPlanModel: (m: string | undefined) => void;
+	planModelProvider?: string;
+	setPlanModelProvider: (p: string | undefined) => void;
 	onThemeChange?: () => void;
 	statusBar: StatusBarConfig;
 	setStatusBar: (s: StatusBarConfig) => void;
@@ -1347,7 +1353,18 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 	}
 
 	if (input === "/plan-model") {
-		const selection = await selectModel(config, deps.pickers, deps.planModel ?? session.model);
+		const providers = loadSettings().providers ?? [];
+		const providerCreds = resolveProvider(providers, deps.planModelProvider, {
+			baseURL: config.baseURL,
+			apiKey: config.apiKey,
+		});
+		const selection = await selectModel(
+			config,
+			deps.pickers,
+			deps.planModel ?? session.model,
+			undefined,
+			providerCreds,
+		);
 		if (!selection) {
 			showNotice("[Cancelled — plan-mode model unchanged]");
 			return;
@@ -1379,9 +1396,50 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 		return;
 	}
 
+	if (input === "/plan-model-provider" || input.startsWith("/plan-model-provider ")) {
+		const arg = input.slice("/plan-model-provider".length).trim();
+		if (arg === "off" || arg === "reset") {
+			deps.setPlanModelProvider(undefined);
+			updateSettings({ planModelProvider: undefined });
+			showNotice("[Plan-model provider: off — uses active provider]");
+			return;
+		}
+		const providers = loadSettings().providers ?? [];
+		if (!arg) {
+			// Show picker
+			const options: PickOption<string>[] = [
+				{ value: "", label: `Active provider (${config.baseURL})` },
+				...providers.map((p) => ({ value: p.name, label: `${p.name}  ${p.url}` })),
+			];
+			const picked = await deps.pickers.pickOption(options, { title: "Plan-model provider" });
+			if (picked === undefined) {
+				showNotice("[Cancelled]");
+				return;
+			}
+			deps.setPlanModelProvider(picked || undefined);
+			updateSettings({ planModelProvider: picked || undefined });
+			showNotice(`[Plan-model provider: ${picked || "active"}]`);
+			return;
+		}
+		// Direct name
+		if (!providers.some((p) => p.name === arg)) {
+			showNotice(`[Provider "${arg}" not found. Saved: ${providers.map((p) => p.name).join(", ") || "none"}]`);
+			return;
+		}
+		deps.setPlanModelProvider(arg);
+		updateSettings({ planModelProvider: arg });
+		showNotice(`[Plan-model provider: ${arg}]`);
+		return;
+	}
+
 	if (input === "/subagent-model") {
+		const providers = loadSettings().providers ?? [];
+		const providerCreds = resolveProvider(providers, deps.subagentModelProvider, {
+			baseURL: config.baseURL,
+			apiKey: config.apiKey,
+		});
 		const current = deps.subagentModel;
-		const selection = await selectModel(config, deps.pickers, current);
+		const selection = await selectModel(config, deps.pickers, current, undefined, providerCreds);
 		if (!selection) {
 			showNotice("[Cancelled — subagent model unchanged]");
 			return;
@@ -1404,6 +1462,42 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 		updateSettings({ subagentModel: newModel });
 		agent.refreshMeta();
 		showNotice(`[Subagent model: ${newModel}]`);
+		return;
+	}
+
+	if (input === "/subagent-model-provider" || input.startsWith("/subagent-model-provider ")) {
+		const arg = input.slice("/subagent-model-provider".length).trim();
+		if (arg === "off" || arg === "reset") {
+			deps.setSubagentModelProvider(undefined);
+			updateSettings({ subagentModelProvider: undefined });
+			showNotice("[Subagent-model provider: off — uses active provider]");
+			return;
+		}
+		const providers = loadSettings().providers ?? [];
+		if (!arg) {
+			// Show picker
+			const options: PickOption<string>[] = [
+				{ value: "", label: `Active provider (${config.baseURL})` },
+				...providers.map((p) => ({ value: p.name, label: `${p.name}  ${p.url}` })),
+			];
+			const picked = await deps.pickers.pickOption(options, { title: "Subagent-model provider" });
+			if (picked === undefined) {
+				showNotice("[Cancelled]");
+				return;
+			}
+			deps.setSubagentModelProvider(picked || undefined);
+			updateSettings({ subagentModelProvider: picked || undefined });
+			showNotice(`[Subagent-model provider: ${picked || "active"}]`);
+			return;
+		}
+		// Direct name
+		if (!providers.some((p) => p.name === arg)) {
+			showNotice(`[Provider "${arg}" not found. Saved: ${providers.map((p) => p.name).join(", ") || "none"}]`);
+			return;
+		}
+		deps.setSubagentModelProvider(arg);
+		updateSettings({ subagentModelProvider: arg });
+		showNotice(`[Subagent-model provider: ${arg}]`);
 		return;
 	}
 
@@ -1634,6 +1728,24 @@ export async function handleInput(text: string, images: PendingImage[] | undefin
 		if (confirm !== true) {
 			showNotice("[Cancelled]");
 			return;
+		}
+
+		// Warn if any model slot references this provider.
+		const settings = loadSettings();
+		const referencedBy = [
+			settings.modelProvider === picked ? "main model" : null,
+			settings.subagentModelProvider === picked ? "subagent model" : null,
+			settings.planModelProvider === picked ? "plan model" : null,
+		].filter(Boolean);
+		if (referencedBy.length > 0) {
+			showNotice(
+				`[Warning: "${picked}" is used by ${referencedBy.join(", ")} — those slots will fall back to active provider]`,
+			);
+			const slotUpdate: Record<string, string | undefined> = {};
+			if (settings.modelProvider === picked) slotUpdate.modelProvider = undefined;
+			if (settings.subagentModelProvider === picked) slotUpdate.subagentModelProvider = undefined;
+			if (settings.planModelProvider === picked) slotUpdate.planModelProvider = undefined;
+			updateSettings(slotUpdate);
 		}
 
 		const updated = providers.filter((p) => p.name !== picked);

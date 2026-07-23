@@ -12,13 +12,17 @@ import { ThinkBlockParser } from "./vendors.ts";
 export type Message = ChatCompletionMessageParam;
 export type Tool = ChatCompletionTool;
 
-export function createClient(config: AppConfig): OpenAI {
+export function createClient(config: AppConfig, override?: { baseURL: string; apiKey: string }): OpenAI {
 	// The SDK's bundled node-fetch shim can turn a stream that dies mid-flight
 	// into an *uncaught* "Premature close" exception instead of a rejection our
 	// retry logic can catch (confirmed by testing against a server that cuts
 	// the connection after headers). Node's native fetch doesn't have that
 	// failure mode, so use it explicitly rather than relying on the shim.
-	return new OpenAI({ baseURL: config.baseURL, apiKey: config.apiKey, fetch: providerFetch });
+	return new OpenAI({
+		baseURL: override?.baseURL ?? config.baseURL,
+		apiKey: override?.apiKey ?? config.apiKey,
+		fetch: providerFetch,
+	});
 }
 
 export interface Usage {
