@@ -2,6 +2,18 @@
 
 All notable user-facing changes to cast, newest first.
 
+## 0.8.13
+
+### Added
+
+- New builtin skills from MiMo Code:
+  - `arxiv` — search, read, cite academic papers from arXiv
+  - `deep-research` — parallel sub-agent research with cited reports
+  - `frontend-design` — UI/UX design guidance
+  - `learn-everything` — interactive learning from documents/PDFs
+  - `super-research` — autonomous research experiments
+- Updated `cast` skill with nested rules, apply modes table, and full commands reference.
+
 ## 0.8.12
 
 ### Fixed
