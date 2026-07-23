@@ -132,7 +132,7 @@ body.resizing-diff * { user-select: none; }
 	border-radius: var(--radius-sm);
 	transition: color .15s, background .15s;
 }
-.menu-toggle:hover { background: var(--bg-hover); }
+.menu-toggle:hover { color: var(--cyan); background: rgba(0,200,255,.08); }
 /* diff-toggle reuses .menu-toggle's plain icon-button look (no border/box)
  * so both header chevrons read as the same control — only the rotation
  * direction and which side of the layout they act on differ. */
@@ -868,7 +868,7 @@ body.resizing-diff .diff-resize-handle::after { background: var(--cyan); }
 	display: flex; align-items: center; justify-content: center;
 	transition: background .1s, color .1s;
 }
-.diff-close:hover { background: var(--bg-hover); color: var(--text); }
+.diff-close:hover { color: var(--cyan); background: rgba(0,200,255,.08); }
 .diff-file-list {
 	overflow-y: auto;
 	border-bottom: 1px solid var(--border);
@@ -1075,14 +1075,14 @@ body.resizing-diff .diff-resize-handle::after { background: var(--cyan); }
 	font-size: .85rem; font-weight: 600;
 }
 .modal-close {
-	background: none; border: none;
+	background: none; border: none; outline: none;
 	color: var(--text-muted); cursor: pointer;
 	width: 24px; height: 24px;
 	border-radius: 4px;
 	display: flex; align-items: center; justify-content: center;
 	transition: background .1s, color .1s;
 }
-.modal-close:hover { background: var(--bg-hover); color: var(--text); }
+.modal-close:hover { color: var(--cyan); background: rgba(0,200,255,.08); }
 .dir-path {
 	padding: 8px 14px;
 	font-family: var(--font-mono);
@@ -1133,10 +1133,13 @@ body.resizing-diff .diff-resize-handle::after { background: var(--cyan); }
 	transition: border-color .15s, color .15s, background .15s;
 }
 .modal-btn:hover { border-color: var(--border-active); color: var(--text); background: var(--bg-hover); }
-.icon-btn { padding: 4px 6px; border: none; background: none; color: var(--text-dim); cursor: pointer; border-radius: var(--radius-sm); display: inline-flex; align-items: center; }
-.icon-btn:hover { color: var(--text); background: var(--bg-hover); }
+.icon-btn { padding: 4px 6px; border: none; background: none; color: var(--text-dim); cursor: pointer; border-radius: var(--radius-sm); display: inline-flex; align-items: center; outline: none; }
+.icon-btn:focus { outline: none; box-shadow: none; }
+.icon-btn:hover { color: var(--cyan); background: rgba(0,200,255,.08); }
 .icon-btn:disabled { opacity: .35; cursor: default; }
+.icon-btn:disabled:hover { color: var(--text-dim); background: none; }
 .icon-btn.active { color: var(--cyan); }
+.icon-btn.modal-btn-danger:hover { color: #fca5a5; background: rgba(239,68,68,.1); }
 .modal-btn-primary {
 	background: var(--cyan);
 	border-color: var(--cyan);
@@ -1281,12 +1284,13 @@ body.resizing-diff .diff-resize-handle::after { background: var(--cyan); }
 	width: 480px; max-width: 90vw; max-height: 70vh;
 	box-shadow: 0 8px 32px rgba(0,0,0,.5);
 	font-size: .8rem; color: var(--text); line-height: 1.5;
-	display: flex; gap: 8px; align-items: flex-start;
+	display: flex; flex-direction: column; gap: 8px;
 }
 .info-popover-backdrop {
 	position: fixed; inset: 0; z-index: 99; background: rgba(0,0,0,.3);
 }
-.info-popover-text { flex: 1; white-space: pre-wrap; overflow-y: auto; min-width: 0; }
+.info-popover-header { display: flex; justify-content: flex-end; flex-shrink: 0; }
+.info-popover-text { flex: 1; white-space: pre-wrap; overflow-y: auto; overflow-x: hidden; min-width: 0; min-height: 0; overflow-wrap: break-word; word-break: break-word; }
 .info-popover .icon-btn { flex-shrink: 0; padding: 2px; }
 .settings-item-status {
 	width: 6px; height: 6px;

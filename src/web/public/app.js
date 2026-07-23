@@ -14,11 +14,13 @@ const html = htm.bind(h);
 // kept as an array-of-lines join here too, since the backslashes need to stay
 // literal and a template literal would make that harder to read at a glance.
 const CAST_BANNER = [
-	"                   __",
-	"  _________ ______/ /_",
-	" / ___/ __ `/ ___/ __/",
-	"/ /__/ /_/ (__  ) /_  ",
-	"\\___/\\__,_/____/\\__/  ",
+	" ░▒▓██████▓▒░ ░▒▓██████▓▒░ ░▒▓███████▓▒░▒▓████████▓▒░",
+	"░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░         ░▒▓█▓▒░    ",
+	"░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░         ░▒▓█▓▒░    ",
+	"░▒▓█▓▒░      ░▒▓████████▓▒░░▒▓██████▓▒░   ░▒▓█▓▒░    ",
+	"░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░      ░▒▓█▓▒░  ░▒▓█▓▒░    ",
+	"░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░      ░▒▓█▓▒░  ░▒▓█▓▒░    ",
+	" ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓███████▓▒░   ░▒▓█▓▒░    ",
 ].join("\n");
 
 const isMac =
@@ -932,6 +934,13 @@ function SettingsModal({ activeId, themes, currentThemeId, onApplyTheme, onTheme
 		for (const t of SETTINGS_TABS) load(t.id);
 	}, [activeId, load]);
 	const modalRef = useModalFocusTrap(true);
+	useEffect(() => {
+		const onKey = (e) => {
+			if (e.key === "Escape") onClose();
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [onClose]);
 
 	// Runs a mutating command, shows any error inline, and reloads the
 	// current tab's data on success so the list reflects the new state
@@ -1197,6 +1206,18 @@ function InfoPopover({ text, readUrl }) {
 	const [open, setOpen] = useState(false);
 	const [fullContent, setFullContent] = useState(null);
 	const [loading, setLoading] = useState(false);
+	useEffect(() => {
+		if (!open) return;
+		const onKey = (e) => {
+			if (e.key === "Escape") {
+				e.stopPropagation();
+				setOpen(false);
+				setFullContent(null);
+			}
+		};
+		window.addEventListener("keydown", onKey, true);
+		return () => window.removeEventListener("keydown", onKey, true);
+	}, [open]);
 	const loadFull = async () => {
 		setOpen(true);
 		setLoading(true);
@@ -1236,8 +1257,8 @@ function InfoPopover({ text, readUrl }) {
 		open && html`<div class="info-popover-backdrop" onClick=${close} />`,
 		open &&
 			html`<div class="info-popover" onClick=${(e) => e.stopPropagation()}>
+			<div class="info-popover-header"><button class="modal-btn icon-btn" onClick=${close}><${icons.xMark} /></button></div>
 			<div class="info-popover-text">${loading ? "Loading…" : fullContent || text}</div>
-			<button class="modal-btn icon-btn" onClick=${close}><${icons.xMark} /></button>
 		</div>`,
 	];
 }
@@ -1318,7 +1339,7 @@ function SettingsSkills({ data, busy, act, confirm }) {
 			<div class="settings-item-info">
 				<span class="settings-item-status ${s.enabled ? "ok" : "off"}" />
 				<span class="settings-item-name">${s.name}</span>
-				<span class="settings-item-meta">${s.source}</span>
+				<span class="settings-item-meta">${s.source === "plugin" && s.pluginId ? s.pluginId : s.source}</span>
 				<${InfoPopover} text=${s.description} readUrl=${`/api/skill-content?name=${encodeURIComponent(s.name)}`} />
 			</div>
 			<div class="settings-item-actions">
@@ -1365,7 +1386,7 @@ function SettingsPlugins({ data, busy, act, confirm }) {
 						<span class="settings-item-status ${p.enabled ? "ok" : "off"}" />
 						<span class="settings-item-name">${p.plugin || p.id}</span>
 						<span class="settings-item-meta">${p.marketplace || ""}</span>
-						<${InfoPopover} text=${p.description} readUrl=${`/api/plugin-content?id=${encodeURIComponent(p.id)}`} />
+						<${InfoPopover} text=${p.description} />
 					</div>
 					<div class="settings-item-actions">
 						<button class="modal-btn icon-btn" title=${p.enabled ? "Disable" : "Enable"} disabled=${busy} onClick=${() => act(`/plugin ${p.enabled ? "disable" : "enable"} ${p.id}`)}>${p.enabled ? html`<${icons.pause} />` : html`<${icons.play} />`}</button>

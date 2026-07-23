@@ -1056,6 +1056,7 @@ export function createWebBridge(result: StartupResult): WebBridge {
 					result: discovered.map((s) => ({
 						name: s.name,
 						source: s.source,
+						pluginId: s.pluginId,
 						description: s.description,
 						enabled: !disabled.has(s.name) && s.pluginEnabled !== false,
 						uninstallable: isUninstallableSkill(s),
