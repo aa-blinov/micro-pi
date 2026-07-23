@@ -491,7 +491,7 @@ export function createWebBridge(result: StartupResult): WebBridge {
 				broadcast(ws, {
 					type: "session_end",
 					usage: ws.session.usage,
-					messageCount: ws.session.messages.length,
+					messageCount: ws.session.messages.filter((m) => m.role === "user" || m.role === "assistant").length,
 				});
 				broadcastSessionUpdate(ws);
 			})
@@ -579,7 +579,7 @@ export function createWebBridge(result: StartupResult): WebBridge {
 			title: session.title,
 			pinned: session.pinned,
 			status,
-			messageCount: session.messages.length,
+			messageCount: session.messages.filter((m) => m.role === "user" || m.role === "assistant").length,
 			createdAt: session.createdAt,
 			updatedAt: session.updatedAt,
 		};
@@ -690,7 +690,7 @@ export function createWebBridge(result: StartupResult): WebBridge {
 					model: ws.session.model,
 					mode: ws.session.mode ?? "build",
 					status: ws.status,
-					messageCount: ws.session.messages.length,
+					messageCount: ws.session.messages.filter((m) => m.role === "user" || m.role === "assistant").length,
 					usage: ws.session.usage,
 					lastTurn: ws.lastTurn,
 					permissionMode,

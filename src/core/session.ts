@@ -820,7 +820,7 @@ function summarizeSession(session: SessionState): SessionSummary {
 		...(session.pinned ? { pinned: session.pinned } : {}),
 		...(session.createdAt ? { createdAt: session.createdAt } : {}),
 		updatedAt: session.updatedAt,
-		msgCount: session.messages.length,
+		msgCount: session.messages.filter((m) => m.role === "user" || m.role === "assistant").length,
 		firstUserMessage: getFirstUserMessage(session),
 		haystack: getSearchHaystack(session),
 	};
