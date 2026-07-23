@@ -29,3 +29,6 @@ test/__test_tmp__/
 .vscode/
 .idea/
 .zed/
+.mimocode/
+.playwright-mcp/
+chapters/

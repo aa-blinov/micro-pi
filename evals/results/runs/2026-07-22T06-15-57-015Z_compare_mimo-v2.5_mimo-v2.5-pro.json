@@ -1,0 +1,687 @@
+{
+  "timestamp": "2026-07-22T06:15:57.015Z",
+  "kind": "compare",
+  "models": [
+    "mimo-v2.5",
+    "mimo-v2.5-pro"
+  ],
+  "commit": "8646e56",
+  "perModel": {
+    "mimo-v2.5": {
+      "total": 29,
+      "passed": 27,
+      "failed": 2,
+      "duration": 109138,
+      "cases": [
+        {
+          "id": "simple-math",
+          "passed": true,
+          "duration": 3896,
+          "turns": 1,
+          "toolsCalled": [],
+          "failedChecks": []
+        },
+        {
+          "id": "read-file",
+          "passed": true,
+          "duration": 8612,
+          "turns": 2,
+          "toolsCalled": [
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "read-with-offset",
+          "passed": true,
+          "duration": 11712,
+          "turns": 2,
+          "toolsCalled": [
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "read-nonexistent",
+          "passed": true,
+          "duration": 7037,
+          "turns": 2,
+          "toolsCalled": [
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "write-file",
+          "passed": true,
+          "duration": 11513,
+          "turns": 2,
+          "toolsCalled": [
+            "write"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "edit-file",
+          "passed": true,
+          "duration": 40912,
+          "turns": 6,
+          "toolsCalled": [
+            "bash",
+            "write",
+            "read",
+            "edit",
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "bash-simple",
+          "passed": true,
+          "duration": 8023,
+          "turns": 2,
+          "toolsCalled": [
+            "bash"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "bash-multi",
+          "passed": true,
+          "duration": 11678,
+          "turns": 2,
+          "toolsCalled": [
+            "bash",
+            "bash"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "bash-error-handling",
+          "passed": true,
+          "duration": 8036,
+          "turns": 2,
+          "toolsCalled": [
+            "bash"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "grep-search",
+          "passed": true,
+          "duration": 11624,
+          "turns": 2,
+          "toolsCalled": [
+            "grep"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "glob-files",
+          "passed": true,
+          "duration": 24867,
+          "turns": 3,
+          "toolsCalled": [
+            "glob",
+            "ls"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "ls-directory",
+          "passed": true,
+          "duration": 18879,
+          "turns": 2,
+          "toolsCalled": [
+            "ls"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "read-then-analyze",
+          "passed": true,
+          "duration": 11486,
+          "turns": 2,
+          "toolsCalled": [
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "glob-then-grep",
+          "passed": false,
+          "duration": 41030,
+          "turns": 6,
+          "toolsCalled": [
+            "glob",
+            "ls",
+            "glob",
+            "glob",
+            "bash",
+            "grep"
+          ],
+          "failedChecks": [
+            "Too many turns: expected <= 4, got 6",
+            "Verify failed: response is missing real matching file(s): statusbar.tsx, ChatLog.tsx, Spinner.tsx, statusbar-picker.tsx, Composer.tsx, App.tsx, ink.tsx"
+          ]
+        },
+        {
+          "id": "write-then-read-back",
+          "passed": true,
+          "duration": 14434,
+          "turns": 3,
+          "toolsCalled": [
+            "write",
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "error-recovery",
+          "passed": true,
+          "duration": 12679,
+          "turns": 2,
+          "toolsCalled": [
+            "read",
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "rename-function-multi-file",
+          "passed": true,
+          "duration": 19158,
+          "turns": 4,
+          "toolsCalled": [
+            "read",
+            "read",
+            "edit",
+            "edit",
+            "bash"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "fix-bug-execution-grounded",
+          "passed": true,
+          "duration": 23697,
+          "turns": 4,
+          "toolsCalled": [
+            "bash",
+            "read",
+            "read",
+            "edit",
+            "bash"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "find-fix-typo-across-files",
+          "passed": true,
+          "duration": 13774,
+          "turns": 3,
+          "toolsCalled": [
+            "grep",
+            "edit",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-insert-above-heading",
+          "passed": true,
+          "duration": 13497,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-multi-edit-no-reread",
+          "passed": true,
+          "duration": 11933,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-range-replace-and-delete",
+          "passed": true,
+          "duration": 32854,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-edit-among-duplicates",
+          "passed": true,
+          "duration": 15122,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-move-block",
+          "passed": true,
+          "duration": 15180,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-large-file-needle",
+          "passed": false,
+          "duration": 54601,
+          "turns": 8,
+          "toolsCalled": [
+            "grep",
+            "read",
+            "grep",
+            "bash",
+            "grep",
+            "bash",
+            "edit"
+          ],
+          "failedChecks": [
+            "Verify failed: line 1042 is \"export const item_1042 = -1; // BUG: wrong value\""
+          ]
+        },
+        {
+          "id": "hashline-second-duplicate-block",
+          "passed": true,
+          "duration": 21555,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-makefile-tabs",
+          "passed": true,
+          "duration": 11456,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-json-nested",
+          "passed": true,
+          "duration": 74156,
+          "turns": 9,
+          "toolsCalled": [
+            "read",
+            "edit",
+            "read",
+            "edit",
+            "read",
+            "write",
+            "bash",
+            "plan_discard"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-dependent-edits",
+          "passed": true,
+          "duration": 21024,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        }
+      ]
+    },
+    "mimo-v2.5-pro": {
+      "total": 29,
+      "passed": 28,
+      "failed": 1,
+      "duration": 108466,
+      "cases": [
+        {
+          "id": "simple-math",
+          "passed": true,
+          "duration": 2968,
+          "turns": 1,
+          "toolsCalled": [],
+          "failedChecks": []
+        },
+        {
+          "id": "read-file",
+          "passed": true,
+          "duration": 7500,
+          "turns": 2,
+          "toolsCalled": [
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "read-with-offset",
+          "passed": true,
+          "duration": 6672,
+          "turns": 2,
+          "toolsCalled": [
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "read-nonexistent",
+          "passed": true,
+          "duration": 8178,
+          "turns": 2,
+          "toolsCalled": [
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "write-file",
+          "passed": true,
+          "duration": 8135,
+          "turns": 2,
+          "toolsCalled": [
+            "write"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "edit-file",
+          "passed": true,
+          "duration": 16206,
+          "turns": 4,
+          "toolsCalled": [
+            "write",
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "bash-simple",
+          "passed": true,
+          "duration": 12418,
+          "turns": 2,
+          "toolsCalled": [
+            "bash"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "bash-multi",
+          "passed": true,
+          "duration": 8922,
+          "turns": 2,
+          "toolsCalled": [
+            "bash",
+            "bash"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "bash-error-handling",
+          "passed": true,
+          "duration": 6909,
+          "turns": 2,
+          "toolsCalled": [
+            "bash"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "grep-search",
+          "passed": true,
+          "duration": 7730,
+          "turns": 2,
+          "toolsCalled": [
+            "grep"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "glob-files",
+          "passed": true,
+          "duration": 26822,
+          "turns": 3,
+          "toolsCalled": [
+            "glob",
+            "ls",
+            "glob"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "ls-directory",
+          "passed": true,
+          "duration": 14947,
+          "turns": 2,
+          "toolsCalled": [
+            "ls"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "read-then-analyze",
+          "passed": true,
+          "duration": 11419,
+          "turns": 2,
+          "toolsCalled": [
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "glob-then-grep",
+          "passed": false,
+          "duration": 25445,
+          "turns": 2,
+          "toolsCalled": [
+            "grep"
+          ],
+          "failedChecks": [
+            "Tool not called: glob",
+            "Verify failed: response is missing real matching file(s): statusbar.tsx, ChatLog.tsx, Spinner.tsx, statusbar-picker.tsx, Composer.tsx, App.tsx, stdin-manager.ts, plugins.ts, skills.ts, rules.ts, ssh.ts, settings.ts, readline.ts, subagents.ts, vendors.ts, project.ts, tools.ts, shared.ts, search.ts, bash.ts, hashline-cache.ts, hashline.ts, task.ts, session.ts, prompts.ts, upgrade.ts, runner.ts, ink.tsx"
+          ]
+        },
+        {
+          "id": "write-then-read-back",
+          "passed": true,
+          "duration": 11653,
+          "turns": 3,
+          "toolsCalled": [
+            "write",
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "error-recovery",
+          "passed": true,
+          "duration": 11465,
+          "turns": 2,
+          "toolsCalled": [
+            "read",
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "rename-function-multi-file",
+          "passed": true,
+          "duration": 19431,
+          "turns": 4,
+          "toolsCalled": [
+            "read",
+            "read",
+            "edit",
+            "edit",
+            "grep"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "fix-bug-execution-grounded",
+          "passed": true,
+          "duration": 16475,
+          "turns": 4,
+          "toolsCalled": [
+            "read",
+            "bash",
+            "edit",
+            "bash"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "find-fix-typo-across-files",
+          "passed": true,
+          "duration": 17399,
+          "turns": 4,
+          "toolsCalled": [
+            "grep",
+            "edit",
+            "edit",
+            "grep"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-insert-above-heading",
+          "passed": true,
+          "duration": 32958,
+          "turns": 5,
+          "toolsCalled": [
+            "read",
+            "edit",
+            "edit",
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-multi-edit-no-reread",
+          "passed": true,
+          "duration": 11112,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-range-replace-and-delete",
+          "passed": true,
+          "duration": 28727,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-edit-among-duplicates",
+          "passed": true,
+          "duration": 25527,
+          "turns": 4,
+          "toolsCalled": [
+            "read",
+            "edit",
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-move-block",
+          "passed": true,
+          "duration": 16430,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-large-file-needle",
+          "passed": true,
+          "duration": 19294,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-second-duplicate-block",
+          "passed": true,
+          "duration": 13833,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-makefile-tabs",
+          "passed": true,
+          "duration": 25098,
+          "turns": 4,
+          "toolsCalled": [
+            "read",
+            "edit",
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-json-nested",
+          "passed": true,
+          "duration": 23609,
+          "turns": 4,
+          "toolsCalled": [
+            "read",
+            "edit",
+            "bash"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "hashline-dependent-edits",
+          "passed": true,
+          "duration": 18900,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        }
+      ]
+    }
+  }
+}

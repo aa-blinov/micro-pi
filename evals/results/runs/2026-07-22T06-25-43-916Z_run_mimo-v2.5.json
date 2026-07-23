@@ -1,0 +1,76 @@
+{
+  "timestamp": "2026-07-22T06:25:43.916Z",
+  "kind": "run",
+  "model": "mimo-v2.5",
+  "caseFilter": "mutate-boolean-flip-interrupt-reminder-5",
+  "commit": "8646e56",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "duration": 23766,
+  "cases": [
+    {
+      "id": "mutate-boolean-flip-interrupt-reminder-5",
+      "description": "[boolean-flip] src/core/interrupt-reminder.ts:36 — A boolean literal on line 36 was flipped to its opposite value.",
+      "passed": true,
+      "duration": 23319,
+      "turns": 3,
+      "toolsCalled": [
+        "read",
+        "edit"
+      ],
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "Fixed: `return false` → `return true` on line 36. The function was returning the opposite of what it should — when it finds `[ABORTED]` in a trailing tool message, it needs to signal `true` so `appendInterruptReminder` knows to skip the reminder.",
+      "trace": [
+        {
+          "turn": 1,
+          "thinking": "Let me read the file first.",
+          "commentary": "",
+          "toolCalls": [
+            {
+              "id": "call_f93011ffc92445f3889d584a",
+              "name": "read",
+              "args": {
+                "path": "/tmp/cast-eval/2bed33f4-f098-48e5-af21-66e5ada0d213/mutate-boolean-flip-interrupt-reminder-5/interrupt-reminder.ts"
+              },
+              "result": {
+                "content": "1:ezx:wsr→/**\n2:dht:wsr→ * One-shot interrupt reminder: after a mid-stream user abort that left no\n3:ldn:wsr→ * tool-result signal, inject a `<system-reminder>` so the next model turn\n4:xkm:wsr→ * knows the prior turn was cut off.\n5:cvi:wsr→ */\n6:ddg:wsr→\n7:rnd:wsr→import type { Message } from \"./llm.ts\";\n8:ddg:wsr→\n9:yqj:zdj→/** Body text (wrapped by {@link buildInterruptReminder}). */\n10:uih:zdj→export const INTERRUPT_REMINDER_BODY = \"[Request interrupted by user]\";\n11:ddg:zdj→\n12:cus:zdj→/** Full user-message content ready to append to the transcript. */\n13:jkl:zdj→export function buildInterruptReminder(): string {\n14:oys:zdj→\treturn `<system-reminder>\\n${INTERRUPT_REMINDER_BODY}\\n</system-reminder>`;\n15:ioi:zdj→}\n16:ddg:zdj→\n17:mlp:pno→/** True when `messages` already ends with our interrupt reminder (idempotent). */\n18:utq:pno→export function messagesEndWithInterruptReminder(messages: Message[]): boolean {\n19:sri:pno→\tfor (let i = messages.length - 1; i >= 0; i--) {\n20:fop:pno→\t\tconst m = messages[i]!;\n21:ynn:pno→\t\tif (m.role !== \"user\") continue;\n22:hsl:pno→\t\tconst text = typeof m.content === \"string\" ? m.content : \"\";\n23:tzw:pno→\t\treturn text.includes(INTERRUPT_REMINDER_BODY) && text.includes(\"<system-reminder>\");\n24:ioi:pno→\t}\n25:tka:qcb→\treturn false;\n26:ioi:qcb→}\n27:ddg:qcb→\n28:ezx:qcb→/**\n29:pgc:qcb→ * Trailing `role: \"tool\"` results already told the model the user aborted\n30:vjd:qcb→ * (bash/ssh `[ABORTED]…`). Skip the reminder — the tool results are enough.\n31:cvi:qcb→ */\n32:edq:qcb→export function trailingToolsSignalUserAbort(messages: Message[]): boolean {\n33:sri:ncw→\tfor (let i = messages.length - 1; i >= 0; i--) {\n34:fop:ncw→\t\tconst m = messages[i]!;\n35:lny:ncw→\t\tif (m.role !== \"tool\") break;\n36:nbt:ncw→\t\tif (typeof m.content === \"string\" && m.content.includes(\"[ABORTED]\")) return false;\n37:ioi:ncw→\t}\n38:tka:ncw→\treturn false;\n39:ioi:ncw→}\n40:ddg:ncw→\n41:ezx:wce→/**\n42:ysp:wce→ * Append the interrupt reminder when needed. Returns true if a message was pushed.\n43:cvi:wce→ */\n44:xbs:wce→export function appendInterruptReminder(messages: Message[]): boolean {\n45:old:wce→\tif (messagesEndWithInterruptReminder(messages)) return false;\n46:ygp:wce→\tif (trailingToolsSignalUserAbort(messages)) return false;\n47:tbo:wce→\tmessages.push({ role: \"user\", content: buildInterruptReminder() });\n48:oqn:wce→\treturn true;\n49:ioi:pwo→}\n50:ddg:pwo→"
+              }
+            }
+          ]
+        },
+        {
+          "turn": 2,
+          "thinking": "The bug is on line 36. The function `trailingToolsSignalUserAbort` is supposed to return `true` when trailing tool messages signal a user abort (i.e., they contain \"[ABORTED]\"). But on line 36, it returns `false` when it finds \"[ABORTED]\" — it should return `true`.\n\nWait, let me re-read the docstring. It says: \"Skip the reminder — the tool results are enough.\" So if trailing tools signal a user abort, we should skip the reminder. And `appendInterruptReminder` returns early when `trailingToolsSignalUserAbort` returns true.\n\nSo `trailingToolsSignalUserAbort` should return `true` when it finds \"[ABORTED]\" in a tool message. But line 36 returns `false`. That's the bug — `false` should be `true`.",
+          "commentary": "The function `trailingToolsSignalUserAbort` should return `true` when it finds `[ABORTED]` in a trailing tool message, but line 36 returns `false`.",
+          "toolCalls": [
+            {
+              "id": "call_20c4b7ef1b8d4619bf9f3d53",
+              "name": "edit",
+              "args": {
+                "path": "/tmp/cast-eval/2bed33f4-f098-48e5-af21-66e5ada0d213/mutate-boolean-flip-interrupt-reminder-5/interrupt-reminder.ts",
+                "ops": [
+                  {
+                    "op": "replace",
+                    "anchor": "36:nbt:ncw",
+                    "content": "\t\tif (typeof m.content === \"string\" && m.content.includes(\"[ABORTED]\")) return true;"
+                  }
+                ]
+              },
+              "result": {
+                "content": "Updated 1 block(s) in /tmp/cast-eval/2bed33f4-f098-48e5-af21-66e5ada0d213/mutate-boolean-flip-interrupt-reminder-5/interrupt-reminder.ts. Result (with fresh anchors):\n\n34:fop:yxa→\t\tconst m = messages[i]!;\n35:lny:yxa→\t\tif (m.role !== \"tool\") break;\n36:utv:yxa→\t\tif (typeof m.content === \"string\" && m.content.includes(\"[ABORTED]\")) return true;\n37:ioi:yxa→\t}\n38:tka:yxa→\treturn false;"
+              }
+            }
+          ]
+        },
+        {
+          "turn": 3,
+          "thinking": "Done. Line 36: `return false` → `return true`.",
+          "commentary": "Fixed: `return false` → `return true` on line 36. The function was returning the opposite of what it should — when it finds `[ABORTED]` in a trailing tool message, it needs to signal `true` so `appendInterruptReminder` knows to skip the reminder.",
+          "toolCalls": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-07-22T05:57:38.857Z",
+  "kind": "run",
+  "model": "mimo-v2.5-pro",
+  "caseFilter": "simple-math",
+  "commit": "8646e56",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "duration": 4908,
+  "cases": [
+    {
+      "id": "simple-math",
+      "description": "Agent answers a simple math question without tools",
+      "passed": true,
+      "duration": 4907,
+      "turns": 1,
+      "toolsCalled": [],
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "4."
+    }
+  ]
+}

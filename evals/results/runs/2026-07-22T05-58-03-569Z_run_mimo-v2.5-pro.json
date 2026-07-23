@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-07-22T05:58:03.569Z",
+  "kind": "run",
+  "model": "mimo-v2.5-pro",
+  "commit": "8646e56",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "duration": 15801,
+  "cases": [
+    {
+      "id": "mutate-boolean-flip-runner-7",
+      "description": "[boolean-flip] src/core/runner.ts:29 — A boolean literal on line 29 was flipped to its opposite value.",
+      "passed": true,
+      "duration": 15403,
+      "turns": 3,
+      "toolsCalled": [
+        "read",
+        "edit"
+      ],
+      "failedChecks": [],
+      "errors": [],
+      "responsePreview": "Fixed: `isRunning: true` → `isRunning: false` on line 29. The runner starts idle; `startRun`/`endRun` toggle the flag during actual prompt execution."
+    }
+  ]
+}

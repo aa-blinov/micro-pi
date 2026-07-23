@@ -1,0 +1,362 @@
+{
+  "timestamp": "2026-07-22T04:49:45.322Z",
+  "kind": "compare",
+  "models": [
+    "mimo-v2.5",
+    "mimo-v2.5-pro"
+  ],
+  "caseFilter": "mutate",
+  "commit": "8646e56",
+  "perModel": {
+    "mimo-v2.5": {
+      "total": 15,
+      "passed": 15,
+      "failed": 0,
+      "duration": 42247,
+      "cases": [
+        {
+          "id": "mutate-boolean-flip-runner-7",
+          "passed": true,
+          "duration": 11666,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-upgrade-8",
+          "passed": true,
+          "duration": 18899,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-mcp-9",
+          "passed": true,
+          "duration": 22955,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-boolean-flip-plan-10",
+          "passed": true,
+          "duration": 12728,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-interrupt-reminder-11",
+          "passed": true,
+          "duration": 24812,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-context-files-12",
+          "passed": true,
+          "duration": 18481,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-shared-13",
+          "passed": true,
+          "duration": 17270,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-off-by-one-hashline-14",
+          "passed": true,
+          "duration": 20734,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-boolean-flip-run-15",
+          "passed": true,
+          "duration": 21247,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-open-work-gate-16",
+          "passed": true,
+          "duration": 17954,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-hashline-cache-17",
+          "passed": true,
+          "duration": 15557,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-task-18",
+          "passed": true,
+          "duration": 14862,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-settings-19",
+          "passed": true,
+          "duration": 18227,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-boolean-flip-plugins-20",
+          "passed": true,
+          "duration": 17037,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-frontmatter-21",
+          "passed": true,
+          "duration": 22937,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        }
+      ]
+    },
+    "mimo-v2.5-pro": {
+      "total": 15,
+      "passed": 13,
+      "failed": 2,
+      "duration": 31727,
+      "cases": [
+        {
+          "id": "mutate-boolean-flip-runner-7",
+          "passed": true,
+          "duration": 14340,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-upgrade-8",
+          "passed": true,
+          "duration": 17505,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-mcp-9",
+          "passed": true,
+          "duration": 25019,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-boolean-flip-plan-10",
+          "passed": true,
+          "duration": 16186,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-interrupt-reminder-11",
+          "passed": true,
+          "duration": 15734,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-context-files-12",
+          "passed": true,
+          "duration": 14811,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-shared-13",
+          "passed": true,
+          "duration": 15237,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-off-by-one-hashline-14",
+          "passed": true,
+          "duration": 17944,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-boolean-flip-run-15",
+          "passed": false,
+          "duration": 17083,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": [
+            "Verify failed: content doesn't match the original after formatting — mutated line 47 was \"if (settings.webTools !== false) {\", expected back to \"if (settings.webTools !== true) {\""
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-open-work-gate-16",
+          "passed": false,
+          "duration": 16663,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": [
+            "Verify failed: content doesn't match the original after formatting — mutated line 102 was \"if (!planState && planState.enabled) return { steps: [], closableViaPlanCheck: true };\", expected back to \"if (!planState || planState.enabled) return { steps: [], closableViaPlanCheck: true };\""
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-hashline-cache-17",
+          "passed": true,
+          "duration": 15666,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-task-18",
+          "passed": true,
+          "duration": 10741,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-settings-19",
+          "passed": true,
+          "duration": 12269,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-boolean-flip-plugins-20",
+          "passed": true,
+          "duration": 14722,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-frontmatter-21",
+          "passed": true,
+          "duration": 14671,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,887 @@
+{
+  "timestamp": "2026-07-22T05:53:18.728Z",
+  "kind": "compare",
+  "repeat": 3,
+  "models": [
+    "mimo-v2.5",
+    "mimo-v2.5-pro"
+  ],
+  "caseFilter": "mutate",
+  "commit": "8646e56",
+  "perModel": {
+    "mimo-v2.5": {
+      "casesTotal": 15,
+      "casesPassed": 14,
+      "duration": 381037,
+      "cases": [
+        {
+          "id": "mutate-boolean-flip-runner-7",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 17870.333333333332,
+          "avgTurns": 3.6666666666666665,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 11740,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 16445,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 25426,
+              "turns": 5,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-upgrade-8",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 36416.666666666664,
+          "avgTurns": 3.6666666666666665,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 19039,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 21790,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 68421,
+              "turns": 5,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-mcp-9",
+          "passed": 0,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 125988.33333333333,
+          "avgTurns": 6.666666666666667,
+          "attempts": [
+            {
+              "passed": false,
+              "duration": 17459,
+              "turns": 3,
+              "failedChecks": [
+                "Verify failed: content doesn't match the original after formatting — mutated line 240 was \"if (!cfg.url && /didn't respond within/.test(msg)) throw error;\", expected back to \"if (!cfg.url || /didn't respond within/.test(msg)) throw error;\""
+              ]
+            },
+            {
+              "passed": false,
+              "duration": 180019,
+              "turns": 10,
+              "failedChecks": [
+                "Verify failed: content doesn't match the original after formatting — mutated line 240 was \"if (!cfg.url && /didn't respond within/.test(msg)) throw error;\", expected back to \"if (!cfg.url || /didn't respond within/.test(msg)) throw error;\""
+              ]
+            },
+            {
+              "passed": false,
+              "duration": 180487,
+              "turns": 7,
+              "failedChecks": [
+                "Verify failed: content doesn't match the original after formatting — mutated line 240 was \"if (!cfg.url && /didn't respond within/.test(msg)) throw error;\", expected back to \"if (!cfg.url || /didn't respond within/.test(msg)) throw error;\""
+              ]
+            }
+          ]
+        },
+        {
+          "id": "mutate-boolean-flip-plan-10",
+          "passed": 2,
+          "total": 3,
+          "consistent": false,
+          "avgDuration": 18551,
+          "avgTurns": 3.3333333333333335,
+          "attempts": [
+            {
+              "passed": false,
+              "duration": 16988,
+              "turns": 3,
+              "failedChecks": [
+                "Verify failed: content doesn't match the original after formatting — mutated line 552 was \"success: true,\", expected back to \"success: false,\""
+              ]
+            },
+            {
+              "passed": true,
+              "duration": 14686,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 23979,
+              "turns": 4,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-interrupt-reminder-11",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 29146.333333333332,
+          "avgTurns": 4.333333333333333,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 17360,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 17347,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 52732,
+              "turns": 7,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-context-files-12",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 125307.33333333333,
+          "avgTurns": 7,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 15920,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 180001,
+              "turns": 10,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 180001,
+              "turns": 8,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-shared-13",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 30240.666666666668,
+          "avgTurns": 4.333333333333333,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 14704,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 37455,
+              "turns": 5,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 38563,
+              "turns": 5,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-off-by-one-hashline-14",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 104955.33333333333,
+          "avgTurns": 4.333333333333333,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 34126,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 100737,
+              "turns": 4,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 180003,
+              "turns": 6,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-boolean-flip-run-15",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 33896.666666666664,
+          "avgTurns": 3.6666666666666665,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 21358,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 29353,
+              "turns": 4,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 50979,
+              "turns": 4,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-open-work-gate-16",
+          "passed": 2,
+          "total": 3,
+          "consistent": false,
+          "avgDuration": 90120.33333333333,
+          "avgTurns": 6,
+          "attempts": [
+            {
+              "passed": false,
+              "duration": 15513,
+              "turns": 3,
+              "failedChecks": [
+                "Verify failed: content doesn't match the original after formatting — mutated line 102 was \"if (!planState && planState.enabled) return { steps: [], closableViaPlanCheck: true };\", expected back to \"if (!planState || planState.enabled) return { steps: [], closableViaPlanCheck: true };\""
+              ]
+            },
+            {
+              "passed": true,
+              "duration": 132104,
+              "turns": 7,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 122744,
+              "turns": 8,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-hashline-cache-17",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 33941.666666666664,
+          "avgTurns": 4.666666666666667,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 19475,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 30709,
+              "turns": 6,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 51641,
+              "turns": 5,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-task-18",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 25852.666666666668,
+          "avgTurns": 4,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 15218,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 19547,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 42793,
+              "turns": 6,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-settings-19",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 85390.66666666667,
+          "avgTurns": 5.666666666666667,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 19676,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 87963,
+              "turns": 7,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 148533,
+              "turns": 7,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-boolean-flip-plugins-20",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 125455,
+          "avgTurns": 8.666666666666666,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 16359,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 180003,
+              "turns": 10,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 180003,
+              "turns": 13,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-frontmatter-21",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 43326.333333333336,
+          "avgTurns": 5.333333333333333,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 13230,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 29190,
+              "turns": 4,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 87559,
+              "turns": 9,
+              "failedChecks": []
+            }
+          ]
+        }
+      ]
+    },
+    "mimo-v2.5-pro": {
+      "casesTotal": 15,
+      "casesPassed": 14,
+      "duration": 372542,
+      "cases": [
+        {
+          "id": "mutate-boolean-flip-runner-7",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 18880.666666666668,
+          "avgTurns": 3.3333333333333335,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 12715,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 20817,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 23110,
+              "turns": 4,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-upgrade-8",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 27762.333333333332,
+          "avgTurns": 3.6666666666666665,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 16957,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 30598,
+              "turns": 4,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 35732,
+              "turns": 4,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-mcp-9",
+          "passed": 2,
+          "total": 3,
+          "consistent": false,
+          "avgDuration": 44758.333333333336,
+          "avgTurns": 3.6666666666666665,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 20364,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 36555,
+              "turns": 4,
+              "failedChecks": []
+            },
+            {
+              "passed": false,
+              "duration": 77356,
+              "turns": 4,
+              "failedChecks": [
+                "Verify failed: content doesn't match the original after formatting — mutated line 240 was \"if (!cfg.url && /didn't respond within/.test(msg)) throw error;\", expected back to \"if (!cfg.url || /didn't respond within/.test(msg)) throw error;\""
+              ]
+            }
+          ]
+        },
+        {
+          "id": "mutate-boolean-flip-plan-10",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 127178,
+          "avgTurns": 15.333333333333334,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 21528,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 180002,
+              "turns": 22,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 180004,
+              "turns": 21,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-interrupt-reminder-11",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 20198.666666666668,
+          "avgTurns": 3.3333333333333335,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 14918,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 15023,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 30655,
+              "turns": 4,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-context-files-12",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 62006,
+          "avgTurns": 3,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 17674,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 27801,
+              "turns": 4,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 140543,
+              "turns": 2,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-shared-13",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 17232,
+          "avgTurns": 3.3333333333333335,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 15450,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 15286,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 20960,
+              "turns": 4,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-off-by-one-hashline-14",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 112009,
+          "avgTurns": 2.3333333333333335,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 16740,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 139286,
+              "turns": 2,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 180001,
+              "turns": 2,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-boolean-flip-run-15",
+          "passed": 0,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 124754,
+          "avgTurns": 11.333333333333334,
+          "attempts": [
+            {
+              "passed": false,
+              "duration": 14261,
+              "turns": 3,
+              "failedChecks": [
+                "Verify failed: content doesn't match the original after formatting — mutated line 47 was \"if (settings.webTools !== false) {\", expected back to \"if (settings.webTools !== true) {\""
+              ]
+            },
+            {
+              "passed": false,
+              "duration": 180000,
+              "turns": 20,
+              "failedChecks": [
+                "Verify failed: content doesn't match the original after formatting — mutated line 47 was \"if (settings.webTools !== false) {\", expected back to \"if (settings.webTools !== true) {\""
+              ]
+            },
+            {
+              "passed": false,
+              "duration": 180001,
+              "turns": 11,
+              "failedChecks": [
+                "Verify failed: content doesn't match the original after formatting — mutated line 47 was \"if (settings.webTools !== false) {\", expected back to \"if (settings.webTools !== true) {\""
+              ]
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-open-work-gate-16",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 25169,
+          "avgTurns": 3.3333333333333335,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 17740,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 23159,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 34608,
+              "turns": 4,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-hashline-cache-17",
+          "passed": 2,
+          "total": 3,
+          "consistent": false,
+          "avgDuration": 15570.333333333334,
+          "avgTurns": 3.3333333333333335,
+          "attempts": [
+            {
+              "passed": false,
+              "duration": 13573,
+              "turns": 3,
+              "failedChecks": [
+                "Verify failed: content doesn't match the original after formatting — mutated line 94 was \"if (this.head !== e) return;\", expected back to \"if (this.head === e) return;\""
+              ]
+            },
+            {
+              "passed": true,
+              "duration": 12250,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 20888,
+              "turns": 4,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-task-18",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 124405,
+          "avgTurns": 13.333333333333334,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 13208,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 180003,
+              "turns": 20,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 180004,
+              "turns": 17,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-settings-19",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 15075.333333333334,
+          "avgTurns": 3,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 12074,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 14719,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 18433,
+              "turns": 3,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-boolean-flip-plugins-20",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 11828.666666666666,
+          "avgTurns": 3,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 12010,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 11498,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 11978,
+              "turns": 3,
+              "failedChecks": []
+            }
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-frontmatter-21",
+          "passed": 3,
+          "total": 3,
+          "consistent": true,
+          "avgDuration": 72416,
+          "avgTurns": 5,
+          "attempts": [
+            {
+              "passed": true,
+              "duration": 13758,
+              "turns": 3,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 23485,
+              "turns": 4,
+              "failedChecks": []
+            },
+            {
+              "passed": true,
+              "duration": 180005,
+              "turns": 8,
+              "failedChecks": []
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

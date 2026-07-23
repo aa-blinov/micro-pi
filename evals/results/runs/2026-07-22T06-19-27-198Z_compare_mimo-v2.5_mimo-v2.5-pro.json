@@ -1,0 +1,394 @@
+{
+  "timestamp": "2026-07-22T06:19:27.198Z",
+  "kind": "compare",
+  "models": [
+    "mimo-v2.5",
+    "mimo-v2.5-pro"
+  ],
+  "commit": "8646e56",
+  "perModel": {
+    "mimo-v2.5": {
+      "total": 15,
+      "passed": 13,
+      "failed": 2,
+      "duration": 180445,
+      "cases": [
+        {
+          "id": "mutate-comparison-operator-swap-upgrade-3",
+          "passed": true,
+          "duration": 13383,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-boolean-flip-interrupt-reminder-5",
+          "passed": false,
+          "duration": 28447,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": [
+            "Verify failed: content doesn't match the original after formatting — mutated line 36 was \"if (typeof m.content === \"string\" && m.content.includes(\"[ABORTED]\")) return false;\", expected back to \"if (typeof m.content === \"string\" && m.content.includes(\"[ABORTED]\")) return true;\""
+          ]
+        },
+        {
+          "id": "mutate-off-by-one-rules-6",
+          "passed": true,
+          "duration": 23816,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-off-by-one-plan-7",
+          "passed": true,
+          "duration": 71759,
+          "turns": 8,
+          "toolsCalled": [
+            "read",
+            "grep",
+            "grep",
+            "read",
+            "read",
+            "grep",
+            "edit",
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-off-by-one-mcp-8",
+          "passed": true,
+          "duration": 180026,
+          "turns": 20,
+          "toolsCalled": [
+            "read",
+            "grep",
+            "grep",
+            "glob",
+            "read",
+            "web_search",
+            "web_fetch",
+            "web_fetch",
+            "web_fetch",
+            "web_fetch",
+            "web_fetch",
+            "web_fetch",
+            "bash",
+            "bash",
+            "bash",
+            "bash",
+            "read",
+            "read",
+            "read",
+            "bash"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-bash-9",
+          "passed": true,
+          "duration": 15785,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-boolean-flip-task-10",
+          "passed": true,
+          "duration": 27818,
+          "turns": 4,
+          "toolsCalled": [
+            "read",
+            "edit",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-hashline-11",
+          "passed": true,
+          "duration": 21528,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-files-13",
+          "passed": true,
+          "duration": 19801,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-boolean-flip-llm-14",
+          "passed": true,
+          "duration": 24373,
+          "turns": 4,
+          "toolsCalled": [
+            "read",
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-context-files-15",
+          "passed": true,
+          "duration": 24506,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-compaction-reminder-16",
+          "passed": true,
+          "duration": 27991,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-off-by-one-ssh-18",
+          "passed": false,
+          "duration": 18047,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": [
+            "Verify failed: content doesn't match the original after formatting — mutated line 108 was \"const mode = stats.mode & 510;\", expected back to \"const mode = stats.mode & 0o777;\""
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-tools-19",
+          "passed": true,
+          "duration": 99425,
+          "turns": 5,
+          "toolsCalled": [
+            "read",
+            "edit",
+            "edit",
+            "read"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-shared-20",
+          "passed": true,
+          "duration": 14879,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        }
+      ]
+    },
+    "mimo-v2.5-pro": {
+      "total": 15,
+      "passed": 13,
+      "failed": 2,
+      "duration": 80948,
+      "cases": [
+        {
+          "id": "mutate-comparison-operator-swap-upgrade-3",
+          "passed": true,
+          "duration": 10426,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-boolean-flip-interrupt-reminder-5",
+          "passed": true,
+          "duration": 20267,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-off-by-one-rules-6",
+          "passed": true,
+          "duration": 16653,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-off-by-one-plan-7",
+          "passed": true,
+          "duration": 15176,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-off-by-one-mcp-8",
+          "passed": true,
+          "duration": 24744,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-bash-9",
+          "passed": true,
+          "duration": 11238,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-boolean-flip-task-10",
+          "passed": false,
+          "duration": 14646,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": [
+            "Verify failed: content doesn't match the original after formatting — mutated line 219 was \"return { content: `Unknown subagent \"${subagentName}\". Available: ${available}`, isError: false };\", expected back to \"return { content: `Unknown subagent \"${subagentName}\". Available: ${available}`, isError: true };\""
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-hashline-11",
+          "passed": true,
+          "duration": 15955,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-files-13",
+          "passed": true,
+          "duration": 19082,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-boolean-flip-llm-14",
+          "passed": true,
+          "duration": 15204,
+          "turns": 4,
+          "toolsCalled": [
+            "read",
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-context-files-15",
+          "passed": true,
+          "duration": 11957,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-compaction-reminder-16",
+          "passed": true,
+          "duration": 14830,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-off-by-one-ssh-18",
+          "passed": false,
+          "duration": 16654,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": [
+            "Verify failed: content doesn't match the original after formatting — mutated line 108 was \"const mode = stats.mode & 510;\", expected back to \"const mode = stats.mode & 0o777;\""
+          ]
+        },
+        {
+          "id": "mutate-comparison-operator-swap-tools-19",
+          "passed": true,
+          "duration": 18763,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        },
+        {
+          "id": "mutate-comparison-operator-swap-shared-20",
+          "passed": true,
+          "duration": 17303,
+          "turns": 3,
+          "toolsCalled": [
+            "read",
+            "edit"
+          ],
+          "failedChecks": []
+        }
+      ]
+    }
+  }
+}
