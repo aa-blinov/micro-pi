@@ -1023,6 +1023,7 @@ body.resizing-diff .diff-resize-handle::after { background: var(--cyan); }
 	   rather than a `~` combinator (which only looks forward). */
 	.sidebar:has(~ .diff-panel.open) { display: none; }
 	.diff-resize-handle { display: none; }
+	.empty-state-banner { font-size: .6rem; line-height: 1.2; letter-spacing: -0.5px; }
 }
 
 /* Keyboard shortcuts are a physical-keyboard feature — not useful on a phone
