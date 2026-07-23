@@ -2,6 +2,16 @@
 
 All notable user-facing changes to cast, newest first.
 
+## 0.8.12
+
+### Fixed
+
+- Web UI: `<system-reminder>` blocks (compaction, date-rollover, interrupt reminders) now render as styled warning messages instead of raw XML tags after session reload.
+- Web UI: SSE reconnect — full state sync from server, stale streaming blocks cleared, auto-scroll to latest messages, visibility change detection for mobile tab switching.
+- Web UI: message count in sidebar now shows only user and assistant messages (was inflated by hidden tool/system messages).
+- Web UI: header "cast" text replaced with themed status dot indicator (green=connected, yellow=reconnecting, red=offline).
+- Web UI: ASCII banner no longer overflows on vertical mobile screens — added `white-space: pre` and `max-width: 100%`.
+
 ## 0.8.11
 
 ### Fixed
