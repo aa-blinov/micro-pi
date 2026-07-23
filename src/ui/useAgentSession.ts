@@ -269,7 +269,24 @@ export function buildDisplayMessages(sessionMessages: SessionState["messages"]):
 		if (m.role === "tool") continue;
 
 		if (m.role === "user") {
-			out.push({ role: "user", content: messageContentToText(m.content) });
+			const text = messageContentToText(m.content);
+			// Extract <system-reminder> blocks and render them as warning
+			// messages instead of raw XML. These are internal protocol
+			// (compaction, date-rollover, interrupt reminders) injected as
+			// role:"user" because the wire format has no dedicated role.
+			const reminders: string[] = [];
+			const cleaned = text
+				.replace(/<system-reminder>([\s\S]*?)<\/system-reminder>/g, (_, body: string) => {
+					reminders.push(body.trim());
+					return "";
+				})
+				.trim();
+			// Show each reminder as a styled warning message
+			for (const body of reminders) {
+				if (body) out.push({ role: "warning", content: `[system] ${body}` });
+			}
+			if (cleaned) out.push({ role: "user", content: cleaned });
+			if (!cleaned && reminders.length === 0) out.push({ role: "user", content: text });
 			continue;
 		}
 

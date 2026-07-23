@@ -160,9 +160,34 @@ export function toDisplayMessages(messages: Message[], reasoning?: Record<number
 			});
 			return;
 		}
+		// Extract <system-reminder> blocks and render them as warning
+		// messages instead of raw XML. These are internal protocol
+		// (compaction, date-rollover, interrupt reminders) injected as
+		// role:"user" because the wire format has no dedicated role.
+		let content = typeof m.content === "string" ? m.content : null;
+		if (m.role === "user" && content) {
+			const reminders: string[] = [];
+			const cleaned = content
+				.replace(/<system-reminder>([\s\S]*?)<\/system-reminder>/g, (_, body: string) => {
+					reminders.push(body.trim());
+					return "";
+				})
+				.trim();
+			// Show each reminder as a styled warning message
+			for (const body of reminders) {
+				if (body) out.push({ role: "warning", content: `[system] ${body}` });
+			}
+			if (cleaned) {
+				content = cleaned;
+			} else if (reminders.length > 0) {
+				// Entire message was system-reminder — skip the user message
+				// but reminders already added above
+				return;
+			}
+		}
 		out.push({
 			role: m.role,
-			content: typeof m.content === "string" ? m.content : null,
+			content,
 			thinking: m.role === "assistant" ? reasoning?.[i] : undefined,
 		});
 	});
