@@ -5,6 +5,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { homedir } from "node:os";
 import { loadSettings, updateSettings } from "../core/settings.ts";
 import type { ParsedArgs } from "../core/startup.ts";
 import { runStartup } from "../core/startup.ts";
@@ -43,9 +44,7 @@ export async function runWebServerMain(
 	}
 
 	const settings = loadSettings();
-	const cwd = process.env.CAST_CWD
-		? (await import("node:path")).resolve(process.env.CAST_CWD)
-		: (await import("node:path")).resolve(".");
+	const cwd = process.env.CAST_CWD ? (await import("node:path")).resolve(process.env.CAST_CWD) : homedir();
 
 	// Non-interactive pickers for web mode
 	const webPickers: Pickers = {

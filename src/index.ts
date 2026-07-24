@@ -273,7 +273,7 @@ async function handleWebCommand(args: string[]): Promise<void> {
 		: ["--import", "tsx", "./src/web/index.ts", ...restArgs, "--port", String(port), "--host", host];
 	const spawnEnv = {
 		...process.env,
-		CAST_CWD: process.cwd(),
+		CAST_CWD: homedir(),
 		CAST_WEB_PORT: String(port),
 		CAST_WEB_HOST: host,
 		CAST_WEB_FOREGROUND: foreground ? "1" : "0",
