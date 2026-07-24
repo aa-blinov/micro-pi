@@ -2,6 +2,16 @@
 
 All notable user-facing changes to cast, newest first.
 
+## 0.8.15
+
+### Fixed
+
+- Large tool results (big file reads, web fetches) could push a session past the context-compaction threshold mid-turn and only get caught reactively once the next model call overflowed. A new guard now compacts right after such a tool result lands, before the next call is made.
+
+### Internal
+
+- Unified the three compaction call sites (turn-start check, mid-turn guard, overflow retry) behind one shared helper to keep their message-splicing and event-emitting behavior in sync.
+
 ## 0.8.14
 
 ### Added
