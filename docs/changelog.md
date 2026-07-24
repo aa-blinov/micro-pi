@@ -2,6 +2,20 @@
 
 All notable user-facing changes to cast, newest first.
 
+## 0.8.16
+
+### Fixed
+
+- Reasoning models that consumed the full `max_tokens` budget on thinking alone would silently fail. Now retries with doubled budget.
+- Model validation incorrectly rejected reasoning models that return `reasoning_content` instead of `<think>` blocks.
+
+### Added
+
+- SQLite-backed session persistence — sessions survive restarts.
+- Web UI scroll-up pagination for long conversations.
+- Turn-accurate message counts in session metadata.
+- Full session history preserved across context compaction instead of being pruned.
+
 ## 0.8.15
 
 ### Fixed
